@@ -1,0 +1,84 @@
+# dependencies (bun install)
+node_modules
+
+# build output
+target
+out
+dist
+*.tgz
+tmp
+
+# logs
+logs
+*.log
+
+# caches
+.cache
+*.tsbuildinfo
+
+# lockfiles from other package managers - this repo uses bun
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+
+# Agent worktrees (Claude Code background agents)
+.claude/worktrees/
+
+# rbwasm build scratch (CRuby source, wasi-sdk toolchain, bundled gems)
+build/ruby_fmt/build/
+build/ruby_fmt/rubies/
+build/ruby_fmt/vendor/
+build/ruby_fmt/.bundle/
+build/ruby_fmt/*.wasm
+
+# native-image build scratch (Oracle GraalVM, Binaryen, the gjf jar)
+build/java_fmt/toolchain/
+build/java_fmt/classes/
+build/java_fmt/*.wasm
+build/java_fmt/*.wat
+
+# teavm build scratch (patched TeaVM checkout, gjf sources/jars, Binaryen)
+build/java_fmt_teavm/toolchain/
+build/java_fmt_teavm/target/
+build/java_fmt_teavm/*.wasm
+build/java_fmt_teavm/kotlin-probe/work/
+build/java_fmt_teavm/kotlin-probe/target/
+# Scratch build directories: run.sh and any hand-run comparison gives each TeaVM
+# version its own, because a build that ends "with errors" leaves the previous
+# classes.wasm in place. None of them is shipped - the artifact the package uses
+# is packages/kotlin/kotlin_fmt.wasm.br, written by build.sh from target-ktfmt.
+build/java_fmt_teavm/kotlin-probe/target-*/
+build/java_fmt_teavm/kotlin-probe/async-dump*.txt
+# Emitted next to every module for diagnosis; not evidence of anything, and the
+# committed artifact is the module itself.
+*.wasm-deobfuscator.wasm
+build/java_fmt_teavm/kotlin-probe/build/
+__pycache__/
+# dotnet wasm build scratch (the SDK, the wasm-tools workload, the publish tree)
+build/csharp_fmt/toolchain/
+build/csharp_fmt/work/
+
+# swift build scratch (Swift toolchain, the wasm SDK, Binaryen, swift-format)
+#
+# `swift-format` has no trailing slash on purpose: build.sh clones it, but it is
+# convenient to point it at a local checkout with a symlink, and a directory
+# pattern would not match one.
+build/swift_fmt/toolchain/
+build/swift_fmt/swift-format
+build/swift_fmt/.build/
+build/swift_fmt/Package.resolved
+build/swift_fmt/*.wasm
+
+# rustfmt build scratch (the rust-lang/rust checkout build.sh clones)
+#
+# `rust` has no trailing slash on purpose, matching swift-format above: build.sh
+# clones it, but pointing it at a local checkout with a symlink is convenient
+# and a directory pattern would not match one.
+build/rust_fmt/rust
+build/rust_fmt/*.wasm

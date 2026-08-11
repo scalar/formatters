@@ -1,0 +1,97 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "identifierOrder": "lexicographic",
+            "groups": [":NODE:", ":BLANK_LINE:", ":PACKAGE:", ":BLANK_LINE:", ":ALIAS:", ":BLANK_LINE:", ":PATH:"]
+          }
+        }
+      }
+    }
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "**",
+      "!packages/ruby/vendor",
+      "!packages/csharp/runtime",
+      "!packages/java/java_fmt.runtime.mjs",
+      "!packages/kotlin/kotlin_fmt.runtime.mjs"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "enabled": true,
+      "quoteStyle": "single",
+      "quoteProperties": "asNeeded",
+      "trailingCommas": "all",
+      "semicolons": "asNeeded",
+      "arrowParentheses": "always",
+      "bracketSpacing": true,
+      "bracketSameLine": false
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        "noNestedTernary": "warn",
+        "noNonNullAssertion": "warn",
+        "useConst": "error",
+        "useTemplate": "error",
+        "noParameterAssign": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": ["./*.js", "../*.js", "./**/*.js", "../**/*.js"],
+                "message": "Do not use .js extensions in TypeScript source imports; keep source import specifiers extensionless."
+              }
+            ]
+          }
+        }
+      },
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "useLiteralKeys": "off"
+      },
+      "nursery": {
+        "useExhaustiveSwitchCases": "warn"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/*/test/node-smoke.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    }
+  ]
+}

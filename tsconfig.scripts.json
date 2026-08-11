@@ -1,0 +1,15 @@
+{
+  // Repo tooling: the `prepack` check and the build pipelines' diagnostic scripts. They live
+  // outside any package, so nothing else type-checks them - `types:check` runs this first.
+  //
+  // Paths are listed rather than globbed under `build/**` on purpose: every build pipeline
+  // downloads its own toolchain into a gitignored subdirectory, and a glob would pull whatever
+  // TypeScript those contain into this project.
+  "extends": "./tsconfig.json",
+  "include": [
+    "scripts/**/*.ts",
+    "build/java_fmt_teavm/*.ts",
+    "build/java_fmt_teavm/kotlin-probe/*.ts",
+    "build/java_fmt_teavm/kotlin-probe/teavm-bug/*.ts"
+  ]
+}

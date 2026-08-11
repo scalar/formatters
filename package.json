@@ -1,0 +1,56 @@
+{
+  "name": "@scalar/formatters",
+  "description": "Real code formatters compiled to WebAssembly, typed for TypeScript, running on plain Node.",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "author": "Scalar (https://github.com/scalar)",
+  "license": "MIT",
+  "homepage": "https://github.com/scalar/formatters#readme",
+  "bugs": "https://github.com/scalar/formatters/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/formatters.git"
+  },
+  "scripts": {
+    "build": "bun run --filter='*' build",
+    "test": "bun test --timeout 30000",
+    "test:node": "bun run build && tsc -p tsconfig.node-smoke.json --noEmit && node --test packages/*/test/node-smoke.ts",
+    "types:check": "tsc -p tsconfig.scripts.json --noEmit && bun run --filter='*' types:check",
+    "ruby:build": "build/ruby_fmt/build.sh",
+    "java:build": "build/java_fmt/build.sh",
+    "java:build:teavm": "build/java_fmt_teavm/build.sh",
+    "java:conformance": "build/java_fmt_teavm/conformance.sh",
+    "kotlin:build": "build/java_fmt_teavm/kotlin-probe/build.sh",
+    "kotlin:gate2": "build/java_fmt_teavm/kotlin-probe/gate2.sh",
+    "kotlin:conformance": "build/java_fmt_teavm/kotlin-probe/conformance.sh",
+    "csharp:build": "build/csharp_fmt/build.sh",
+    "swift:build": "build/swift_fmt/build.sh",
+    "php:build": "build/php_fmt/build.sh",
+    "rust:build": "build/rust_fmt/build.sh",
+    "check": "biome check .",
+    "lint:check": "bun run check",
+    "format": "biome check --write --formatter-enabled=true --linter-enabled=false .",
+    "lint": "biome lint .",
+    "ci": "bun run build && bun run check && bun run types:check && bun run test",
+    "release:version": "changeset version && bun install --no-frozen-lockfile",
+    "release:publish": "bun run build && changeset publish"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.7",
+    "@changesets/cli": "^2.30.0",
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.9.1",
+    "tsc-alias": "^1.8.17",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "lefthook": "^2.1.8"
+  },
+  "packageManager": "bun@1.3.11",
+  "engines": {
+    "node": ">=24",
+    "bun": ">=1.3.9"
+  }
+}

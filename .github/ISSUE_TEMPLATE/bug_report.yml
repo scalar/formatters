@@ -1,0 +1,82 @@
+name: Bug report
+description: Something formats wrong, fails to load, or diverges from the reference tool.
+title: '[bug]: '
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every package here claims to *be* its reference tool compiled to WebAssembly, so the
+        reference decides what is correct. If output differs from the real tool, that is a bug
+        no matter how reasonable it looks — the sections below are asking for the evidence.
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - '@scalar/ruby-fmt'
+        - '@scalar/java-fmt'
+        - '@scalar/kotlin-fmt'
+        - '@scalar/csharp-fmt'
+        - '@scalar/swift-fmt'
+        - '@scalar/php-fmt'
+        - '@scalar/rust-fmt'
+        - Repo tooling or a build pipeline
+    validations:
+      required: true
+
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      placeholder: 0.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version
+      description: Output of `node -v`. Java and Kotlin need 24 or newer.
+      placeholder: v24.4.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Input
+      description: The smallest source that reproduces it, plus the options you passed.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What the package produced
+      description: Output, or the error and its stack.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the reference tool produces
+      description: >-
+        Run the same input through the real tool and paste the result with its version —
+        `stree format`, `google-java-format`, `ktfmt`, `csharpier`, `swift-format`,
+        `php-cs-fixer fix`, `rustfmt`. If you cannot run it, say what you expected and why.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: How you are loading the package, what it is running inside, prior versions that worked.
+    validations:
+      required: false

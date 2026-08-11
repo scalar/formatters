@@ -1,0 +1,58 @@
+{
+  "name": "@scalar/php-fmt",
+  "version": "0.1.0",
+  "description": "PHP formatter (PHP CS Fixer on PHP/wasm) - runs on plain Node, no PHP install",
+  "keywords": [
+    "php",
+    "formatter",
+    "php-cs-fixer",
+    "psr-12",
+    "wasm",
+    "typescript"
+  ],
+  "homepage": "https://github.com/scalar/formatters/tree/main/packages/php#readme",
+  "bugs": "https://github.com/scalar/formatters/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/formatters.git",
+    "directory": "packages/php"
+  },
+  "author": "Scalar (https://github.com/scalar)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./phar": "./php_fmt.phar.br"
+  },
+  "files": [
+    "dist",
+    "php_fmt.phar.br",
+    "VERSIONS.json",
+    "LICENSE",
+    "licenses"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json -f",
+    "types:check": "tsc -p tsconfig.json --noEmit",
+    "phar:build": "../../build/php_fmt/build.sh",
+    "prepack": "node ../../scripts/check-publishable.ts"
+  },
+  "dependencies": {
+    "@php-wasm/node-8-4": "3.1.47",
+    "@php-wasm/universal": "3.1.47"
+  }
+}

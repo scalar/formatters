@@ -1,0 +1,8 @@
+{
+  // The plain-Node smoke tests, checked against each package's *emitted* declarations rather than
+  // its sources. That is the point of a separate project: `dist/index.d.ts` is what a consumer
+  // resolves, so type-checking these files is how the built public API gets asserted against a
+  // real caller. It needs a build, so `test:node` runs it and the build-free `types:check` does not.
+  "extends": "./tsconfig.json",
+  "include": ["packages/*/test/node-smoke.ts"]
+}

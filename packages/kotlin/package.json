@@ -1,0 +1,54 @@
+{
+  "name": "@scalar/kotlin-fmt",
+  "version": "0.1.0",
+  "description": "Kotlin formatter (ktfmt on wasm) - runs on plain Node, no JVM",
+  "keywords": [
+    "kotlin",
+    "formatter",
+    "ktfmt",
+    "wasm",
+    "typescript",
+    "teavm"
+  ],
+  "homepage": "https://github.com/scalar/formatters/tree/main/packages/kotlin#readme",
+  "bugs": "https://github.com/scalar/formatters/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/formatters.git",
+    "directory": "packages/kotlin"
+  },
+  "author": "Scalar (https://github.com/scalar)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./kotlin_fmt.wasm.br"
+  },
+  "files": [
+    "dist",
+    "kotlin_fmt.runtime.mjs",
+    "kotlin_fmt.wasm.br",
+    "LICENSE",
+    "licenses"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json -f",
+    "types:check": "tsc -p tsconfig.json --noEmit",
+    "wasm:build": "../../build/java_fmt_teavm/kotlin-probe/build.sh",
+    "prepack": "node ../../scripts/check-publishable.ts"
+  }
+}

@@ -1,0 +1,42 @@
+name: Feature request
+description: A missing option, a missing language, or something the wrapper should expose.
+title: '[feat]: '
+
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind
+      options:
+        - An option or behaviour the reference tool has that the package does not expose
+        - A formatter for a language this repo does not cover yet
+        - Repo tooling, docs or build pipeline
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What is missing
+      description: >-
+        For a new language, name the formatter you would want compiled — the tool people
+        already run in CI — rather than the language alone. Exactness is a claim about a
+        named tool, so a language with no obvious reference is a harder problem than it looks.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: What you are trying to do
+      description: The use case behind it. Concrete beats general.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you are doing instead today
+      description: Shelling out to the native tool, a reimplementation, going unformatted.
+    validations:
+      required: false

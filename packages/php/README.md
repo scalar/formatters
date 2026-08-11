@@ -1,0 +1,163 @@
+# Scalar PHP Formatter
+
+[![Version](https://img.shields.io/npm/v/%40scalar%2Fphp-fmt)](https://www.npmjs.com/package/@scalar/php-fmt)
+[![Downloads](https://img.shields.io/npm/dm/%40scalar%2Fphp-fmt)](https://www.npmjs.com/package/@scalar/php-fmt)
+[![License](https://img.shields.io/npm/l/%40scalar%2Fphp-fmt)](https://www.npmjs.com/package/@scalar/php-fmt)
+[![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
+
+PHP formatter that runs on plain Node. No PHP install, no Composer, no `php` on `PATH`, no postinstall download.
+
+---
+
+Scalar is an open-source API platform for teams who want beautiful developer interfaces without vendor lock-in.
+
+- **[API References](https://scalar.com/products/api-references/getting-started)** — Interactive API documentation from OpenAPI and AsyncAPI specs.
+- **[Developer Docs](https://scalar.com/products/docs/getting-started)** — Write in Markdown/MDX, generate API references, sync with two-way Git.
+- **[SDK Generator](https://scalar.com/products/sdk-generator/getting-started)** — Type-safe SDKs and CLIs in TypeScript, Python, Go, PHP, Java, and Ruby.
+- **[API Client](https://scalar.com/products/api-client/getting-started)** — Open-source, offline-first Postman alternative built on OpenAPI.
+
+20M+ monthly npm installs · 15,500+ GitHub stars · MIT licensed · [scalar.com](https://scalar.com)
+
+---
+
+```bash
+npm i @scalar/php-fmt
+```
+
+```js
+import { format } from '@scalar/php-fmt'
+
+await format('<?php\nclass A{\npublic function b(){return 1;}\n}')
+// <?php
+//
+// class A
+// {
+//     public function b()
+//     {
+//         return 1;
+//     }
+// }
+```
+
+Async because the first call decompresses the phar and boots PHP — about 0.5s.
+That work is cached, so every later call is ~290ms.
+
+Options are PHP CS Fixer `Config` settings, spelled the way a
+`.php-cs-fixer.php` file spells them:
+
+```js
+await format(source, { rules: '@Symfony', indent: '  ' })
+await format(source, { rules: { '@PSR12': true, array_syntax: { syntax: 'short' } } })
+await format(source, { rules: 'declare_strict_types', riskyAllowed: true })
+```
+
+`rules` takes either a string — a comma-separated list of rule and rule set
+names, read exactly as `--rules` reads it, with a leading `-` disabling one — or
+the object `Config::setRules()` takes. It defaults to `@PSR12`, which is what
+the tool falls back to when it finds no configuration file. `indent`,
+`lineEnding` and `riskyAllowed` keep the tool's defaults when omitted.
+
+## This is the real PHP CS Fixer, and the output is exact
+
+This is **actual [PHP CS Fixer](https://github.com/PHP-CS-Fixer/PHP-CS-Fixer)
+3.95.18** — the official phar, unmodified — running on **actual PHP 8.4**
+compiled to WebAssembly. It is not a reimplementation, so it does not drift.
+
+`test/native-conformance.test.ts` asserts byte-identical output against a native
+`php` running **the same phar this package ships**, across promoted
+constructor properties, enums, `match`, first-class callables, heredocs,
+closures and control flow. Running the shipped artifact rather than a
+`php-cs-fixer` found on `PATH` is deliberate: a PATH copy would be some other
+version, and the version difference would surface as a formatting divergence
+that has nothing to do with wasm. Same bytes, same rules, one variable — the PHP
+underneath. That test *asserts* rather than reports: any divergence is a real
+bug. It skips cleanly when no native `php` is around, so a PHP-free checkout
+still passes.
+
+Beyond those samples, the package was checked against 1117 real PHP files — PHP
+CS Fixer's own sources plus the Symfony, ReactPHP and PSR components vendored
+into its phar — formatted by both this package and a native `php`. All 1117 came
+out byte-identical, and 1100 of them were files the fixer actually rewrote, so
+that is a comparison of real output rather than of untouched input.
+
+## Nothing is compiled here, and that is the point
+
+The other packages in this repo compile their reference tool to wasm themselves,
+because no wasm build of it exists. PHP CS Fixer needs no such step: it is pure
+PHP, so the released phar *is* the tool, and the PHP to run it already exists as
+a maintained wasm build. Compiling anything from source here would only
+introduce a copy that could drift from the release.
+
+So `build/php_fmt/build.sh` downloads the pinned phar, checks it really is one,
+and brotli-compresses it — 3.5MB down to 0.44MB. The result is committed, so a
+fresh clone needs nothing extra.
+
+## `format()` runs the `fix` command, in-process
+
+It drives PHP CS Fixer's own `Application` against the `fix` command — the same
+entry point the `php-cs-fixer` executable reaches — rather than assembling a
+`Runner` by hand. The pipeline around the fixers is part of what the tool is,
+and `Runner`'s constructor changes between minor versions while the command's
+does not.
+
+It does that **in-process rather than by executing the phar**, because PHP's CLI
+SAPI is one-shot: the first `cli()` call on a runtime works and every one after
+it silently does nothing, leaving you with your own input back and a zero exit
+code. Rotating to a fresh runtime per format works but triples the cost
+(~900ms against ~290ms), and the embed SAPI this uses instead is reusable and
+does not leak — memory is flat across formats, unlike the Ruby package's VM.
+
+## Caveats worth knowing before you adopt it
+
+**Configuration discovery is missing.** The tool walks up the filesystem looking
+for a `.php-cs-fixer.php`. There is no filesystem here to walk, so if your
+project has one, read it and pass its settings in as options. This is the same
+gap the Swift package has, and for the same reason.
+
+**It formats a string, not a project.** One file per call. Rules that reason
+about more than the file in front of them have nothing else to look at.
+
+**Unparseable input throws.** PHP CS Fixer skips a file it cannot parse and
+still exits zero, which would hand you your own input back and call it
+formatted. This package checks the source with the same
+`token_get_all($source, TOKEN_PARSE)` the tool's own linter uses and throws a
+`SyntaxError` instead.
+
+**Risky rules are opt-in, and asking for one without opting in is an error**
+rather than a silent skip — again, a rule that quietly did not run is the
+failure mode worth being loud about.
+
+**~290ms per format** is slow next to the other packages here, and it is not the
+wasm: PHP CS Fixer autoloads several hundred classes on every request, and that
+dominates. Fine for a file on save; think twice before putting it in a loop over
+a large codebase.
+
+**Subprocess functions are disabled inside the runtime,** and that is load-
+bearing rather than hardening. `Config`'s constructor asks
+fidry/cpu-core-counter how many CPUs there are, and most of its finders shell
+out through `proc_open`. There are no subprocesses in wasm, so every attempt
+failed and leaked the pipes it had opened — and `FixCommand` builds a `Config`
+on every format, so after roughly 100 calls the guest ran out of file
+descriptors and the runtime trapped. Disabling the functions makes the finders
+fail before they open anything; core detection falls through to its own fallback
+and reports one core, which is what a single-file format wants anyway.
+`test/descriptor-leak.test.ts` holds that line at 150 consecutive formats.
+
+**PHP itself is a dependency, not a bundled artifact.** The runtime comes from
+`@php-wasm/node-8-4`, pinned — which is what pins the PHP the fixer runs on.
+That package is deliberately *not* the `@php-wasm/node` meta-package it sits
+under: that one pulls in prebuilt `.node` binaries and an install script, which
+this repo exists to avoid, and every PHP version from 7.4 to 8.5, turning a 66MB
+install into a 463MB one. Its file locking and WebSocket networking also keep
+Node's event loop alive, so a process that formats a file and returns never
+exits. The two packages used here have no install scripts and no native
+binaries.
+
+## Community
+
+We are API nerds. You too? Let's chat on Discord: <https://discord.gg/scalar>
+
+## License
+
+MIT for this package's own source. The phar it ships is MIT except
+`sebastian/diff`, which is BSD-3-Clause; see [`licenses/NOTICE.md`](licenses/NOTICE.md).

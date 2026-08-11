@@ -1,0 +1,37 @@
+version: 2
+
+updates:
+  # Every action in this repo is pinned to a commit SHA, which is the safe way to depend on
+  # one and also the way to never notice it has moved. Grouped into a single monthly pull
+  # request, since the SHA-plus-comment lines all change the same way.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+
+  # bun is its own Dependabot ecosystem rather than a flavour of npm, and it reads the
+  # text-based `bun.lock` this repo commits.
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      dependencies:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+    ignore:
+      # The runtime dependencies of published packages are deliberate pins, not stale ones.
+      # `@php-wasm/node-8-4` is the PHP that PHP CS Fixer runs on and `@ruby/wasm-wasi` is
+      # the shim around the Ruby VM: both decide formatter output, which this repo claims is
+      # byte-identical to the reference tool. They move when someone re-runs the conformance
+      # test against the new runtime, not on a schedule.
+      - dependency-name: '@php-wasm/*'
+      - dependency-name: '@ruby/wasm-wasi'

@@ -1,0 +1,76 @@
+name: Release
+
+# The other half of changesets, which until now only had `changeset status` running on pull
+# requests. One job, two shapes, decided by whether unreleased changesets exist on main:
+#
+#   changesets present -> open or refresh the "chore: release" pull request, whose diff is
+#     what `release:version` produces: versions bumped, every `.changeset/*.md` folded into
+#     the right package's CHANGELOG.md, `bun.lock` reinstalled to match.
+#   no changesets left (that pull request just merged) -> run `release:publish`, which builds
+#     and then publishes every package whose version is ahead of the registry.
+#
+# `ci.yml` also triggers on `changeset-release/main`, so the release pull request gets the
+# same build, lint, type-check, test and node-smoke treatment as any other before it merges.
+#
+# Authentication is npm trusted publishing (OIDC) - no NPM_TOKEN, no long-lived secret. Given
+# `id-token: write` and no NPM_TOKEN in the environment, changesets/action skips writing an
+# .npmrc and `npm publish` trades the runner's OIDC token for a short-lived credential. Three
+# things have to hold for that to work, and all three fail as a 404 that names none of them:
+#
+#   - The package must already exist on the registry. npm will not accept a trusted publisher
+#     for a name that has never been published, so the *first* release of all seven has to go
+#     out with a granular token; the token can be revoked once each name exists.
+#   - Every package needs its own trusted publisher on npmjs.com naming `scalar/formatters`
+#     and this file by name, `release.yml`. The fields are case-sensitive, npm does not
+#     validate them when you save, and renaming this file breaks publishing until all seven
+#     are updated.
+#   - npm 11.5.1 or newer, which the pinned Node 24 clears comfortably (24.19 ships 11.17).
+#
+# Provenance needs no flag: publishing through OIDC from a public repository attaches it.
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+# Never cancel a release in flight: a publish interrupted between two packages leaves the
+# registry holding half a release.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+
+    permissions:
+      contents: write # push the release branch, its tags and the GitHub releases
+      pull-requests: write # open and refresh the release pull request
+      id-token: write # mint the OIDC token npm authenticates the publish with
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # changesets diffs against the base branch to work out what is unreleased.
+          fetch-depth: 0
+
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Create the release pull request, or publish
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          version: bun run release:version
+          publish: bun run release:publish
+          title: 'chore: release'
+          commit: 'chore: release'
+        env:
+          # No NPM_TOKEN on purpose - its absence is what selects the OIDC path, in both
+          # changesets/action and npm itself. Setting it, even to an empty string, puts an
+          # auth line in ~/.npmrc and takes trusted publishing back out of the picture.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

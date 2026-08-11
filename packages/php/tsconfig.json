@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  // node-smoke.ts imports the built `dist`, which does not exist until `bun run build`. Checking
+  // it here would make `types:check` depend on a build; it is checked by
+  // `tsconfig.node-smoke.json` instead, from `test:node`, which builds first.
+  "exclude": ["dist", "node_modules", "test/node-smoke.ts"]
+}

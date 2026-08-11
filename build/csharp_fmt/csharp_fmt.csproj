@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+
+    <!-- The JavaScript interop source generator emits unsafe marshalling code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmMainJSPath>main.mjs</WasmMainJSPath>
+
+    <!--
+      Not a size knob - a correctness one. CSharpier orders using directives
+      with StringComparison.InvariantCultureIgnoreCase, which is a linguistic
+      comparison. InvariantGlobalization=true quietly degrades that to ordinal,
+      and `using SomeCompany._Word;` then sorts after `MWord` instead of before
+      it. That divergence stays invisible until a consumer's CI runs the real
+      tool in check mode and fails, so ICU ships.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- One full ICU file instead of the three sharded ones the SDK defaults to. -->
+    <WasmIcuDataFileName>icudt.dat</WasmIcuDataFileName>
+
+    <!--
+      Worth its weight. Without it Mono interprets Roslyn's parser and the first
+      format costs ~4.2s of warm-up, with steady state around 20ms; with it that
+      is ~1.0s and ~5ms. It costs 1.9MB brotli and about ten minutes of build,
+      and it does not change a byte of output - the conformance corpus was run
+      against both.
+    -->
+    <RunAOTCompilation>true</RunAOTCompilation>
+
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CSharpier.Core" Version="$(CSharpierVersion)" />
+  </ItemGroup>
+</Project>

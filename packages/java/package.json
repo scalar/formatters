@@ -1,0 +1,54 @@
+{
+  "name": "@scalar/java-fmt",
+  "version": "0.1.0",
+  "description": "Java formatter (google-java-format on wasm) - runs on plain Node, no JVM",
+  "keywords": [
+    "java",
+    "formatter",
+    "google-java-format",
+    "wasm",
+    "typescript",
+    "teavm"
+  ],
+  "homepage": "https://github.com/scalar/formatters/tree/main/packages/java#readme",
+  "bugs": "https://github.com/scalar/formatters/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/formatters.git",
+    "directory": "packages/java"
+  },
+  "author": "Scalar (https://github.com/scalar)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./java_fmt.wasm.br"
+  },
+  "files": [
+    "dist",
+    "java_fmt.runtime.mjs",
+    "java_fmt.wasm.br",
+    "LICENSE",
+    "licenses"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json -f",
+    "types:check": "tsc -p tsconfig.json --noEmit",
+    "wasm:build": "../../build/java_fmt_teavm/build.sh",
+    "prepack": "node ../../scripts/check-publishable.ts"
+  }
+}

@@ -1,0 +1,45 @@
+Drop rustfmt's rustc_driver dependency when targeting wasm.
+
+rustfmt links rustc_driver for one reason, which its own comment states:
+"Necessary to pull in object code as the rest of the rustc crates are shipped
+only as rmeta files." That is a fact about how rustup distributes the rustc-dev
+component, not about rustfmt. build.sh compiles the compiler crates from source
+and gets real rlibs with object code in them, so the dependency has nothing left
+to do - and rustc_driver itself is the one crate in the set that will not build
+for wasm, since it reaches for a codegen backend.
+
+Its only other use is install_ice_hook, which installs a panic handler that
+prints a native backtrace and a bug-report URL. Neither is meaningful in a
+module embedded in someone else's Node process.
+
+Both hunks are conditional, so a host build of rustfmt is byte-for-byte the
+build it was before this patch.
+
+diff --git a/src/tools/rustfmt/src/bin/main.rs b/src/tools/rustfmt/src/bin/main.rs
+index 6c48301f..06472653 100644
+--- a/src/tools/rustfmt/src/bin/main.rs
++++ b/src/tools/rustfmt/src/bin/main.rs
+@@ -25,9 +25,11 @@
+ const BUG_REPORT_URL: &str = "https://github.com/rust-lang/rustfmt/issues/new?labels=bug";
+ 
+ // N.B. these crates are loaded from the sysroot, so they need extern crate.
++#[cfg(not(target_family = "wasm"))]
+ extern crate rustc_driver;
+ 
+ fn main() {
++    #[cfg(not(target_family = "wasm"))]
+     rustc_driver::install_ice_hook(BUG_REPORT_URL, |_| ());
+ 
+     tracing_subscriber::fmt()
+diff --git a/src/tools/rustfmt/src/lib.rs b/src/tools/rustfmt/src/lib.rs
+index 942b42ec..a8e27e0d 100644
+--- a/src/tools/rustfmt/src/lib.rs
++++ b/src/tools/rustfmt/src/lib.rs
+@@ -19,6 +19,7 @@
+ // Necessary to pull in object code as the rest of the rustc crates are shipped only as rmeta
+ // files.
+ #[allow(unused_extern_crates)]
++#[cfg(not(target_family = "wasm"))]
+ extern crate rustc_driver;
+ 
+ use std::cell::RefCell;

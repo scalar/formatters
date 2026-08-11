@@ -1,0 +1,83 @@
+--- a/com/facebook/ktfmt/format/Parser.kt
++++ b/com/facebook/ktfmt/format/Parser.kt
+@@ -16,18 +16,17 @@
+ 
+ package com.facebook.ktfmt.format
+ 
+-import org.jetbrains.kotlin.cli.common.messages.MessageRenderer.PLAIN_RELATIVE_PATHS
+-import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
+-import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
+-import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
++import org.jetbrains.kotlin.cli.jvm.compiler.IdeaStandaloneExecutionSetup
++import org.jetbrains.kotlin.com.intellij.core.CoreApplicationEnvironment
++import org.jetbrains.kotlin.com.intellij.core.CoreProjectEnvironment
++import org.jetbrains.kotlin.com.intellij.openapi.project.Project
+ import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
+ import org.jetbrains.kotlin.com.intellij.openapi.util.text.StringUtil
+ import org.jetbrains.kotlin.com.intellij.psi.PsiErrorElement
+ import org.jetbrains.kotlin.com.intellij.psi.PsiManager
+ import org.jetbrains.kotlin.com.intellij.testFramework.LightVirtualFile
+-import org.jetbrains.kotlin.config.CommonConfigurationKeys
+-import org.jetbrains.kotlin.config.CompilerConfiguration
+ import org.jetbrains.kotlin.idea.KotlinFileType
++import org.jetbrains.kotlin.parsing.KotlinParserDefinition
+ import org.jetbrains.kotlin.psi.KtFile
+ import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
+ import org.jetbrains.kotlin.psi.psiUtil.startOffset
+@@ -36,36 +35,37 @@
+ object Parser {
+ 
+   /**
+-   * The environment used to open a KtFile
++   * The project used to open a KtFile.
+    *
+-   * We allocate it once, and ignore the Diposable. This causes a memory leak, but it was also
+-   * causing a worse memory leak before when we created new ones and disposed them. This leak comes
+-   * from [KotlinCoreEnvironment.createForProduction]:
+-   * https://github.com/JetBrains/kotlin/blob/master/compiler/cli/src/org/jetbrains/kotlin/cli/jvm/compiler/KotlinCoreEnvironment.kt#L544
++   * Upstream allocates a [org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment] here. That
++   * is the *compiler's* environment: it resolves a JVM classpath, opens jars, and registers the
++   * extension points named in META-INF/extensions/compiler.xml by string. Parsing needs none of it,
++   * and an ahead-of-time compiler cannot follow any of it, so this builds the smallest container
++   * that can hold a PSI file instead - the same one KotlinCoreEnvironment builds underneath.
++   *
++   * Everything below this line is upstream's, unchanged: the same LightVirtualFile with the same
++   * name, and the same PsiManager lookup, so the tree that comes out is the tree ktfmt formats.
+    */
+-  val env: KotlinCoreEnvironment
++  private val project: Project
+ 
+   init {
+     // To hide annoying warning on Windows
+     System.setProperty("idea.use.native.fs.for.win", "false")
++    // KotlinCoreEnvironment.createForProduction does this before touching the
++    // platform. Without it PathManager goes looking for an IDE installation and
++    // EarlyAccessRegistryManager throws out of a static initializer.
++    IdeaStandaloneExecutionSetup.doSetup()
+     val disposable = Disposer.newDisposable()
+-    val configuration = CompilerConfiguration()
+-    configuration.put(
+-        CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY,
+-        PrintingMessageCollector(System.err, PLAIN_RELATIVE_PATHS, false),
+-    )
+-    env =
+-        @Suppress("OPT_IN_USAGE_ERROR") // KotlinCoreEnvironment.createForProduction
+-        KotlinCoreEnvironment.createForProduction(
+-            disposable,
+-            configuration,
+-            EnvironmentConfigFiles.JVM_CONFIG_FILES,
+-        )
++    val applicationEnvironment = CoreApplicationEnvironment(disposable)
++    applicationEnvironment.registerFileType(KotlinFileType.INSTANCE, KotlinFileType.EXTENSION)
++    applicationEnvironment.registerFileType(KotlinFileType.INSTANCE, KotlinFileType.SCRIPT_EXTENSION)
++    applicationEnvironment.registerParserDefinition(KotlinParserDefinition())
++    project = CoreProjectEnvironment(disposable, applicationEnvironment).project
+   }
+ 
+   fun parse(code: String): KtFile {
+     val virtualFile = LightVirtualFile("temp.kts", KotlinFileType.INSTANCE, code)
+-    val ktFile = PsiManager.getInstance(env.project).findFile(virtualFile) as KtFile
++    val ktFile = PsiManager.getInstance(project).findFile(virtualFile) as KtFile
+     val descendants = ktFile.collectDescendantsOfType<PsiErrorElement>()
+     if (descendants.isNotEmpty()) throwParseError(code, descendants[0])
+     return ktFile

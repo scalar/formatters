@@ -1,0 +1,6 @@
+# TeaVM reads this file at build time and bakes each named bundle into the
+# module. javac looks its diagnostics up through ResourceBundle, and without
+# these two entries it dies with "InternalError: Cannot find requested resource
+# bundle" on the first message it tries to format.
+com.sun.tools.javac.resources.compiler
+com.sun.tools.javac.resources.javac

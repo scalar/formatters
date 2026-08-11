@@ -1,0 +1,35 @@
+name: Changeset Status
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changeset-status:
+    name: Changeset Status
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+
+      # Every PR carries a changeset here, including docs and tooling ones — those use
+      # `bunx changeset --empty`. So this runs unconditionally rather than gating on a src diff.
+      - name: Check changeset status
+        run: bun changeset status --since=origin/main

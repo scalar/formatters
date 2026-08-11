@@ -1,0 +1,17 @@
+source "https://rubygems.org"
+
+# The formatter itself. Pinned, because the artifact this produces is committed
+# and the version it was built from has to be recoverable from the source tree.
+gem "syntax_tree", "6.3.0"
+
+# Links the JS ABI into the wasm build (rb-eval-string-protect and friends).
+# Without it rbwasm emits a standalone WASI command exporting only _start, which
+# @ruby/wasm-wasi cannot bind to - so every format would cost a fresh VM boot.
+#
+# Pinned to match ruby_wasm: it ships from the same repo, and leaving it floating
+# meant two builds of identical source could produce different artifacts.
+gem "js", "2.10.1"
+
+# The builder. Must be in the Gemfile, not just installed, or `bundle exec
+# rbwasm` cannot find its executable.
+gem "ruby_wasm", "2.10.1"

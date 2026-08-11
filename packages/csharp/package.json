@@ -1,0 +1,56 @@
+{
+  "name": "@scalar/csharp-fmt",
+  "version": "0.1.0",
+  "description": "C# formatter (CSharpier on wasm) - runs on plain Node, no .NET",
+  "keywords": [
+    "csharp",
+    "c#",
+    "formatter",
+    "csharpier",
+    "roslyn",
+    "wasm",
+    "dotnet",
+    "typescript"
+  ],
+  "homepage": "https://github.com/scalar/formatters/tree/main/packages/csharp#readme",
+  "bugs": "https://github.com/scalar/formatters/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/formatters.git",
+    "directory": "packages/csharp"
+  },
+  "author": "Scalar (https://github.com/scalar)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./csharp_fmt.br"
+  },
+  "files": [
+    "dist",
+    "runtime",
+    "csharp_fmt.br",
+    "LICENSE",
+    "licenses"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json -f",
+    "types:check": "tsc -p tsconfig.json --noEmit",
+    "wasm:build": "../../build/csharp_fmt/build.sh",
+    "prepack": "node ../../scripts/check-publishable.ts"
+  }
+}

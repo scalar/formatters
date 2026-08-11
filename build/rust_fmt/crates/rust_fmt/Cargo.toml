@@ -1,0 +1,11 @@
+[package]
+name = "rust_fmt"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rustfmt-nightly = { path = "../rustfmt" }

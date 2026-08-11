@@ -1,0 +1,102 @@
+// Verifies that syntax_tree running on CRuby/wasm produces byte-identical
+// output to the same gem running on a native Ruby.
+//
+// This one asserts rather than reports: the package IS syntax_tree, so any
+// divergence is a real bug (a Ripper difference between Ruby versions, or a
+// broken vendored copy), not a known stylistic gap.
+//
+// Skipped unless a native ruby with syntax_tree is installed.
+//
+// All the samples go through a single native ruby, not one per sample. Booting
+// ruby and requiring syntax_tree costs far more than formatting does, and doing
+// it per sample made this test slow enough to intermittently exceed its timeout
+// under load - surfacing as a SIGTERM'd `ruby` child with empty stderr, which
+// reads like a Ruby crash rather than the timeout it actually was.
+
+import { execFileSync } from 'node:child_process'
+
+import { format } from '../src/format'
+import { describe, expect, it } from 'bun:test'
+
+const nativeAvailable = (): boolean => {
+  try {
+    execFileSync('ruby', ['-e', 'require "syntax_tree"'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// -EUTF-8 because the default external encoding is US-ASCII when no locale is
+// set, which makes any non-ASCII sample blow up on the native side only.
+//
+// JSON in and JSON out keeps sources and results paired without needing a
+// delimiter that cannot appear in Ruby source.
+const RUBY_SCRIPT = `
+  require "syntax_tree"
+  require "json"
+  print JSON.generate(JSON.parse($stdin.read).map { |src| SyntaxTree.format(src) })
+`
+
+const nativeAll = (sources: string[]): string[] =>
+  JSON.parse(
+    execFileSync('ruby', ['-EUTF-8', '-e', RUBY_SCRIPT], {
+      input: JSON.stringify(sources),
+      encoding: 'utf8',
+    }),
+  )
+
+const SAMPLES: Record<string, string> = {
+  'client class': `# frozen_string_literal: true
+require "json"
+module Scalar
+  class Client
+    DEFAULT_TIMEOUT=30
+    attr_reader :base_url
+    def initialize(base_url:, token: nil, timeout: DEFAULT_TIMEOUT)
+      @base_url=base_url; @token=token; @timeout=timeout
+    end
+    def list_users(page: 1, per_page: 25, filter: {})
+      get("/users", query: { page: page, per_page: per_page }.merge(filter))
+    end
+  end
+end`,
+  'endless methods': `class Config
+  OPTIONS = { retries: 3, backoff: 1.5 }.freeze
+  def self.build(**overrides) = new(**OPTIONS.merge(overrides))
+  def to_h = { retries: @retries, backoff: @backoff }
+end`,
+  'case/in': `def code(resp)
+  case resp.status
+  when 200..299 then JSON.parse(resp.body, symbolize_names: true)
+  when 404 then raise NotFoundError, resp.path
+  else raise ApiError.new(resp.status, resp.body)
+  end
+end`,
+  'blocks and procs': `items.filter { |i| i.active? }.map { |i| i.name }.sort_by(&:downcase).each_with_index do |name, index|
+  puts "#{index}: #{name}"
+end`,
+  heredoc: `def usage
+  puts <<~TEXT
+    Usage: client [options]
+      -v  verbose
+  TEXT
+end`,
+}
+
+describe('native-conformance', () => {
+  it.skipIf(!nativeAvailable())('matches native syntax_tree byte for byte', async () => {
+    const samples = Object.entries(SAMPLES)
+    const native = nativeAll(samples.map(([, source]) => source))
+
+    // Pair each sample with its native result up front. The empty-string
+    // fallback can only be hit if native ruby returned fewer results than we
+    // sent, which no real formatting run matches - so it fails loudly here
+    // rather than being silently skipped.
+    const expectations = samples.map(([name, source], index) => ({ name, source, expected: native[index] ?? '' }))
+
+    for (const { name, source, expected } of expectations) {
+      expect(await format(source), `diverged on: ${name}`).toBe(expected)
+    }
+  })
+})

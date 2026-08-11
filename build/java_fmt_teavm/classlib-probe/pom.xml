@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Runs the assertions from the TeaVM tests that accompany patches/teavm.patch,
+  as a Wasm GC module under Node. TeaVM's own JUnit runner drives a browser;
+  this is how the same cases get exercised where there is not one.
+
+  Build with `mvn -f build/java_fmt_teavm/classlib-probe package` after build.sh
+  has published the patched TeaVM, then load target/wasm/classes.wasm and call
+  the exported `run`. The same file compiles on a plain JVM, which is the point:
+  the assertions are Java's semantics, not TeaVM's.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>local.probe</groupId><artifactId>classlib-probe</artifactId><version>1</version>
+  <properties><maven.compiler.source>21</maven.compiler.source><maven.compiler.target>21</maven.compiler.target></properties>
+  <dependencies>
+    <dependency><groupId>org.teavm</groupId><artifactId>teavm-classlib</artifactId><version>0.14.1</version></dependency>
+    <dependency><groupId>org.teavm</groupId><artifactId>teavm-jso-apis</artifactId><version>0.14.1</version></dependency>
+  </dependencies>
+  <build><plugins>
+    <plugin><groupId>org.teavm</groupId><artifactId>teavm-maven-plugin</artifactId><version>0.14.1</version>
+      <executions>
+        <execution><id>c</id><phase>package</phase><goals><goal>compile</goal></goals>
+          <configuration>
+            <targetDirectory>${project.build.directory}/wasm</targetDirectory>
+            <targetType>WEBASSEMBLY_GC</targetType><mainClass>probe.Probe</mainClass>
+            <optimizationLevel>ADVANCED</optimizationLevel><strict>true</strict>
+          </configuration></execution>
+        <execution><id>r</id><phase>package</phase><goals><goal>copy-webassembly-gc-runtime</goal></goals>
+          <configuration><targetDirectory>${project.build.directory}/wasm</targetDirectory><modular>true</modular></configuration></execution>
+      </executions>
+    </plugin>
+  </plugins></build>
+</project>

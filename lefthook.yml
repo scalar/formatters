@@ -1,0 +1,6 @@
+pre-commit:
+  commands:
+    biome:
+      glob: "*.{js,ts,cjs,mjs,d.ts,d.cts,d.mts,jsx,tsx,json,jsonc}"
+      run: bun run format
+      stage_fixed: true

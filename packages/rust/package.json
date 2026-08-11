@@ -1,0 +1,56 @@
+{
+  "name": "@scalar/rust-fmt",
+  "version": "0.1.0",
+  "description": "Rust formatter (rustfmt on wasm) - runs on plain Node, no Rust toolchain",
+  "keywords": [
+    "rust",
+    "formatter",
+    "rustfmt",
+    "wasm",
+    "webassembly",
+    "typescript"
+  ],
+  "homepage": "https://github.com/scalar/formatters/tree/main/packages/rust#readme",
+  "bugs": "https://github.com/scalar/formatters/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/formatters.git",
+    "directory": "packages/rust"
+  },
+  "author": "Scalar (https://github.com/scalar)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./rust_fmt.wasm.br"
+  },
+  "files": [
+    "dist",
+    "rust_fmt.wasm.br",
+    "LICENSE",
+    "licenses"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json -f",
+    "types:check": "tsc -p tsconfig.json --noEmit",
+    "wasm:build": "../../build/rust_fmt/build.sh",
+    "prepack": "node ../../scripts/check-publishable.ts"
+  },
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.4.2"
+  }
+}

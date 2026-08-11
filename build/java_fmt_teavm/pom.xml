@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Compiles google-java-format to WasmGC with TeaVM.
+
+  Every dependency here is installed into the local Maven repository by
+  build.sh: TeaVM from a patched source checkout, the JDK 21 compiler modules
+  repackaged as a jar, google-java-format with its reflective JDK probes
+  patched out, and the classpath stubs. None of them resolve from a remote
+  repository, so this pom is not usable on its own - run build.sh.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>local.javafmt</groupId>
+  <artifactId>java-fmt-wasm</artifactId>
+  <version>1</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <teavm.version>0.14.1</teavm.version>
+    <gjf.version>1.36.1</gjf.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <!-- Overridden to false for the shipped artifact; see build.sh. -->
+    <teavm.debug>false</teavm.debug>
+    <teavm.opt>ADVANCED</teavm.opt>
+    <teavm.minify>true</teavm.minify>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-classlib</artifactId>
+      <version>${teavm.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-jso-apis</artifactId>
+      <version>${teavm.version}</version>
+    </dependency>
+
+    <!--
+      google-java-format parses with javac's own parser. javac lives in JDK
+      modules rather than on any classpath, so build.sh extracts java.compiler
+      and jdk.compiler out of the JDK 21 jmods into this jar for TeaVM to read.
+    -->
+    <dependency>
+      <groupId>org.openjdk</groupId>
+      <artifactId>jdk-compiler</artifactId>
+      <version>21</version>
+    </dependency>
+
+    <dependency>
+      <groupId>local.javafmt</groupId>
+      <artifactId>google-java-format-patched</artifactId>
+      <version>${gjf.version}</version>
+    </dependency>
+
+    <!--
+      Members of non-java.* JDK-internal packages that javac references.
+      Non-java.* packages resolve from the classpath, so a stub is enough;
+      java.* does not, which is why those additions live in TeaVM's class
+      library instead. Also carries the ResourceBundle service file that makes
+      TeaVM bake in javac's message bundles.
+    -->
+    <dependency>
+      <groupId>local.javafmt</groupId>
+      <artifactId>teavm-stubs</artifactId>
+      <version>1</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.teavm</groupId>
+        <artifactId>teavm-maven-plugin</artifactId>
+        <version>${teavm.version}</version>
+        <executions>
+          <execution>
+            <id>wasm-gc</id>
+            <phase>package</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <targetDirectory>${project.build.directory}/wasm</targetDirectory>
+              <targetType>WEBASSEMBLY_GC</targetType>
+              <mainClass>javafmt.JavaFmt</mainClass>
+              <optimizationLevel>${teavm.opt}</optimizationLevel>
+              <minifying>${teavm.minify}</minifying>
+              <!--
+                Strict mode turns a null-pointer trap into a catchable Java NPE
+                with a usable stack. Left on for the shipped artifact too: the
+                entry point catches Throwable and reports the message, and a
+                trap would instead kill the module.
+              -->
+              <strict>true</strict>
+              <debugInformationGenerated>${teavm.debug}</debugInformationGenerated>
+            </configuration>
+          </execution>
+          <execution>
+            <id>wasm-gc-runtime</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-webassembly-gc-runtime</goal>
+            </goals>
+            <configuration>
+              <targetDirectory>${project.build.directory}/wasm</targetDirectory>
+              <modular>true</modular>
+              <!-- The deobfuscator turns Throwable$FakeClass.fakeMethod frames
+                   into real ones. Only emitted for a debug build. -->
+              <deobfuscator>${teavm.debug}</deobfuscator>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

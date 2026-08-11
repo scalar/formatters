@@ -1,0 +1,57 @@
+{
+  "name": "@scalar/ruby-fmt",
+  "version": "0.1.0",
+  "description": "Ruby formatter (syntax_tree on CRuby/wasm) - runs on plain Node, no Ruby install",
+  "keywords": [
+    "ruby",
+    "formatter",
+    "syntax_tree",
+    "wasm",
+    "prettier",
+    "typescript"
+  ],
+  "homepage": "https://github.com/scalar/formatters/tree/main/packages/ruby#readme",
+  "bugs": "https://github.com/scalar/formatters/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/formatters.git",
+    "directory": "packages/ruby"
+  },
+  "author": "Scalar (https://github.com/scalar)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./ruby_fmt.wasm.br"
+  },
+  "files": [
+    "dist",
+    "ruby_fmt.wasm.br",
+    "LICENSE",
+    "licenses"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json -f",
+    "types:check": "tsc -p tsconfig.json --noEmit",
+    "wasm:build": "../../build/ruby_fmt/build.sh",
+    "prepack": "node ../../scripts/check-publishable.ts"
+  },
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.4.2",
+    "@ruby/wasm-wasi": "^2.8.1"
+  }
+}
