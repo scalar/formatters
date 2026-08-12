@@ -13,7 +13,7 @@ import {
   STATUS_TOO_LARGE,
   type SyncRequest,
 } from './sync-protocol'
-import type { FormatOptions } from './types'
+import type { FormatOptions, FormatResult } from './types'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
@@ -70,7 +70,9 @@ const revive = (payload: string): Error => {
  * one process therefore boots two, and they do not share the ~24MB each one
  * costs - so pick one per process where it matters.
  */
-export const formatSync = (source: string, options: FormatOptions = {}): string => {
+export function formatSync(source: string, options?: FormatOptions): string
+export function formatSync(sources: readonly string[], options?: FormatOptions): FormatResult[]
+export function formatSync(source: string | readonly string[], options: FormatOptions = {}): string | FormatResult[] {
   const active = bootWorker()
 
   const exchange = (request: SyncRequest): Int32Array => {
@@ -85,7 +87,11 @@ export const formatSync = (source: string, options: FormatOptions = {}): string 
     return control
   }
 
-  let control = exchange({ kind: 'format', sab, source, options })
+  let control = exchange(
+    typeof source === 'string'
+      ? { kind: 'format', sab, source, options }
+      : { kind: 'batch', sab, sources: source, options },
+  )
 
   if (Atomics.load(control, SLOT_STATUS) === STATUS_TOO_LARGE) {
     sab = new SharedArrayBuffer(HEADER_BYTES + Atomics.load(control, SLOT_LENGTH))
@@ -96,6 +102,13 @@ export const formatSync = (source: string, options: FormatOptions = {}): string 
   const text = new TextDecoder().decode(payload)
 
   if (Atomics.load(control, SLOT_STATUS) === STATUS_ERROR) throw revive(text)
+
+  if (typeof source !== 'string') {
+    const results = JSON.parse(text) as Array<
+      { status: 'ok'; source: string } | { status: 'error'; name: string; message: string }
+    >
+    return results.map((result) => (result.status === 'ok' ? result.source : revive(JSON.stringify(result))))
+  }
 
   return text
 }

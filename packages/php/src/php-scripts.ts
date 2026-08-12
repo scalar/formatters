@@ -1,4 +1,12 @@
-import { CONFIG_DATA_PATH, CONFIG_SCRIPT_PATH, INPUT_PATH, PHAR_PATH, RESULT_PATH, SOURCE_DIR } from './paths'
+import {
+  BATCH_DATA_PATH,
+  CONFIG_DATA_PATH,
+  CONFIG_SCRIPT_PATH,
+  INPUT_PATH,
+  PHAR_PATH,
+  RESULT_PATH,
+  SOURCE_DIR,
+} from './paths'
 
 /**
  * The two PHP scripts that drive the fixer. Both are written once at boot and
@@ -87,4 +95,63 @@ file_put_contents('${RESULT_PATH}', json_encode([
     'exit' => $exit,
     'output' => $output->fetch(),
 ]));
+`
+
+/**
+ * Formats every valid source in one command, so the phar autoloader and fixer
+ * application are paid for once. Parse failures are recorded before the valid
+ * files enter the command, preserving a result at every input position.
+ */
+export const BATCH_FIXER_SCRIPT = `<?php
+
+$sources = json_decode(file_get_contents('${BATCH_DATA_PATH}'), true);
+$results = array_fill(0, count($sources), null);
+$files = [];
+
+foreach (glob('${SOURCE_DIR}/batch-*.php') as $oldFile) {
+    unlink($oldFile);
+}
+
+foreach ($sources as $index => $source) {
+    try {
+        token_get_all($source, TOKEN_PARSE);
+    } catch (ParseError $e) {
+        $results[$index] = [
+            'status' => 'parse-error',
+            'message' => $e->getMessage(),
+            'line' => $e->getLine(),
+        ];
+        continue;
+    }
+
+    $file = '${SOURCE_DIR}/batch-' . $index . '.php';
+    file_put_contents($file, $source);
+    $files[$index] = $file;
+}
+
+if ([] !== $files) {
+    require 'phar://${PHAR_PATH}/vendor/autoload.php';
+
+    $application = new PhpCsFixer\\Console\\Application();
+    $application->setAutoExit(false);
+    $input = new Symfony\\Component\\Console\\Input\\ArrayInput([
+        'command' => 'fix',
+        '--config' => '${CONFIG_SCRIPT_PATH}',
+        '--show-progress' => 'none',
+        '--format' => 'json',
+    ]);
+    $input->setInteractive(false);
+    $output = new Symfony\\Component\\Console\\Output\\BufferedOutput();
+    $exit = $application->run($input, $output);
+    $diagnostics = $output->fetch();
+
+    foreach ($files as $index => $file) {
+        $results[$index] = 0 === $exit
+            ? ['status' => 'ok', 'source' => file_get_contents($file)]
+            : ['status' => 'failed', 'exit' => $exit, 'output' => $diagnostics];
+        unlink($file);
+    }
+}
+
+file_put_contents('${RESULT_PATH}', json_encode($results));
 `

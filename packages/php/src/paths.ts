@@ -20,6 +20,9 @@ export const PHAR_PATH = '/work/php-cs-fixer.phar'
 /** The driver script `format` executes on every call. */
 export const FIXER_SCRIPT_PATH = '/work/fixer.php'
 
+/** The driver script used to format several sources in one fixer invocation. */
+export const BATCH_FIXER_SCRIPT_PATH = '/work/batch-fixer.php'
+
 /**
  * The configuration file. The name matters: PHP CS Fixer resolves a config file
  * by path, and this is the name it documents.
@@ -31,3 +34,6 @@ export const CONFIG_DATA_PATH = '/work/config.json'
 
 /** Where the driver script leaves its outcome for `format` to read back. */
 export const RESULT_PATH = '/work/result.json'
+
+/** Sources and per-item outcomes for a batch format. */
+export const BATCH_DATA_PATH = '/work/batch.json'

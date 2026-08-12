@@ -1,6 +1,7 @@
 import { parentPort } from 'node:worker_threads'
 
 import { format } from './format'
+import { formatBatch } from './format-batch'
 import {
   CONTROL_SLOTS,
   HEADER_BYTES,
@@ -43,6 +44,28 @@ const run = async (request: Extract<SyncRequest, { kind: 'format' }>): Promise<R
   }
 }
 
+const runBatch = async (request: Extract<SyncRequest, { kind: 'batch' }>): Promise<Result> => {
+  try {
+    const results = await formatBatch(request.sources, request.options)
+    const payload = results.map((result) =>
+      typeof result === 'string'
+        ? { status: 'ok', source: result }
+        : { status: 'error', name: result.name, message: result.message },
+    )
+    return { status: STATUS_OK, payload: encoder.encode(JSON.stringify(payload)) }
+  } catch (error) {
+    const name = error instanceof Error ? error.name : 'Error'
+    const message = error instanceof Error ? error.message : String(error)
+    return { status: STATUS_ERROR, payload: encoder.encode(JSON.stringify({ name, message })) }
+  }
+}
+
+const handle = async (request: SyncRequest): Promise<Result> => {
+  if (request.kind === 'format') return run(request)
+  if (request.kind === 'batch') return runBatch(request)
+  return last ?? nothingToResend()
+}
+
 if (!parentPort) {
   throw new Error('sync-worker is a worker thread entry point and cannot be run on its own')
 }
@@ -62,7 +85,7 @@ const nothingToResend = (): Result => ({
 
 port.on('message', (request: SyncRequest) => {
   void (async () => {
-    const result = request.kind === 'format' ? await run(request) : (last ?? nothingToResend())
+    const result = await handle(request)
     last = result
 
     const control = new Int32Array(request.sab, 0, CONTROL_SLOTS)

@@ -45,4 +45,5 @@ export const STATUS_TOO_LARGE = 2
  */
 export type SyncRequest =
   | { kind: 'format'; sab: SharedArrayBuffer; source: string; options: FormatOptions }
+  | { kind: 'batch'; sab: SharedArrayBuffer; sources: readonly string[]; options: FormatOptions }
   | { kind: 'resend'; sab: SharedArrayBuffer }

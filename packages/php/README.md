@@ -65,6 +65,21 @@ import { formatSync } from '@scalar/php-fmt'
 const formatted: string = formatSync('<?php $a=1;', { rules: '@Symfony' })
 ```
 
+When formatting more than one source, pass the whole batch. PHP CS Fixer's
+autoload and application setup then run once for the batch instead of once per
+file. Results stay in input order; a failed item is an `Error` (`SyntaxError`
+for invalid PHP), while the other items still format normally.
+
+```ts
+const results: Array<string | Error> = formatSync([
+  '<?php $a=1;',
+  '<?php class {{{',
+  '<?php $b=2;',
+])
+
+// [formatted source, SyntaxError, formatted source]
+```
+
 Same fixer, same rules, byte-identical output — a test asserts that against
 `format()` rather than trusting it. It exists for the seams that are
 synchronous and cannot be changed: a template renderer, a code generator's
@@ -150,8 +165,9 @@ for a `.php-cs-fixer.php`. There is no filesystem here to walk, so if your
 project has one, read it and pass its settings in as options. This is the same
 gap the Swift package has, and for the same reason.
 
-**It formats a string, not a project.** One file per call. Rules that reason
-about more than the file in front of them have nothing else to look at.
+**It formats strings, not a project.** Even the batch API receives independent
+source strings rather than a project tree. Rules that need configuration or
+files outside that batch have nothing else to look at.
 
 **Unparseable input throws.** PHP CS Fixer skips a file it cannot parse and
 still exits zero, which would hand you your own input back and call it
@@ -163,10 +179,10 @@ formatted. This package checks the source with the same
 rather than a silent skip — again, a rule that quietly did not run is the
 failure mode worth being loud about.
 
-**~290ms per format** is slow next to the other packages here, and it is not the
-wasm: PHP CS Fixer autoloads several hundred classes on every request, and that
-dominates. Fine for a file on save; think twice before putting it in a loop over
-a large codebase.
+**~290ms per formatter invocation** is slow next to the other packages here,
+and it is not the wasm: PHP CS Fixer autoloads several hundred classes on every
+request, and that dominates. Fine for a file on save; for a large codebase use
+the array form of `formatSync` so the whole batch pays that cost once.
 
 **Subprocess functions are disabled inside the runtime,** and that is load-
 bearing rather than hardening. `Config`'s constructor asks
