@@ -219,6 +219,14 @@ sources and the Symfony, ReactPHP and PSR components vendored into its phar),
 all of which came out identical - 1100 of them files the fixer actually
 rewrote.
 
+It is also the one package with a synchronous entry point. PHP on wasm has none
+and cannot be given one - both builds suspend through Asyncify or JSPI, so every
+export returns a promise - so `formatSync()` gets its synchrony from the thread
+instead: PHP runs in a worker and the calling thread parks on `Atomics.wait`
+until the result lands in shared memory. Same fixer, byte-identical output, and
+nothing to install. It blocks the caller for the ~300ms a format takes, which is
+the point and also the cost, so prefer `format()` wherever you can await.
+
 This is the one package that compiles nothing, and that is the point. The others
 compile their reference tool because no wasm build of it exists; PHP CS Fixer is
 pure PHP, so the released phar *is* the tool and a maintained wasm PHP already

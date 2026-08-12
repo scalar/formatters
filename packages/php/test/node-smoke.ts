@@ -13,9 +13,18 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { format } from '../dist/index.js'
+import { format, formatSync } from '../dist/index.js'
+
+const SOURCE = '<?php\nclass A{\npublic function b(){return 1;}\n}'
+const EXPECTED = '<?php\n\nclass A\n{\n    public function b()\n    {\n        return 1;\n    }\n}\n'
 
 test('formats PHP under plain Node', async () => {
-  const out = await format('<?php\nclass A{\npublic function b(){return 1;}\n}')
-  assert.equal(out, '<?php\n\nclass A\n{\n    public function b()\n    {\n        return 1;\n    }\n}\n')
+  assert.equal(await format(SOURCE), EXPECTED)
+})
+
+// `formatSync` loads a second file out of `dist` to run as a worker, so it can
+// break in ways the async path cannot - a missing file, or a specifier Node
+// will not resolve. Only a real Node run catches that.
+test('formats PHP synchronously under plain Node', () => {
+  assert.equal(formatSync(SOURCE), EXPECTED)
 })
