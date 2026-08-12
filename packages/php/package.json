@@ -1,6 +1,6 @@
 {
   "name": "@scalar/php-fmt",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "PHP formatter (PHP CS Fixer on PHP/wasm) - runs on plain Node, no PHP install",
   "keywords": [
     "php",
