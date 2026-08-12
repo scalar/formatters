@@ -94,6 +94,53 @@ extensions. Their only C dependency is Ripper, which is built into CRuby.
 
 ---
 
+## The one thing that is not stock: `case`/`in` with an endless range
+
+`then` is mandatory in a `case`/`in` clause whose pattern ends in an endless
+range. Leave it out and Ruby reads the newline as the range's continuation and
+swallows the following line into the pattern. syntax_tree 6.3.0 knows this, but
+asks whether the pattern *is* an endless range rather than whether it *ends*
+with one — so it keeps `then` for `in 400..` and drops it everywhere else:
+
+```ruby
+# in, and valid
+case status
+in 300.. | 400.. then
+  retry_request
+end
+
+# out of stock syntax_tree 6.3.0 — Ruby cannot parse this
+case status
+in 300.. | 400..
+  retry_request
+end
+```
+
+`in { status: 400.. } then` breaks the same way, because syntax_tree unwraps it
+to `in status: 400..` and exposes the trailing `..`. Both come out of source
+that parsed on the way in, and nothing raises — the first thing you learn is
+that a generated file no longer compiles.
+
+`src/stree-patch.ts` fixes it by deciding on the *rendered* pattern rather than
+on its node types: format the pattern on its own, and add `then` when what comes
+out ends in `..`. That cannot be fooled by `in { m: "ends.." }`, and it does not
+need a list of node types kept in step with the language. The patch is applied
+by reopening the class at boot, so the artifact stays stock syntax_tree 6.3.0
+and retiring the patch is deleting one file.
+
+The divergence is deliberately narrow, and measured: formatting the rubocop,
+rubocop-ast and syntax_tree gems both ways — 1,033 files — it changes the output
+of none of them. `test/native-conformance.test.ts` pins it in both directions:
+byte-identity with native syntax_tree everywhere else, plus one test asserting
+that native output for this shape still fails to parse while ours does not. When
+syntax_tree releases the fix, that test fails and the patch comes out.
+
+Separately, `format()` parses everything it returns and raises instead of
+handing back source Ruby cannot read. It costs about 2.7ms on a 28ms format,
+which is a good trade for never writing a broken file again.
+
+---
+
 ## Source layout
 
 One function per file, arrow functions throughout, and no classes — the Ruby VM
@@ -102,9 +149,10 @@ is a cached module-level value rather than an object you have to construct.
 | File | Exports | Purpose |
 |:---|:---|:---|
 | `src/format.ts` | `format` | The public entry point: recycle if needed, validate options, write input, format. |
-| `src/boot-vm.ts` | `bootVm`, `recycleVm` | Boots CRuby with syntax_tree required, and caches the result. |
+| `src/boot-vm.ts` | `bootVm`, `recycleVm` | Boots CRuby with syntax_tree required and patched, and caches the result. |
+| `src/stree-patch.ts` | `IN_PATTERN_THEN_PATCH` | The one fix applied on top of the gem, and why it is safe. |
 | `src/compile-artifact.ts` | `compileArtifact` | Locates, decompresses and compiles `ruby_fmt.wasm.br`, at most once per process. |
-| `src/types.ts` | `FormatOptions`, `RubyFormatterVm` | The two types the other three files share. |
+| `src/types.ts` | `FormatOptions`, `RubyFormatterVm` | The two types the other files share. |
 
 `bun run build` compiles `src/` to `dist/`, which is what the published package
 exports. `dist/` is gitignored, so a fresh clone builds before it packs — the

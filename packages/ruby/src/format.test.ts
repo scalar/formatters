@@ -61,4 +61,38 @@ describe('format', () => {
   it('rejects invalid syntax', async () => {
     expect(format('def broken(')).rejects.toThrow()
   })
+
+  // Stock syntax_tree 6.3.0 drops the `then` here and hands back source Ruby
+  // cannot parse. These three cover the shapes that reach it - an alternative,
+  // a hash pattern it unwraps, and one where the endless range is not last -
+  // because each one arrives at the trailing `..` by a different route.
+  it('keeps then when an alternative pattern ends in an endless range', async () => {
+    const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n')
+    expect(out).toBe('case s\nin 300.. | 400.. then\n  a\nend\n')
+  })
+
+  it('keeps then when unwrapping a hash pattern leaves a trailing endless range', async () => {
+    const out = await format('case s\nin { status: 400.. } then\n  a\nend\n')
+    expect(out).toBe('case s\nin status: 400.. then\n  a\nend\n')
+  })
+
+  it('omits then when the endless range is not the last thing in the pattern', async () => {
+    const out = await format('case s\nin { status: 400.., body: String } then\n  a\nend\n')
+    expect(out).toBe('case s\nin { status: 400.., body: String }\n  a\nend\n')
+  })
+
+  // A string that happens to end in dots is not an endless range. Deciding on
+  // the rendered pattern rather than on its node types is what keeps this from
+  // growing a stray `then`.
+  it('does not add then for a literal that merely ends in dots', async () => {
+    const out = await format('case s\nin { m: "ends.." } then\n  a\nend\n')
+    expect(out).toBe('case s\nin m: "ends.."\n  a\nend\n')
+  })
+
+  // Every case/in shape above is only interesting because the output has to be
+  // parseable, so assert that directly on the one that used to break.
+  it('returns Ruby that parses for endless range patterns', async () => {
+    const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n')
+    expect(format(out)).resolves.toBe(out)
+  })
 })

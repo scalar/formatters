@@ -84,6 +84,26 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
+      # packages/ruby's conformance test is what backs the "exact" claim in the README, and it
+      # skips itself when there is no native syntax_tree to compare against - so without these two
+      # steps it has never actually run here. syntax_tree is pure Ruby and installs in seconds,
+      # which makes Ruby the one reference tool cheap enough for CI to carry; the others need a
+      # .NET SDK, a Rust nightly or a JDK and still skip.
+      #
+      # Ruby 3.4 because that is what build/ruby_fmt/build.sh bakes into the artifact. Ripper is
+      # part of CRuby rather than the gem, so a different Ruby here could diverge for reasons that
+      # are nothing to do with this package.
+      - name: Setup Ruby to match the artifact
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: '3.4'
+
+      # The version comes from the Gemfile the artifact is built from rather than being written
+      # out again here, so the native side and the wasm side cannot drift apart. The test reads
+      # the same pin and skips rather than compares if what is installed does not match it.
+      - name: Install the pinned syntax_tree
+        run: gem install syntax_tree --no-document -v "$(sed -n 's/^gem "syntax_tree", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
+
       - name: Run unit tests
         run: bun run test
 
