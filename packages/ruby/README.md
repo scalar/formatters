@@ -211,8 +211,10 @@ codebase does.
 
 `format()` therefore watches the VM's memory and rebuilds it before the wall.
 Recycling reuses the cached `WebAssembly.Module`, so it costs the VM boot alone —
-not another decompress and compile. `test/vm-recycle.test.ts` pushes
-over 1MB through a single process to keep that honest.
+not another decompress and compile. `test/vm-recycle.test.ts` keeps that honest
+by asserting the bound rather than the crash: it formats past the ceiling
+repeatedly and fails if linear memory ever climbs beyond 800MB, which is what
+happens the moment recycling stops.
 
 The rebuild threshold is **400MB**, far below the 2GB wall it is protecting
 against. That is deliberate: a recycle cannot release the outgoing VM's linear
