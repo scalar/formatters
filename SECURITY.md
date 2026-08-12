@@ -25,7 +25,7 @@ we want to hear about:
   environment, or the host process, from a module that is supposed to be able to do none of it.
 - Input that hangs, or that grows memory until the process dies, in a way an ordinary large
   file does not. The known and documented limits — the Ruby VM's recycle threshold, Java and
-  Kotlin needing Node 24 — are not this.
+  Kotlin needing Node 24.15 — are not this.
 - A published artifact that does not match what its build pipeline in `build/` produces from
   the pinned sources, or a build pipeline that fetches something it does not verify.
 - A dependency or vendored component shipping a known vulnerability inside one of the artifacts.

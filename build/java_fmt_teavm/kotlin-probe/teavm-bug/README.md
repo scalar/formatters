@@ -230,7 +230,7 @@ against 0.14.1, which is what `packages/java` builds on.
 | `src/repro/Repro.java` | the program |
 | `pom.xml` | `WEBASSEMBLY_GC`, `strict=true`, `stopOnErrors=false`, `minifying=false` |
 | `run.sh` | builds against each named TeaVM version, one target directory each |
-| `check.ts` | `WebAssembly.compile`, needs Node 24+ |
+| `check.ts` | `WebAssembly.compile`, needs Node 24.15+ |
 
 `run.sh` also builds `../stubs` into a jar and lists it first in the classpath.
 Those are classpath replacements for classes that are not `java.*` and so cannot

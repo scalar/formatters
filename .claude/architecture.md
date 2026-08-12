@@ -159,11 +159,22 @@ corpus is formatted on a plain JVM by the stock jar and by the patched one:
 the conformance test then compares the wasm against the *stock* jar, never the
 patched one.
 
-**Node 24, not 22.** Node 22 has WasmGC and formats correctly, but V8's wasm
-optimizer grows without bound on this module (~100MB/s) until the process is
-killed, so a process that formatted anything would never exit. V8 13 does not,
-and neither does JavaScriptCore, so bun is unaffected. `boot-module.ts` checks
-and throws; the Node smoke test skips with the reason rather than hanging.
+**Node 24.15, not 22 and not 24.0.** Node 22 has WasmGC and formats correctly,
+but V8's wasm optimizer grows without bound on this module (~100MB/s) until the
+process is killed, so a process that formatted anything would never exit. V8 13
+does not, and neither does JavaScriptCore, so bun is unaffected. The minor is a
+second, unrelated thing: TeaVM emits the final wasm exception-handling proposal
+(`try_table`, opcode 0x1f, over `exnref`), which V8 takes on Node 22, rejects at
+compile time on 24.0 through 24.14, and takes again from 24.15.0.
+`boot-module.ts` checks for both and throws; the Node smoke test skips with the
+reason rather than hanging. The opcode check is a feature probe — a 28-byte
+module it tries to compile — because bun reports a Node version below the floor
+and runs the artifact fine, so a version comparison would be wrong there.
+
+That floor is why CI pins Node by exact version. `node-version: 24` is not a
+pin: setup-node serves it from the runner image's tool cache, so the job gets
+whichever 24.x the image ships, and an image predating 24.15.0 fails both
+packages at compile time.
 
 **`format()` replicates the CLI pipeline, not `Formatter.formatSource`.** The
 tool runs four steps — format, `RemoveUnusedImports`, `ImportOrderer`,

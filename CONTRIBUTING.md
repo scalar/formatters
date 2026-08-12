@@ -16,7 +16,8 @@ output against the real tool.
 
 ## Getting set up
 
-You need [Bun](https://bun.sh) and Node 24 or newer. Nothing else — the wasm artifacts are
+You need [Bun](https://bun.sh) and Node 24.15 or newer — `bun run test:node` loads the Java and
+Kotlin artifacts, and Node 24.0 through 24.14 will not compile them. Nothing else — the wasm artifacts are
 committed, so a fresh clone builds and tests without any language toolchain.
 
 ```bash

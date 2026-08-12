@@ -11,7 +11,7 @@
 # The corpus is Guava 33.5.0's sources plus google-java-format's own - 658 files
 # of real, varied Java. Run after build.sh; it reuses that toolchain directory.
 #
-# Needs a JDK 21 and a Node 24+ (see packages/java/README.md for why 24).
+# Needs a JDK 21 and a Node 24.15+ (see packages/java/README.md for why 24.15).
 set -euo pipefail
 cd "$(dirname "$0")"
 

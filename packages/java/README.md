@@ -45,12 +45,24 @@ Options: `{ style }` (`'google'` default, or `'aosp'`), and the three steps the
 CLI runs by default, each of which can be turned off — `{ sortImports }`,
 `{ removeUnusedImports }`, `{ reflowLongStrings }`.
 
-**Node 24 or newer.** Not a WasmGC floor — Node 22 has WasmGC and formats
-correctly. It is V8's wasm optimizer: once the module is warm it grows without
-bound on it, roughly 100MB/s, until the process is killed. The answers are
-right; the process just never exits, which reads as a hang. V8 13 (Node 24) does
-not do it, and neither does JavaScriptCore, so bun is fine. The package checks
-the version and says all this rather than hanging on it.
+**Node 24.15 or newer.** Two separate things set that floor, and neither is
+WasmGC — Node 22 has WasmGC and formats correctly.
+
+The major is V8's wasm optimizer: on Node 22, once the module is warm it grows
+without bound on it, roughly 100MB/s, until the process is killed. The answers
+are right; the process just never exits, which reads as a hang. V8 13 (Node 24)
+does not do it, and neither does JavaScriptCore, so bun is fine.
+
+The minor is the wasm exception-handling opcodes. TeaVM emits the final
+proposal — `try_table` over `exnref` — which V8 accepts unflagged on Node 22,
+rejects on Node 24.0 through 24.14, and accepts again from 24.15.0. On those
+releases the module fails to compile rather than misbehaving, and
+`--experimental-wasm-exnref` is enough to run it.
+
+The package checks for both and says all this rather than hanging or throwing a
+raw `CompileError`. The second check compiles a 28-byte probe module instead of
+reading a version number, so bun — which reports a Node version of its own,
+below this floor — is judged on what its engine actually does.
 
 ## This is the real google-java-format, and the output is exact
 

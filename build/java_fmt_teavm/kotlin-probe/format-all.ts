@@ -1,4 +1,4 @@
-// node format-all.ts <wasm-dir> <corpus> <out> <style>   (needs Node 24+)
+// node format-all.ts <wasm-dir> <corpus> <out> <style>   (needs Node 24.15+)
 //
 // The wasm half of conformance.sh. Deliberately the same shape as FormatAll.java:
 // one module instance for the whole corpus, one file per output, and the error

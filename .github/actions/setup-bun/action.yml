@@ -1,18 +1,29 @@
 name: Setup Bun
 description: Installs the repo-pinned Node and Bun toolchains and runs bun install with the frozen lockfile.
 
+inputs:
+  node-version:
+    description: Exact Node version to install. The default is what every job but the Node smoke test wants.
+    required: false
+    default: 24.19.0
+
 runs:
   using: composite
   steps:
     # Node is pinned rather than inherited from the runner image because `bun run test:node` is the
     # check that keeps this repo's one hard constraint honest — the packages load under plain Node,
-    # not under Bun. Which Node that is therefore decides what the check proves. 24 is the floor the
-    # Java and Kotlin packages declare in `engines`: on Node 22 they format correctly, but V8's wasm
-    # optimizer grows without bound on those modules until the process is killed.
+    # not under Bun. Which Node that is therefore decides what the check proves.
+    #
+    # The pin is an exact version, not `24`. A major on its own is not a pin: setup-node satisfies
+    # it from the runner image's tool cache when anything in that major is already there, so the
+    # Node a job actually gets is whichever 24.x the image happens to ship. That is how the Java
+    # and Kotlin packages came to fail on a green-looking `node-version: 24` — the cached build
+    # predated 24.15.0, where V8 starts accepting the `try_table` opcode TeaVM emits, so both
+    # modules failed to compile at all. See packages/java/src/boot-module.ts.
     - name: Setup Node
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
-        node-version: 24
+        node-version: ${{ inputs.node-version }}
 
     - name: Setup Bun
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2

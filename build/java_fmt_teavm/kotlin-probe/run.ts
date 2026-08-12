@@ -1,4 +1,4 @@
-// node run.ts <dir-containing-classes.wasm> [kotlin-source]   (needs Node 24+)
+// node run.ts <dir-containing-classes.wasm> [kotlin-source]   (needs Node 24.15+)
 //
 // Gate 1b: does the module *run*? teavm-bug/check.ts only compiles it, which
 // is a claim about the bytes being well-formed. This instantiates it and calls
