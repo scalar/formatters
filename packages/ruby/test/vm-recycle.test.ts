@@ -53,8 +53,14 @@ const MEMORY_CEILING_BYTES = 800_000_000
  * which is exactly where this checks. It turns a run that has gone pathological
  * into a failure that names the pass and the elapsed time, instead of a job
  * that sits silent until CI kills it half an hour later.
+ *
+ * Set against the CI number, not the local one. This takes 5s locally but ~74s
+ * on a runner, where a format costs ~6.7s rather than ~0.34s, and runners have
+ * already been seen to vary by half again on top of that. 300s leaves four
+ * times the observed cost - loose enough that a merely slow run is not called a
+ * failure, tight enough to still be a tenth of the job budget a stall burns.
  */
-const BUDGET_MS = 180_000
+const BUDGET_MS = 300_000
 
 describe('vm-recycle', () => {
   it('keeps linear memory bounded while formatting past the ceiling', async () => {
@@ -89,5 +95,6 @@ describe('vm-recycle', () => {
     // ...and that it stayed correct across every one of them, which is the
     // failure a bounds check on its own would miss.
     expect(await format(SAMPLE)).toBe(expected)
-  }, 300_000)
+    // Above the budget on purpose, so the budget is what fails and says why.
+  }, 420_000)
 })
