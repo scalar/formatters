@@ -2,7 +2,9 @@ import { loadModule } from './load-artifact'
 import type { FormatFunction } from './types'
 
 /**
- * The lowest Node this artifact can run on.
+ * The major below which this artifact hangs. One of the two things that set the
+ * floor - the other is below, and is a later 24 than this, so the version this
+ * package actually asks for is `MINIMUM_NODE_FOR_EXNREF`.
  *
  * Not a WasmGC floor - Node 22 has WasmGC and runs the module correctly. It is
  * V8's wasm inliner: once the module is warm, the background optimizer grows

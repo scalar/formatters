@@ -96,6 +96,11 @@ jobs:
     # the floor the Java and Kotlin packages declare in `engines`, and running it here is the only
     # thing that keeps that number honest. The newest release catches the reverse: a Node that
     # stops running an artifact these packages promise it runs.
+    #
+    # The upper end is a version, not `latest`, for the same reason the lower one is: a floating
+    # major is served from the runner image's tool cache and so silently drifts. The cost is that
+    # it only tests what someone last wrote here - bump it when a new Node major or LTS lands,
+    # which is the point at which it has something new to say.
     strategy:
       fail-fast: false
       matrix:
