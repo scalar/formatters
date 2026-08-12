@@ -57,6 +57,42 @@ the object `Config::setRules()` takes. It defaults to `@PSR12`, which is what
 the tool falls back to when it finds no configuration file. `indent`,
 `lineEnding` and `riskyAllowed` keep the tool's defaults when omitted.
 
+## `formatSync()`, for callers that cannot await
+
+```ts
+import { formatSync } from '@scalar/php-fmt'
+
+const formatted: string = formatSync('<?php $a=1;', { rules: '@Symfony' })
+```
+
+Same fixer, same rules, byte-identical output — a test asserts that against
+`format()` rather than trusting it. It exists for the seams that are
+synchronous and cannot be changed: a template renderer, a code generator's
+write hook, anything that has to return a string rather than a promise.
+
+PHP on wasm has no synchronous entry point and cannot be given one. The
+`asyncify` build unwinds and rewinds its stack through JavaScript, the `jspi`
+build wraps its entry in `WebAssembly.Suspending`, and the single export either
+one offers hands back a promise whatever the script does. So the synchrony comes
+from the thread instead: PHP runs in a worker, and `formatSync` parks the
+calling thread on `Atomics.wait` until the result lands in shared memory. Both
+are Node built-ins, so this needs nothing installed and no flags.
+
+What that costs, and it is worth knowing before you reach for it:
+
+- **It blocks the calling thread**, which is the point, but it means nothing
+  else on that thread runs for the ~300ms a format takes — no timers, no I/O
+  callbacks, no rendering. The first call adds the ~500ms of booting PHP.
+- **The worker is its own PHP instance.** Using `format` and `formatSync` in
+  one process boots two, and they do not share the ~24MB each one costs. Prefer
+  one or the other per process where that matters.
+- **It resolves `sync-worker.js` next to itself at runtime.** That is fine for
+  anything consuming the published files, but a bundler that inlines the package
+  into a single file will leave the worker behind. Keep this package external if
+  you bundle.
+
+Prefer `format()` wherever you can await. This is for where you cannot.
+
 ## This is the real PHP CS Fixer, and the output is exact
 
 This is **actual [PHP CS Fixer](https://github.com/PHP-CS-Fixer/PHP-CS-Fixer)
