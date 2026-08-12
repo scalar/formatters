@@ -20,8 +20,19 @@ const SAMPLE = Array.from(
   (_, i) => `def method_${i}(alpha, beta: ${i}, gamma: nil)\n  alpha.map { |x| x * ${i} }.select(&:positive?)\nend`,
 ).join('\n')
 
-/** 40 passes of ~30KB is well over 1MB - comfortably past the ~680KB wall. */
-const PASSES = 40
+/**
+ * Enough passes of this ~37KB sample to carry more than 1MB of cumulative input
+ * through the VM, which is comfortably past the ~680KB wall and is what the
+ * assertion at the end of the test pins.
+ *
+ * No higher than that on purpose. Every pass leaks ~113MB of linear memory that
+ * only a recycle can reclaim, so passes are the most expensive thing in this
+ * suite - the 40 this used to run took over two minutes on a CI runner and, on
+ * a slow one, longer than anybody waited. They also bought nothing the 1MB
+ * claim did not already have: at the current ceiling this recycles every third
+ * pass, so 27 still exercises the recycle path nine times over.
+ */
+const PASSES = 27
 
 describe('vm-recycle', () => {
   it('keeps formatting past the memory ceiling that used to crash the VM', async () => {

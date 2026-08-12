@@ -214,6 +214,14 @@ Recycling reuses the cached `WebAssembly.Module`, so it costs the VM boot alone 
 not another decompress and compile. `test/vm-recycle.test.ts` pushes
 over 1MB through a single process to keep that honest.
 
+The rebuild threshold is **400MB**, far below the 2GB wall it is protecting
+against. That is deliberate: a recycle cannot release the outgoing VM's linear
+memory synchronously, so the process briefly holds the old buffer and the new
+one together. Recycling at 1.1GB made that pair peak at ~1.5GB resident;
+recycling at 400MB holds the peak near 1GB, for about one extra ~250ms boot per
+130KB of input. Peak memory is the scarcer resource for anything formatting a
+codebase in CI, so it is the one being spent down.
+
 ---
 
 ## Three implementation notes worth knowing
