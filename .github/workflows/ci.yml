@@ -88,9 +88,20 @@ jobs:
   # Node with no Bun in the process. `bun run test:node` builds first, so this does not need the
   # build job's output.
   node-smoke:
-    name: Node Smoke Test
+    name: Node Smoke Test (${{ matrix.node-version }})
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
+
+    # Both ends of the supported range, because each one catches what the other cannot. 24.15.0 is
+    # the floor the Java and Kotlin packages declare in `engines`, and running it here is the only
+    # thing that keeps that number honest. The newest release catches the reverse: a Node that
+    # stops running an artifact these packages promise it runs.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 24.15.0
+          - 26.7.0
 
     steps:
       - name: Checkout
@@ -98,6 +109,8 @@ jobs:
 
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
+        with:
+          node-version: ${{ matrix.node-version }}
 
       - name: Load the built packages under plain Node
         run: bun run test:node

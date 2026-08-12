@@ -24,7 +24,7 @@ name: Release
 #     and this file by name, `release.yml`. The fields are case-sensitive, npm does not
 #     validate them when you save, and renaming this file breaks publishing until all seven
 #     are updated.
-#   - npm 11.5.1 or newer, which the pinned Node 24 clears comfortably (24.19 ships 11.17).
+#   - npm 11.5.1 or newer, which the Node this job pins clears comfortably (24.19.0 ships 11.17).
 #
 # Provenance needs no flag: publishing through OIDC from a public repository attaches it.
 on:

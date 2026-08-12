@@ -61,8 +61,17 @@ await format('fun f( {')
 // Error: com.facebook.ktfmt.format.ParseError: 1:7: error: Expecting ')'
 ```
 
-**Node 24 or newer.** The module uses WasmGC with the `js-string` builtins, and
-the package checks the version and says so rather than failing obscurely.
+**Node 24.15 or newer.** The module uses WasmGC with the `js-string` builtins,
+which Node 22 has — the floor is elsewhere. Node 22 formats correctly but V8's
+wasm optimizer then grows without bound on the module until the process is
+killed, and Node 24.0 through 24.14 reject the wasm exception-handling opcodes
+TeaVM emits (`try_table` over `exnref`) at compile time, which 22 and 24.15+
+both accept. The package checks for both and says so rather than failing
+obscurely; the second check compiles a 28-byte probe module rather than reading
+a version number, so bun — JavaScriptCore, reporting a Node version of its own —
+is judged on what its engine actually does. See
+[`packages/java`](../java#readme) for the long version; both packages are TeaVM
+output and hit the same two things.
 
 ## This is the real ktfmt, and the output is exact
 

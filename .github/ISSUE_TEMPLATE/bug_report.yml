@@ -38,8 +38,8 @@ body:
     id: node-version
     attributes:
       label: Node version
-      description: Output of `node -v`. Java and Kotlin need 24 or newer.
-      placeholder: v24.4.0
+      description: Output of `node -v`. Java and Kotlin need 24.15 or newer.
+      placeholder: v24.15.0
     validations:
       required: true
 

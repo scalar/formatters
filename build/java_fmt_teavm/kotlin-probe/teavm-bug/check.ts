@@ -1,4 +1,4 @@
-// node check.ts <path-to-classes.wasm>   (needs Node 24+ for WasmGC)
+// node check.ts <path-to-classes.wasm>   (needs Node 24.15+ for the exception-handling opcodes)
 //
 // Only validation is interesting here, so this compiles the module rather than
 // instantiating it. The program is not expected to *run*: the class library
