@@ -10,8 +10,16 @@ const DEFAULT_PRINT_WIDTH = 80
  * Recycle the VM once its linear memory passes this. The hard wall is the
  * wasm32 signed-pointer boundary at 2GB; this leaves room for one more format
  * to finish - a single large file can add ~75MB on its own.
+ *
+ * Held well below that wall rather than just under it, because the wall is not
+ * the only thing that matters: a recycle cannot hand back the old VM's linear
+ * memory synchronously, so for a moment the process holds the outgoing buffer
+ * and the incoming one at once. At the 1.1GB this used to sit at, that pair
+ * peaked at ~1.5GB resident and made the whole suite thrash on a 16GB CI
+ * runner. 400MB keeps the peak near 1GB, and the extra recycles it costs are
+ * ~250ms each against the ~113MB every 37KB of input adds.
  */
-const MEMORY_LIMIT_BYTES = 1_100_000_000
+const MEMORY_LIMIT_BYTES = 400_000_000
 
 /**
  * Formats Ruby source with syntax_tree running on CRuby compiled to
@@ -19,8 +27,6 @@ const MEMORY_LIMIT_BYTES = 1_100_000_000
  * take about 4ms.
  */
 export const format = async (source: string, options: FormatOptions = {}): Promise<string> => {
-  const booted = await bootVm()
-
   // Formatting leaks: the VM's linear memory grows by roughly 74MB per 23KB of
   // input and is never released. It is not Ruby-level garbage - the object heap
   // stays flat at ~65k live slots and GC.start does not help - so nothing inside
@@ -29,6 +35,7 @@ export const format = async (source: string, options: FormatOptions = {}): Promi
   // negative, and the glue throws `RangeError: Start offset -… is outside the
   // bounds of the buffer`. Dropping the VM is the only lever we have, so this
   // trades a rare pause for not crashing.
+  const booted = await bootVm()
   const { vm, workFiles } = booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES ? await recycleVm() : booted
 
   // printWidth ends up interpolated into Ruby source, so it is coerced and
