@@ -5,7 +5,14 @@
 // divergence is a real bug (a Ripper difference between Ruby versions, or a
 // broken vendored copy), not a known stylistic gap.
 //
-// Skipped unless a native ruby with syntax_tree is installed.
+// Skipped unless a native ruby has the *pinned* syntax_tree installed. The
+// version is load-bearing: syntax_tree's output changes between releases, so a
+// comparison against some other version fails for a reason that has nothing to
+// do with this package. The pin is read from the Gemfile the artifact is built
+// from rather than duplicated here, which is what keeps the native side and the
+// wasm side from drifting apart. CI installs it (see .github/workflows/ci.yml),
+// so this runs there rather than quietly skipping - a conformance test nobody
+// runs is not evidence of anything.
 //
 // All the samples go through a single native ruby, not one per sample. Booting
 // ruby and requiring syntax_tree costs far more than formatting does, and doing
@@ -14,18 +21,45 @@
 // reads like a Ruby crash rather than the timeout it actually was.
 
 import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { format } from '../src/format'
 import { describe, expect, it } from 'bun:test'
 
-const nativeAvailable = (): boolean => {
+const here = path.dirname(fileURLToPath(import.meta.url))
+const GEMFILE = path.join(here, '..', '..', '..', 'build', 'ruby_fmt', 'Gemfile')
+
+/** The syntax_tree the artifact is built from, which is the only one it matches. */
+const pinnedVersion = (): string => {
+  const match = fs.readFileSync(GEMFILE, 'utf8').match(/^gem "syntax_tree", "([^"]+)"$/m)
+  if (!match?.[1]) throw new Error(`could not read the syntax_tree pin from ${GEMFILE}`)
+  return match[1]
+}
+
+/** The syntax_tree a native ruby would load, or undefined if there is not one. */
+const nativeVersion = (): string | undefined => {
   try {
-    execFileSync('ruby', ['-e', 'require "syntax_tree"'], { stdio: 'ignore' })
-    return true
+    return execFileSync('ruby', ['-e', 'require "syntax_tree"; print SyntaxTree::VERSION'], {
+      encoding: 'utf8',
+    }).trim()
   } catch {
-    return false
+    return undefined
   }
 }
+
+const nativeGem = nativeVersion()
+const matchesPin = nativeGem === pinnedVersion()
+
+/** Why this file ran or did not, reported in the test name so a skip is not silent. */
+const describeGem = (): string => {
+  if (!nativeGem) return 'syntax_tree is not installed'
+  if (!matchesPin) return `native syntax_tree ${nativeGem} is not the pinned ${pinnedVersion()}`
+  return `syntax_tree ${nativeGem}`
+}
+
+const reason = describeGem()
 
 // -EUTF-8 because the default external encoding is US-ASCII when no locale is
 // set, which makes any non-ASCII sample blow up on the native side only.
@@ -104,7 +138,7 @@ const nativeParses = (source: string): boolean =>
   execFileSync('ruby', ['-EUTF-8', '-e', RUBY_PARSES_SCRIPT], { input: source, encoding: 'utf8' }) === 'yes'
 
 describe('native-conformance', () => {
-  it.skipIf(!nativeAvailable())('matches native syntax_tree byte for byte', async () => {
+  it.skipIf(!matchesPin)(`matches native syntax_tree byte for byte (${reason})`, async () => {
     const samples = Object.entries(SAMPLES)
     const native = nativeAll(samples.map(([, source]) => source))
 
@@ -119,7 +153,7 @@ describe('native-conformance', () => {
     }
   })
 
-  it.skipIf(!nativeAvailable())('diverges from native only where native emits unparseable Ruby', async () => {
+  it.skipIf(!matchesPin)('diverges from native only where native emits unparseable Ruby', async () => {
     const [native] = nativeAll([ENDLESS_RANGE_PATTERN])
     expect(nativeParses(native ?? '')).toBe(false)
 
