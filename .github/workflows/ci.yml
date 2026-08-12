@@ -3,11 +3,14 @@ name: CI
 # Job-shaped table of contents. The repeated toolchain setup lives in
 # .github/actions/setup-bun; open that to read what "Setup Bun" actually does.
 #
-# Runners: the blacksmith-<n>vcpu-ubuntu-2404 labels the rest of the Scalar org uses. They only
-# resolve once the repository is enrolled with Blacksmith, and a job asking for a label nobody
-# offers queues forever rather than failing — so until the move to scalar/formatters lands and
-# enrollment is confirmed, every job here queues. 4vcpu uniformly; the test suite is the long
-# pole (it boots a wasm runtime per package) if one of them ever needs sizing up.
+# Runners: GitHub-hosted `ubuntu-24.04`, temporarily. The rest of the Scalar org runs on the
+# blacksmith-<n>vcpu-ubuntu-2404 labels, and this repo is meant to as well — the enrollment
+# works, but jobs sat queued for want of capacity, and a job asking for a label nobody is
+# offering queues forever rather than failing, so there is no signal to read while that lasts.
+# Going back is a label swap in this file, changeset-status.yml and release.yml: the image is
+# the same 24.04, so nothing else here depends on which one serves it. 4vcpu when it moves
+# back; the test suite is the long pole (it boots a wasm runtime per package) if one of them
+# ever needs sizing up.
 on:
   push:
     branches:
@@ -26,7 +29,7 @@ concurrency:
 jobs:
   build:
     name: Build
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -41,7 +44,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -56,7 +59,7 @@ jobs:
 
   type-check:
     name: Type Check
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -71,7 +74,7 @@ jobs:
 
   test:
     name: Test Suite
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
@@ -89,7 +92,7 @@ jobs:
   # build job's output.
   node-smoke:
     name: Node Smoke Test (${{ matrix.node-version }})
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     # Both ends of the supported range, because each one catches what the other cannot. 24.15.0 is
