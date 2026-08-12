@@ -46,5 +46,18 @@ export const format = async (source: string, options: FormatOptions = {}): Promi
   // does not escape '#', so any Ruby snippet containing #{} would be evaluated.
   workFiles.set('input.rb', new File(new TextEncoder().encode(source)))
 
-  return vm.eval(`SyntaxTree.format(File.read("/work/input.rb"), ${printWidth})`).toString()
+  // The result is parsed before it is returned. A formatter that emits source
+  // its own language cannot read is the one failure that has to be loud, and
+  // syntax_tree 6.3.0 does exactly that on some `case/in` patterns - see
+  // stree-patch.ts, which fixes the shapes we know about. This catches the ones
+  // we do not: Ripper is already loaded for syntax_tree's own parsing, so the
+  // check costs ~2.7ms against a ~28ms format and turns a silently corrupt file
+  // into an exception raised before anything is written.
+  return vm
+    .eval(
+      `out = SyntaxTree.format(File.read("/work/input.rb"), ${printWidth})
+       raise "syntax_tree produced source that Ruby cannot parse, so it was discarded rather than returned - please report this" if Ripper.sexp(out).nil?
+       out`,
+    )
+    .toString()
 }

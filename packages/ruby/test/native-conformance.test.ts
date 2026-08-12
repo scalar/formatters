@@ -84,6 +84,25 @@ end`,
 end`,
 }
 
+/**
+ * The one input where this package deliberately differs from the gem it ships:
+ * stock syntax_tree 6.3.0 drops the mandatory `then` and returns source Ruby
+ * cannot parse, and we keep it (see src/stree-patch.ts).
+ *
+ * Asserting that the native side is still broken is the point of the test.
+ * Whenever syntax_tree releases the fix, native output starts parsing, this
+ * fails, and the patch has done its job and can go.
+ */
+const ENDLESS_RANGE_PATTERN = 'case s\nin 300.. | 400.. then\n  a\nend\n'
+
+const RUBY_PARSES_SCRIPT = `
+  require "ripper"
+  print Ripper.sexp($stdin.read).nil? ? "no" : "yes"
+`
+
+const nativeParses = (source: string): boolean =>
+  execFileSync('ruby', ['-EUTF-8', '-e', RUBY_PARSES_SCRIPT], { input: source, encoding: 'utf8' }) === 'yes'
+
 describe('native-conformance', () => {
   it.skipIf(!nativeAvailable())('matches native syntax_tree byte for byte', async () => {
     const samples = Object.entries(SAMPLES)
@@ -98,5 +117,14 @@ describe('native-conformance', () => {
     for (const { name, source, expected } of expectations) {
       expect(await format(source), `diverged on: ${name}`).toBe(expected)
     }
+  })
+
+  it.skipIf(!nativeAvailable())('diverges from native only where native emits unparseable Ruby', async () => {
+    const [native] = nativeAll([ENDLESS_RANGE_PATTERN])
+    expect(nativeParses(native ?? '')).toBe(false)
+
+    const ours = await format(ENDLESS_RANGE_PATTERN)
+    expect(ours).not.toBe(native)
+    expect(nativeParses(ours)).toBe(true)
   })
 })

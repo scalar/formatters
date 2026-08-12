@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status |
 |:---|:---|---:|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree | 3.8 MB | ✅ exact |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree | 3.8 MB | ✅ exact +1 fix |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact |
@@ -44,6 +44,12 @@ stated per package. "Exact" means the package *is* that tool compiled to wasm �
 not a reimplementation of it. A reimplementation drifts, because a formatter's
 line-breaking heuristics are emergent from its implementation rather than
 specified anywhere, and the drift stays invisible until a consumer's CI fails.
+
+Ruby reads `exact +1 fix` because it carries one deviation from the gem it
+ships: a fix for a syntax_tree bug that turns valid `case`/`in` code into a
+syntax error. It is a single patch, it is tested against native syntax_tree so
+it cannot drift quietly, and it goes away when the fix lands upstream —
+[details below](#ruby).
 
 ## Installation
 
@@ -89,6 +95,15 @@ built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
 formatter never loads is stripped, then `wasm-opt -Os` and brotli. It is
 committed, so a fresh clone needs nothing extra; `bun run ruby:build` rebuilds it
 when the Ruby version or pinned gems change.
+
+The one deviation from stock syntax_tree 6.3.0: `then` is mandatory in a
+`case`/`in` clause whose pattern ends in an endless range, and syntax_tree only
+keeps it when the *whole* pattern is one. So `in 300.. | 400.. then` and
+`in { status: 400.. } then` come back without it, as Ruby that no longer parses
+— from input that parsed going in. `format()` keeps the `then`, and it also
+parses everything it produces so a bug of that shape can never again return a
+broken file quietly. Formatting the rubocop, rubocop-ast and syntax_tree gems
+both ways — 1,033 files — the patch changes none of them.
 
 One caveat worth knowing before you format a whole codebase's worth of files:
 the VM leaks about 74 MB of wasm memory per 23 KB of input and would die at the

@@ -2,6 +2,7 @@ import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/b
 import { RubyVM } from '@ruby/wasm-wasi'
 
 import { compileArtifact } from './compile-artifact'
+import { IN_PATTERN_THEN_PATCH } from './stree-patch'
 import type { RubyFormatterVm } from './types'
 
 let vmPromise: Promise<RubyFormatterVm> | undefined
@@ -45,6 +46,11 @@ export const bootVm = (): Promise<RubyFormatterVm> => {
     // /bundle/setup puts the baked-in gems on the load path. rbwasm writes it
     // when it packages the Gemfile, and nothing else sets $LOAD_PATH up for us.
     vm.eval('require "/bundle/setup"; require "syntax_tree"')
+
+    // One correctness fix on top of the stock gem, applied here rather than in
+    // the artifact so it stays reviewable. See stree-patch.ts for what it fixes
+    // and the evidence that it changes nothing else.
+    vm.eval(IN_PATTERN_THEN_PATCH)
 
     return { vm, workFiles, memory: wasi.inst.exports.memory }
   })()
