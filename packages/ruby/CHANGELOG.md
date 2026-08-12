@@ -1,5 +1,16 @@
 # @scalar/ruby-fmt
 
+## 0.2.1
+
+### Patch Changes
+
+- 883f3d0: Recycle the wasm VM at 400MB of linear memory rather than 1.1GB. A recycle
+  cannot hand back the outgoing VM's memory synchronously, so the process holds
+  the old buffer and its replacement at once; at the old ceiling that pair peaked
+  at ~1.5GB resident, which is a lot to ask of a CI runner formatting a codebase.
+  The lower ceiling holds the peak near 1GB and costs about one extra ~250ms boot
+  per 130KB of input.
+
 ## 0.2.0
 
 ### Minor Changes
@@ -7,7 +18,7 @@
 - 22817a7: Stop returning Ruby that does not parse.
 
   `then` is mandatory in a `case`/`in` clause whose pattern ends in an endless
-  range, and syntax_tree 6.3.0 only keeps it when the _whole_ pattern is one. So
+  range, and syntax*tree 6.3.0 only keeps it when the \_whole* pattern is one. So
   `in 300.. | 400.. then` came back as `in 300.. | 400..`, and
   `in { status: 400.. } then` as `in status: 400..` — a syntax error, out of
   source that parsed on the way in, with nothing raised. The first sign was a
