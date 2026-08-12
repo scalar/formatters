@@ -27,6 +27,29 @@ describe('format-sync', () => {
     expect(formatSync(SAMPLE, options)).toBe(await format(SAMPLE, options))
   })
 
+  it('formats a batch in order with byte-identical output to format', async () => {
+    const options = { indent: '  ' }
+    const first = '<?php $first=1;'
+    const second = '<?php $second=2;'
+    const results = formatSync([first, second], options)
+
+    expect(results).toHaveLength(2)
+    expect(results[0]).toBe(await format(first, options))
+    expect(results[1]).toBe(await format(second, options))
+  })
+
+  it('isolates a parse failure inside a batch', () => {
+    const results = formatSync(['<?php $first=1;', '<?php class {{{', '<?php $third=3;'])
+
+    expect(results[0]).toBe('<?php $first = 1;\n')
+    expect(results[1]).toBeInstanceOf(SyntaxError)
+    expect(results[2]).toBe('<?php $third = 3;\n')
+  })
+
+  it('returns an empty batch without failing', () => {
+    expect(formatSync([])).toEqual([])
+  })
+
   // The async API throws SyntaxError for a parse error, and the error has to
   // cross a thread boundary to get here - structured clone would have flattened
   // it to a plain Error.
@@ -60,6 +83,11 @@ describe('format-sync', () => {
   it('stays usable across repeated calls and after a throw', () => {
     expect(formatSync('<?php $a=1;')).toContain('$a = 1;')
     expect(() => formatSync('<?php class {{{')).toThrow(SyntaxError)
+    expect(formatSync('<?php $b=2;')).toContain('$b = 2;')
+  })
+
+  it('stays usable after a batch containing a failure', () => {
+    expect(formatSync(['<?php class {{{', '<?php $a=1;'])[1]).toContain('$a = 1;')
     expect(formatSync('<?php $b=2;')).toContain('$b = 2;')
   })
 })

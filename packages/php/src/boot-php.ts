@@ -1,8 +1,8 @@
 import { getPHPLoaderModule, jspi } from '@php-wasm/node-8-4'
 import { PHP, loadPHPRuntime, setPhpIniEntries } from '@php-wasm/universal'
 
-import { CONFIG_SCRIPT_PATH, FIXER_SCRIPT_PATH, PHAR_PATH, SOURCE_DIR } from './paths'
-import { CONFIG_SCRIPT, FIXER_SCRIPT } from './php-scripts'
+import { BATCH_FIXER_SCRIPT_PATH, CONFIG_SCRIPT_PATH, FIXER_SCRIPT_PATH, PHAR_PATH, SOURCE_DIR } from './paths'
+import { BATCH_FIXER_SCRIPT, CONFIG_SCRIPT, FIXER_SCRIPT } from './php-scripts'
 import { readPhar } from './read-phar'
 import type { PhpFormatterRuntime } from './types'
 
@@ -76,6 +76,7 @@ export const bootPhp = (): Promise<PhpFormatterRuntime> => {
     php.writeFile(PHAR_PATH, readPhar())
     php.writeFile(CONFIG_SCRIPT_PATH, CONFIG_SCRIPT)
     php.writeFile(FIXER_SCRIPT_PATH, FIXER_SCRIPT)
+    php.writeFile(BATCH_FIXER_SCRIPT_PATH, BATCH_FIXER_SCRIPT)
 
     return { php }
   })()

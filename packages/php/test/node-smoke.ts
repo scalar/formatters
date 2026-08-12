@@ -28,3 +28,10 @@ test('formats PHP under plain Node', async () => {
 test('formats PHP synchronously under plain Node', () => {
   assert.equal(formatSync(SOURCE), EXPECTED)
 })
+
+test('formats a PHP batch synchronously under plain Node', () => {
+  const results = formatSync([SOURCE, '<?php class {{{', SOURCE])
+  assert.equal(results[0], EXPECTED)
+  assert.ok(results[1] instanceof SyntaxError)
+  assert.equal(results[2], EXPECTED)
+})

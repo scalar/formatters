@@ -35,6 +35,9 @@ export type FormatOptions = {
   riskyAllowed?: boolean
 }
 
+/** A positional batch result: formatted source, or that source's failure. */
+export type FormatResult = string | Error
+
 /**
  * A booted PHP runtime with the fixer artifact and its driver scripts already
  * written into the guest filesystem.
