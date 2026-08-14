@@ -16,7 +16,7 @@ cd "$(dirname "$0")"
 WASM_DIR="${WASM_DIR:-$PWD/target-ktfmt/wasm}"
 WORK="$PWD/work"
 CORPUS="${CORPUS:-$WORK/corpus}"
-NODE="${NODE:-$PWD/../toolchain/node-v24.19.0-linux-x64/bin/node}"
+NODE="${NODE:-$PWD/../toolchain/node-v26.7.0-linux-x64/bin/node}"
 [ -x "$NODE" ] || NODE=node
 
 if [ ! -d "$CORPUS" ]; then

@@ -5,7 +5,7 @@ inputs:
   node-version:
     description: Exact Node version to install. The default is what every job but the Node smoke test wants.
     required: false
-    default: 24.19.0
+    default: 26.7.0
 
 runs:
   using: composite
@@ -14,12 +14,17 @@ runs:
     # check that keeps this repo's one hard constraint honest — the packages load under plain Node,
     # not under Bun. Which Node that is therefore decides what the check proves.
     #
-    # The pin is an exact version, not `24`. A major on its own is not a pin: setup-node satisfies
+    # The pin is an exact version, not `26`. A major on its own is not a pin: setup-node satisfies
     # it from the runner image's tool cache when anything in that major is already there, so the
-    # Node a job actually gets is whichever 24.x the image happens to ship. That is how the Java
-    # and Kotlin packages came to fail on a green-looking `node-version: 24` — the cached build
-    # predated 24.15.0, where V8 starts accepting the `try_table` opcode TeaVM emits, so both
-    # modules failed to compile at all. See packages/java/src/boot-module.ts.
+    # Node a job actually gets is whichever release in that major the image happens to ship. That
+    # is how the Java and Kotlin packages came to fail on a green-looking `node-version: 24` — the
+    # cached build predated 24.15.0, where V8 starts accepting the `try_table` opcode TeaVM emits,
+    # so both modules failed to compile at all. See packages/java/src/boot-module.ts.
+    #
+    # 26.7.0 rather than the LTS line, because the engine is the part of Node these packages
+    # actually run on and 26 carries V8 14.6 against 24's 13.6. This is a toolchain pin and nothing
+    # more: the floor the packages publish in `engines` is still 24.15.0, and the Node smoke test
+    # runs that end of the range too, which is the only thing keeping that number honest.
     - name: Setup Node
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
