@@ -54,11 +54,17 @@ const MEMORY_CEILING_BYTES = 800_000_000
  * into a failure that names the pass and the elapsed time, instead of a job
  * that sits silent until CI kills it half an hour later.
  *
- * Set against the CI number, not the local one. This takes 5s locally but ~74s
- * on a runner, where a format costs ~6.7s rather than ~0.34s, and runners have
- * already been seen to vary by half again on top of that. 300s leaves four
- * times the observed cost - loose enough that a merely slow run is not called a
- * failure, tight enough to still be a tenth of the job budget a stall burns.
+ * 300s against a run that takes ~15s, which is a wider margin than it looks
+ * like it needs. The per-format costs this used to be sized against - ~6.7s on
+ * a runner where local was ~0.34s - were not the runner being slow. They were
+ * this file sharing a process with the other six packages' wasm instances,
+ * which makes the VM's memory growth about two orders of magnitude slower; the
+ * budget fired on exactly that, twice, before the cause was known.
+ * scripts/test-packages.ts now gives each package its own process, so the
+ * number this guards against is the isolated one. The margin stays wide because
+ * the budget is a hang guard, not a performance assertion - it should only ever
+ * fire on something pathological, and 300s is still a tenth of the job budget a
+ * stall would otherwise burn.
  */
 const BUDGET_MS = 300_000
 
