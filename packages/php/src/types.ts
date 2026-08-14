@@ -35,6 +35,26 @@ export type FormatOptions = {
   riskyAllowed?: boolean
 }
 
+/**
+ * Options accepted by the batch forms of `format` and `formatSync`.
+ *
+ * `concurrency` is the one option in this package that is not a PHP CS Fixer
+ * `Config` setting, which is why it lives here rather than on `FormatOptions`:
+ * it changes how fast a batch formats, never what it formats to.
+ */
+export type BatchOptions = FormatOptions & {
+  /**
+   * How many PHP instances to spread the batch across. Each one is a separate
+   * process costing roughly 220MB, so this trades memory for wall-clock time.
+   *
+   * Left alone it is chosen from the batch size, the CPUs this process may use
+   * and the memory it may spend - cgroup limits included, so a container gets
+   * its own budget rather than the host's - and capped at four. Set it to `1` to
+   * keep everything in the calling process.
+   */
+  concurrency?: number
+}
+
 /** A positional batch result: formatted source, or that source's failure. */
 export type FormatResult = string | Error
 

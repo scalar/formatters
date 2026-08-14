@@ -227,6 +227,17 @@ until the result lands in shared memory. Same fixer, byte-identical output, and
 nothing to install. It blocks the caller for the ~300ms a format takes, which is
 the point and also the cost, so prefer `format()` wherever you can await.
 
+It is the slowest package here by a wide margin, and the cost is PHP CS Fixer
+rather than the wasm: it autoloads several hundred classes per invocation and
+then runs every enabled fixer over every file. Both entry points therefore take
+an array as well as a string, and that is the form to use whenever the files are
+in hand - the autoload is paid once for the batch, and the batch is split across
+PHP instances in separate processes. On a four-core machine 200 generated files
+go from 11.5s to 4.6s. The instances are processes rather than worker threads
+because that is what actually parallelises: several PHP instances inside one
+process barely beat one, however many cores are idle, while the same instances in
+separate processes scale nearly linearly.
+
 This is the one package that compiles nothing, and that is the point. The others
 compile their reference tool because no wasm build of it exists; PHP CS Fixer is
 pure PHP, so the released phar *is* the tool and a maintained wasm PHP already

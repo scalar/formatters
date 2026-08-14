@@ -1,8 +1,6 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
 
+import { siblingEntry } from './sibling-entry'
 import {
   CONTROL_SLOTS,
   HEADER_BYTES,
@@ -13,22 +11,10 @@ import {
   STATUS_TOO_LARGE,
   type SyncRequest,
 } from './sync-protocol'
-import type { FormatOptions, FormatResult } from './types'
-
-const here = path.dirname(fileURLToPath(import.meta.url))
+import type { BatchOptions, FormatOptions, FormatResult } from './types'
 
 /** Enough for most formatted files; the worker asks for more when it is not. */
 const INITIAL_PAYLOAD_BYTES = 1024 * 1024
-
-/**
- * The worker's entry point: `sync-worker.js` next to this file when we are
- * running from `dist`, `sync-worker.ts` when the tests run straight out of
- * `src`. Same file, and the runtime that loaded this one can load that one.
- */
-const workerEntry = (): string => {
-  const compiled = path.join(here, 'sync-worker.js')
-  return fs.existsSync(compiled) ? compiled : path.join(here, 'sync-worker.ts')
-}
 
 let worker: Worker | undefined
 
@@ -38,7 +24,7 @@ let sab = new SharedArrayBuffer(HEADER_BYTES + INITIAL_PAYLOAD_BYTES)
 const bootWorker = (): Worker => {
   if (worker) return worker
 
-  const booted = new Worker(workerEntry())
+  const booted = new Worker(siblingEntry('sync-worker'))
 
   // A formatter that stops a script from exiting is a bug, and this thread only
   // ever runs while the caller is blocked on it, so there is nothing to keep the
@@ -71,8 +57,8 @@ const revive = (payload: string): Error => {
  * costs - so pick one per process where it matters.
  */
 export function formatSync(source: string, options?: FormatOptions): string
-export function formatSync(sources: readonly string[], options?: FormatOptions): FormatResult[]
-export function formatSync(source: string | readonly string[], options: FormatOptions = {}): string | FormatResult[] {
+export function formatSync(sources: readonly string[], options?: BatchOptions): FormatResult[]
+export function formatSync(source: string | readonly string[], options: BatchOptions = {}): string | FormatResult[] {
   const active = bootWorker()
 
   const exchange = (request: SyncRequest): Int32Array => {
