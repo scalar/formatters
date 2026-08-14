@@ -1,5 +1,12 @@
 # @scalar/php-fmt
 
+## 0.3.0
+
+### Minor Changes
+
+- 20631f9: Add batch support to `formatSync`, formatting an array of sources in one PHP CS
+  Fixer invocation while returning per-source errors in place.
+
 ## 0.2.0
 
 ### Minor Changes
