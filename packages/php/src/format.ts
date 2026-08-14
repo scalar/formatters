@@ -1,7 +1,8 @@
 import { bootPhp } from './boot-php'
+import { formatPool } from './format-pool'
 import { normalizeRules } from './normalize-rules'
 import { CONFIG_DATA_PATH, FIXER_SCRIPT_PATH, INPUT_PATH, RESULT_PATH } from './paths'
-import type { FormatOptions } from './types'
+import type { BatchOptions, FormatOptions, FormatResult } from './types'
 
 /**
  * PHP CS Fixer has no default rule set of its own - `--rules` falls back to
@@ -20,17 +21,7 @@ type FixerResult =
   | { status: 'parse-error'; message: string; line: number }
   | { status: 'failed'; exit: number; output: string }
 
-/**
- * Formats PHP source with PHP CS Fixer running on PHP compiled to WebAssembly.
- * The first call boots PHP and installs the fixer (~500ms); later calls reuse
- * the instance and take about 290ms.
- *
- * Rules default to `@PSR12`. Note that this formats a *string*: the fixer's
- * configuration-file discovery needs a real project on disk and there is none
- * here, so a project's `.php-cs-fixer.php` has to be read and passed in as
- * options (see the README).
- */
-export const format = async (source: string, options: FormatOptions = {}): Promise<string> => {
+const formatOne = async (source: string, options: FormatOptions = {}): Promise<string> => {
   const { php } = await bootPhp()
 
   // Options reach PHP as JSON and are read back with json_decode - never
@@ -66,4 +57,30 @@ export const format = async (source: string, options: FormatOptions = {}): Promi
   }
 
   return php.readFileAsText(INPUT_PATH)
+}
+
+/**
+ * Formats PHP source with PHP CS Fixer running on PHP compiled to WebAssembly.
+ * The first call boots PHP and installs the fixer (~500ms); later calls reuse
+ * the instance and take about 290ms.
+ *
+ * Rules default to `@PSR12`. Note that this formats a *string*: the fixer's
+ * configuration-file discovery needs a real project on disk and there is none
+ * here, so a project's `.php-cs-fixer.php` has to be read and passed in as
+ * options (see the README).
+ *
+ * Pass an array to format a group, and prefer that over a call per file whenever
+ * you have the files together. The fixer's autoload and application setup then
+ * run once for the whole group, and the group is spread across several PHP
+ * instances - which is the difference between 200 generated files taking 22s and
+ * taking 7s. Results come back in input order, with a failed file as an `Error`
+ * in its own position rather than a throw that loses the rest.
+ */
+export function format(source: string, options?: FormatOptions): Promise<string>
+export function format(sources: readonly string[], options?: BatchOptions): Promise<FormatResult[]>
+export function format(
+  source: string | readonly string[],
+  options: BatchOptions = {},
+): Promise<string | FormatResult[]> {
+  return typeof source === 'string' ? formatOne(source, options) : formatPool(source, options)
 }

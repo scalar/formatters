@@ -1,7 +1,7 @@
 import { parentPort } from 'node:worker_threads'
 
 import { format } from './format'
-import { formatBatch } from './format-batch'
+import { formatPool } from './format-pool'
 import {
   CONTROL_SLOTS,
   HEADER_BYTES,
@@ -46,7 +46,7 @@ const run = async (request: Extract<SyncRequest, { kind: 'format' }>): Promise<R
 
 const runBatch = async (request: Extract<SyncRequest, { kind: 'batch' }>): Promise<Result> => {
   try {
-    const results = await formatBatch(request.sources, request.options)
+    const results = await formatPool(request.sources, request.options)
     const payload = results.map((result) =>
       typeof result === 'string'
         ? { status: 'ok', source: result }

@@ -1,4 +1,4 @@
-import type { FormatOptions } from './types'
+import type { BatchOptions, FormatOptions } from './types'
 
 /**
  * The shared-memory layout `formatSync` and its worker agree on.
@@ -45,5 +45,5 @@ export const STATUS_TOO_LARGE = 2
  */
 export type SyncRequest =
   | { kind: 'format'; sab: SharedArrayBuffer; source: string; options: FormatOptions }
-  | { kind: 'batch'; sab: SharedArrayBuffer; sources: readonly string[]; options: FormatOptions }
+  | { kind: 'batch'; sab: SharedArrayBuffer; sources: readonly string[]; options: BatchOptions }
   | { kind: 'resend'; sab: SharedArrayBuffer }

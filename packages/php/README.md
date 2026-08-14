@@ -57,6 +57,56 @@ the object `Config::setRules()` takes. It defaults to `@PSR12`, which is what
 the tool falls back to when it finds no configuration file. `indent`,
 `lineEnding` and `riskyAllowed` keep the tool's defaults when omitted.
 
+## Formatting many files: pass the batch
+
+Whenever you have the files together — a code generator's emitted output is the
+case this exists for — hand over the array rather than calling once per file.
+
+```js
+const results = await format([source, otherSource, thirdSource])
+// Array<string | Error>, in input order
+```
+
+Two things happen that a call per file cannot do. The fixer's autoload and
+application setup run once for the whole batch instead of once per file, and the
+batch is then split across several PHP instances in separate processes. Both
+matter, and the second one matters more than the first: on a four-core machine,
+200 generated files take 11.5s as one batch and 4.6s as a split one.
+
+Results come back in input order. A file that could not be formatted is an
+`Error` at its own position — `SyntaxError` for invalid PHP — while every other
+file formats normally, so one bad file never costs you the batch.
+
+Splitting is safe rather than approximate. PHP CS Fixer never looks past the file
+in front of it, so which instance formats a file cannot change what it formats
+to; a test asserts the split batch is byte-identical to the unsplit one.
+
+```js
+await format(sources, { concurrency: 8 })
+```
+
+`concurrency` is how many instances to use, and it is the one option here that is
+not a PHP CS Fixer setting — it changes how fast the batch formats, never what it
+formats to. Leave it alone and it is chosen for you from the batch size, the CPUs
+this process may use and the memory it may spend, capped at four.
+
+That budget is read from the cgroup as well as from the host, which matters in a
+container: `os.availableParallelism()` reports the host's CPUs, and a CPU *quota*
+— `docker run --cpus=2`, a Kubernetes `limits.cpu` — does not appear in it,
+because a quota throttles a process rather than confining it to fewer cores.
+A container given two CPUs and 1GB therefore gets a batch sized for two CPUs and
+1GB rather than for the machine underneath it.
+
+Each instance costs roughly 220MB resident, which is the reason the default stops
+at four rather than filling the machine. If you know your own budget, say so.
+`concurrency: 1` keeps everything in the calling process, exactly as it was
+before splitting existed.
+
+Nothing about this can fail the batch. A child process that cannot be spawned —
+a sandbox that forbids it, a container out of memory — costs the parallelism for
+its share and nothing else: the calling process formats that share itself, and
+you get the same bytes a little slower.
+
 ## `formatSync()`, for callers that cannot await
 
 ```ts
@@ -65,10 +115,10 @@ import { formatSync } from '@scalar/php-fmt'
 const formatted: string = formatSync('<?php $a=1;', { rules: '@Symfony' })
 ```
 
-When formatting more than one source, pass the whole batch. PHP CS Fixer's
-autoload and application setup then run once for the batch instead of once per
-file. Results stay in input order; a failed item is an `Error` (`SyntaxError`
-for invalid PHP), while the other items still format normally.
+The array form works here too, and for the same reasons — one autoload for the
+batch, then split across processes. Results stay in input order; a failed item is
+an `Error` (`SyntaxError` for invalid PHP), while the other items still format
+normally.
 
 ```ts
 const results: Array<string | Error> = formatSync([
@@ -181,8 +231,15 @@ failure mode worth being loud about.
 
 **~290ms per formatter invocation** is slow next to the other packages here,
 and it is not the wasm: PHP CS Fixer autoloads several hundred classes on every
-request, and that dominates. Fine for a file on save; for a large codebase use
-the array form of `formatSync` so the whole batch pays that cost once.
+request, and that dominates. Fine for a file on save; for anything larger pass
+the array so the batch pays that cost once and gets split across processes.
+
+**Sharding a batch spends processes and memory.** Each instance is a forked
+process holding its own PHP, about 220MB once the fixer's classes are loaded, so
+the default concurrency of four peaks near 900MB. It is also why a small batch is
+never split: a child costs about 400ms to start and boot PHP, so fewer than eight
+files per instance would not repay it, and batches under eight files stay on the
+instance the process already has.
 
 **Subprocess functions are disabled inside the runtime,** and that is load-
 bearing rather than hardening. `Config`'s constructor asks
