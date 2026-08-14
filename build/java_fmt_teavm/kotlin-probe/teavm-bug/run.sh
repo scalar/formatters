@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-NODE="${NODE:-$PWD/../../toolchain/node-v24.19.0-linux-x64/bin/node}"
+NODE="${NODE:-$PWD/../../toolchain/node-v26.7.0-linux-x64/bin/node}"
 [ -x "$NODE" ] || NODE=node
 
 # The classpath stubs, as a jar the pom can depend on. --limit-modules java.base

@@ -2,8 +2,8 @@
 # Compiles ktfmt to the wasm artifact shipped by @scalar/kotlin-fmt.
 #
 # Requires nothing preinstalled but a JDK 21, Maven, git and Node: TeaVM, ktfmt
-# and Node 24 are fetched into ../toolchain, which is gitignored. Expect ~15
-# minutes on a cold run, most of it compiling TeaVM.
+# and the repo's pinned Node are fetched into ../toolchain, which is gitignored.
+# Expect ~15 minutes on a cold run, most of it compiling TeaVM.
 #
 # The artifact is committed, so this only needs rerunning when a pin below or
 # ../patches/ktfmt.patch changes. Commit the result: the bytes in git are the
@@ -22,7 +22,7 @@ cd "$(dirname "$0")"
 TEAVM_REPO="${TEAVM_REPO:-https://github.com/amritk/teavm.git}"
 TEAVM_COMMIT="${TEAVM_COMMIT:-a726013}"
 TEAVM_VERSION="${TEAVM_VERSION:-0.16.0-forkthree}"
-NODE_VERSION="${NODE_VERSION:-24.19.0}"
+NODE_VERSION="${NODE_VERSION:-26.7.0}"
 
 TOOLCHAIN="$PWD/../toolchain"
 OUT_DIR="../../../packages/kotlin"
@@ -39,10 +39,12 @@ if [ "$java_version" != "21" ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# 1. Node 24, to run the module.
+# 1. Node, to run the module.
 #
-# WasmGC with the js-string builtins needs it, and it is also the floor the
-# published package enforces - see packages/kotlin/src/boot-module.ts.
+# WasmGC with the js-string builtins needs 24.15 at the least, which is the
+# floor the published package enforces - see packages/kotlin/src/boot-module.ts.
+# What is pinned here is the repo's toolchain version, which sits above that
+# floor; the floor itself is what CI's Node smoke test runs against, not this.
 # ----------------------------------------------------------------------------
 NODE="$TOOLCHAIN/node-v$NODE_VERSION-linux-x64/bin/node"
 if [ ! -x "$NODE" ]; then

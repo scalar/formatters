@@ -127,10 +127,10 @@ coroutine and the module 37% larger.
 bun run kotlin:build
 ```
 
-Needs a JDK 21, Maven, git and Node; it fetches TeaVM, ktfmt and Node 24 into a
-gitignored `toolchain/`. Around 15 minutes cold, most of it compiling TeaVM. The
-artifact is committed, so this only needs rerunning when a pin or a patch
-changes.
+Needs a JDK 21, Maven, git and Node; it fetches TeaVM, ktfmt and the repo's
+pinned Node into a gitignored `toolchain/`. Around 15 minutes cold, most of it
+compiling TeaVM. The artifact is committed, so this only needs rerunning when a
+pin or a patch changes.
 
 ## Community
 
