@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "bun run --filter='*' build",
-    "test": "bun test --timeout 30000",
+    "test": "bun run scripts/test-packages.ts",
     "test:node": "bun run build && tsc -p tsconfig.node-smoke.json --noEmit && node --test packages/*/test/node-smoke.ts",
     "types:check": "tsc -p tsconfig.scripts.json --noEmit && bun run --filter='*' types:check",
     "ruby:build": "build/ruby_fmt/build.sh",
