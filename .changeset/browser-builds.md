@@ -1,4 +1,5 @@
 ---
+'@scalar/csharp-fmt': minor
 '@scalar/kotlin-fmt': minor
 '@scalar/swift-fmt': minor
 '@scalar/ruby-fmt': minor
@@ -8,7 +9,7 @@
 
 Run in the browser
 
-These five packages now ship a `browser` export condition alongside the Node
+These six packages now ship a `browser` export condition alongside the Node
 entry. The import does not change and neither does the API — `format` has the
 same signature and produces the same bytes — but bundlers and browsers now
 resolve a build that fetches the wasm artifact instead of reading it from disk.
@@ -27,4 +28,13 @@ Ruby also changes on the Node side: `compileArtifact` now uses
 `WebAssembly.compile` rather than the synchronous `Module` constructor, which no
 public API was built around.
 
-C# and PHP are unaffected and stay Node-only; the README says why.
+C# additionally accepts `init({ runtimeBaseUrl })`, because it is the one
+package whose assets are not all bytes: the .NET runtime imports four
+`runtime/*.js` files as ES modules by URL. They resolve next to the module by
+default and Vite, Rollup and webpack emit them as hashed assets unaided.
+
+PHP is unaffected and stays Node-only; the README says why.
+
+One caveat worth knowing: Vite, Rollup and webpack rewrite
+`new URL(..., import.meta.url)`, and esbuild does not. Under esbuild the
+artifact needs copying beside the output or naming with `init({ url })`.

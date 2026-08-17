@@ -1,7 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import zlib from 'node:zlib'
+
+import type { Archive, HostBuilder, ResourceLoader, RuntimeSource } from './types'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
@@ -21,13 +23,8 @@ const here = path.dirname(fileURLToPath(import.meta.url))
  * running from `dist` (published) or from `src` (tests), so the same paths work
  * in both.
  */
-export const RUNTIME_ENTRY = path.join(here, '..', 'runtime', 'dotnet.js')
+const RUNTIME_ENTRY = path.join(here, '..', 'runtime', 'dotnet.js')
 const ARCHIVE = path.join(here, '..', 'csharp_fmt.br')
-
-/** An asset the runtime can ask for, located inside the decompressed archive. */
-export type Archive = {
-  read: (name: string) => Buffer | undefined
-}
 
 let archive: Archive | undefined
 
@@ -64,4 +61,35 @@ export const openArchive = (): Archive => {
     },
   }
   return archive
+}
+
+/**
+ * The Node runtime source: assets come out of the archive, and the four
+ * `runtime/*.js` files are left to load themselves.
+ *
+ * Returning `undefined` for those four is deliberate. They are imported as ES
+ * modules by URL, and on disk they sit next to `dotnet.js`, so the runtime's own
+ * relative resolution already finds them - there is nothing for this to improve
+ * on. The browser source has to answer that question itself, because a bundler
+ * moves and renames them; see `fetch-artifact.ts`.
+ */
+export const nodeRuntimeSource: RuntimeSource = {
+  loadHostBuilder: async () => {
+    // Imported by URL rather than by path because this file is ESM and the
+    // runtime lives outside `dist`; a bare relative specifier would resolve
+    // against the wrong directory once the package is installed.
+    const { dotnet } = (await import(pathToFileURL(RUNTIME_ENTRY).href)) as { dotnet: HostBuilder }
+    return dotnet
+  },
+
+  openResources: async (): Promise<ResourceLoader> => {
+    const archive = openArchive()
+
+    // The runtime asks by asset name; `defaultUri` is the fallback for the rare
+    // entry whose name is a path.
+    return (_type, name, defaultUri) => {
+      const bytes = archive.read(name) ?? archive.read(path.basename(defaultUri ?? ''))
+      return bytes ? Promise.resolve(new Response(bytes)) : undefined
+    }
+  },
 }

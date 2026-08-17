@@ -66,6 +66,12 @@ const CASES: BrowserCase[] = [
     source: 'fun  f( ) {\nval x=1\n}',
     expected: 'fun f() {\n  val x = 1\n}\n',
   },
+  {
+    directory: 'csharp',
+    artifact: 'csharp_fmt.br',
+    source: 'using B;using A;class A{int x  =  1;void F(){G( "hi" );}}',
+    expected: 'using A;\nusing B;\n\nclass A\n{\n    int x = 1;\n\n    void F()\n    {\n        G("hi");\n    }\n}\n',
+  },
 ]
 
 const ROOT = path.join(import.meta.dir, '..')

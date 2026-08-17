@@ -1,4 +1,6 @@
-import { format } from './format'
+// Imports the wired entry point rather than `createFormat`, because `format`
+// bound to the on-disk assets is what a Node consumer actually gets.
+import { format } from './index'
 import type { FormatOptions } from './types'
 import { describe, expect, it } from 'bun:test'
 

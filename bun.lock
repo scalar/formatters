@@ -20,6 +20,9 @@
     "packages/csharp": {
       "name": "@scalar/csharp-fmt",
       "version": "0.1.0",
+      "dependencies": {
+        "brotli-dec-wasm": "^2.3.2",
+      },
     },
     "packages/java": {
       "name": "@scalar/java-fmt",

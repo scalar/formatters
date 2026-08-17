@@ -6,10 +6,14 @@ import type { InitOptions, ModuleLoader, Runtime } from './types'
  * it, and expands it with the platform rather than with `node:zlib`.
  *
  * The default URL is resolved against this module, so `new URL(..., import.meta.url)`
- * is what a bundler sees. Vite, webpack, Rollup and esbuild all recognise that
- * form and emit `kotlin_fmt.wasm.br` as an asset with a hashed name, and loading
- * the package straight from a CDN resolves it the same way with no build step
- * at all.
+ * is what a bundler sees. Vite, Rollup and webpack recognise that form, emit
+ * `kotlin_fmt.wasm.br` as an asset with a hashed name and rewrite the URL to match;
+ * loading the package straight from a CDN resolves it the same way with no build
+ * step at all.
+ *
+ * esbuild is the exception - it leaves `new URL(..., import.meta.url)` alone -
+ * so an esbuild build has to copy the artifact next to its output or name it
+ * with `init({ url })`. That is what `init` is for.
  *
  * TeaVM's runtime is imported by its package subpath rather than by a URL, which
  * matters: a bundler can follow a literal specifier and include the file, where

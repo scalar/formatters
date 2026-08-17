@@ -29,7 +29,7 @@ Composer, no native binaries, no postinstall downloads.
 | [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree | 3.8 MB | ✅ exact +1 fix | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
-| [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ❌ Node only |
+| [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
 | [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.4 MB | ✅ exact | ✅ |
 | [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact | ❌ Node only |
 | [`@scalar/rust-fmt`](packages/rust) | rustfmt | 1.3 MB | ✅ exact | ✅ |
@@ -54,8 +54,8 @@ it cannot drift quietly, and it goes away when the fix lands upstream —
 Browser is the same claim held to the same standard: ✅ means the package has a
 `browser` export condition and `bun run test:browser` loads that build in real
 Chromium and asserts byte-identical output to the Node build. It is not a
-prediction that it ought to work. C# and PHP are Node-only for reasons that are
-not about effort — [see below](#browsers).
+prediction that it ought to work. PHP is the one package that stays Node-only —
+[see below](#browsers).
 
 ## Installation
 
@@ -83,9 +83,9 @@ every later call is milliseconds.
 
 ## Browsers
 
-Ruby, Java, Kotlin, Swift and Rust run in a browser as well as under Node. The
-import does not change — bundlers and browsers pick the `browser` export
-condition on their own:
+Six of the seven packages — everything but PHP — run in a browser as well as
+under Node. The import does not change; bundlers and browsers pick the `browser`
+export condition on their own:
 
 ```ts
 import { format } from '@scalar/rust-fmt'
@@ -103,9 +103,11 @@ behind an explicit user action rather than on page load.
 
 ### Where the bytes come from
 
-The default resolves the artifact next to the module, which is the form Vite,
-webpack, Rollup and esbuild all recognise, and which a CDN resolves with no build
-step at all. When that is not where your artifact ends up, `init` says so:
+The default resolves the artifact next to the module. Vite, Rollup and webpack
+recognise that form, emit the artifact as a hashed asset and rewrite the URL to
+match; a CDN resolves it with no build step at all. esbuild is the exception —
+it leaves the URL alone — so an esbuild build needs the artifact copied beside
+its output, or named explicitly. Either way, `init` says so:
 
 ```ts
 import { format, init } from '@scalar/rust-fmt'
@@ -137,14 +139,20 @@ setting `Content-Encoding: br` on the `.br` file or by serving an uncompressed
 await init({ url: '/assets/rust_fmt.wasm', encoding: 'none' })
 ```
 
-### Why C# and PHP are not here
+### C# carries one extra file set
 
-Neither is a matter of effort left undone.
+C#'s runtime is the Blazor runtime, and it is the only package whose assets are
+not all bytes: it imports four `runtime/*.js` files as ES modules *by URL*, so
+they have to exist at one. They resolve next to the module by default and Vite,
+Rollup and webpack emit them as hashed assets unaided — verified against a real
+Vite production build, which rewrites all four and still boots. Where they land
+somewhere those cannot derive, name the directory:
 
-C#'s runtime is the Blazor runtime and is perfectly happy in a browser, but it
-imports its four `runtime/*.js` files as ES modules *by URL*, so they have to be
-served as real static assets. That pushes bundler configuration onto every
-consumer, which is a different kind of promise from the others on this list.
+```ts
+await init({ runtimeBaseUrl: '/assets/dotnet' })
+```
+
+### Why PHP is not here
 
 PHP needs a different package altogether — `@php-wasm/node-8-4` is the Node
 build, and the browser wants `@php-wasm/web`. Beyond that, `formatSync` is built

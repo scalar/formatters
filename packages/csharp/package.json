@@ -28,6 +28,11 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "import": "./dist/index.browser.js",
+        "default": "./dist/index.browser.js"
+      },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
@@ -52,5 +57,8 @@
     "types:check": "tsc -p tsconfig.json --noEmit",
     "wasm:build": "../../build/csharp_fmt/build.sh",
     "prepack": "node ../../scripts/check-publishable.ts"
+  },
+  "dependencies": {
+    "brotli-dec-wasm": "^2.3.2"
   }
 }

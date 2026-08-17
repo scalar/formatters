@@ -82,8 +82,9 @@ bytes. Only the wasm's route in differs: fetched rather than read from disk.
 ```js
 import { format, init } from '@scalar/kotlin-fmt'
 
-// Optional. The artifact resolves next to the module by default, which is what
-// Vite, webpack, Rollup, esbuild and a plain CDN all handle unaided.
+// Optional. The artifact resolves next to the module by default, which Vite,
+// Rollup, webpack and a plain CDN handle unaided. esbuild does not rewrite
+// `new URL(..., import.meta.url)`, so there it needs naming.
 await init({ url: '/assets/kotlin_fmt.wasm.br' })
 
 await format(source)

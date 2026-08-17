@@ -17,8 +17,8 @@ Bun is the development toolchain — package manager, test runner, script runner
 It is never a runtime requirement of a published package. `bun run test:node`
 loads each package under plain Node so the constraint is enforced, not assumed.
 
-Five of the seven packages — Ruby, Java, Kotlin, Swift, Rust — also run in a
-browser, behind a `browser` export condition. That is an addition to the Node
+Six of the seven packages — everything but PHP — also run in a browser, behind a
+`browser` export condition. That is an addition to the Node
 constraint, never a relaxation of it: the Node entry stays the default and stays
 free of anything a browser needs. `bun run test:browser` enforces the browser
 half the same way `test:node` enforces the Node half, in real Chromium against
@@ -55,12 +55,25 @@ carries for a file it never opens. The 208KB wasm decoder covers engines without
 so no Node process resolves it and no capable browser fetches it. `init` lets a
 caller who serves the artifact themselves skip it entirely.
 
-C# and PHP have no browser entry. C#'s .NET runtime imports its four
-`runtime/*.js` files as ES modules by URL, so a browser build would require every
-consumer to serve them as static assets. PHP would need `@php-wasm/web` instead
-of `@php-wasm/node-8-4`, and its `formatSync` (worker_threads + `Atomics.wait`)
-and batch pool (`child_process.fork`) have no browser equivalent that keeps the
-same API. Both are documented in the README rather than left to be discovered.
+C# fits the same shape with one wrinkle: its assets are not all bytes. The .NET
+runtime imports four `runtime/*.js` files as ES modules by URL, so those cannot
+be handed over the way the assemblies are. Its resource loader answers those by
+returning a URL string rather than a `Response` — the runtime accepts either —
+and the URLs come from four *static* `new URL(name, import.meta.url)` literals.
+Static matters: a bundler only rewrites the form it can read at build time, so
+one literal per file is the difference between the assets being emitted and the
+consumer being told to copy them. Verified against a real Vite build, which
+emits all four hashed and still boots.
+
+PHP is the one package with no browser entry. It would need `@php-wasm/web`
+instead of `@php-wasm/node-8-4`, and its `formatSync` (worker_threads +
+`Atomics.wait`) and batch pool (`child_process.fork`) have no browser equivalent
+that keeps the same API — a browser build would be a smaller surface, not the
+same one. That is documented in the README rather than left to be discovered.
+
+One caveat that applies everywhere: Vite, Rollup and webpack rewrite
+`new URL(..., import.meta.url)`; esbuild does not. `init` is the escape hatch,
+and the reason every browser entry has one.
 
 ## Repo structure
 
