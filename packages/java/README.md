@@ -64,6 +64,39 @@ raw `CompileError`. The second check compiles a 28-byte probe module instead of
 reading a version number, so bun — which reports a Node version of its own,
 below this floor — is judged on what its engine actually does.
 
+## It runs in the browser too
+
+The import does not change — bundlers and browsers pick the `browser` export
+condition on their own, and `format` has the same signature and returns the same
+bytes. Only the wasm's route in differs: fetched rather than read from disk.
+
+```js
+import { format, init } from '@scalar/java-fmt'
+
+// Optional. The artifact resolves next to the module by default, which is what
+// Vite, webpack, Rollup, esbuild and a plain CDN all handle unaided.
+await init({ url: '/assets/java_fmt.wasm.br' })
+
+await format(source)
+```
+
+Run it in a worker. Booting compiles 3.3 MB of wasm, which is a visibly frozen
+tab if it happens on the main thread.
+
+The engine floor is checked at boot and is real: the module uses the final wasm
+exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
+earliest.
+
+The browser reads the same brotli artifact as Node (0.83 MB over the wire) and
+expands it with `DecompressionStream('brotli')` where the engine has it, or a
+208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
+`Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
+entirely:
+
+```js
+await init({ url: '/assets/java_fmt.wasm', encoding: 'none' })
+```
+
 ## This is the real google-java-format, and the output is exact
 
 This is **actual [google-java-format](https://github.com/google/google-java-format)

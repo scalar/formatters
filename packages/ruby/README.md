@@ -42,6 +42,39 @@ Ruby VM — about 1.1s. That work is cached, so every later call is ~4ms.
 
 ---
 
+## It runs in the browser too
+
+The import does not change — bundlers and browsers pick the `browser` export
+condition on their own, and `format` has the same signature and returns the same
+bytes. Only the wasm's route in differs: fetched rather than read from disk.
+
+```js
+import { format, init } from '@scalar/ruby-fmt'
+
+// Optional. The artifact resolves next to the module by default, which is what
+// Vite, webpack, Rollup, esbuild and a plain CDN all handle unaided.
+await init({ url: '/assets/ruby_fmt.wasm.br' })
+
+await format(source)
+```
+
+Run it in a worker. Booting compiles 20.3 MB of wasm, which is a visibly frozen
+tab if it happens on the main thread.
+
+Formatting grows the VM's linear memory until it is recycled at 400 MB — a
+ceiling picked for a Node process. A tab has less room to absorb that, so keep
+large files off the main thread.
+
+The browser reads the same brotli artifact as Node (3.8 MB over the wire) and
+expands it with `DecompressionStream('brotli')` where the engine has it, or a
+208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
+`Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
+entirely:
+
+```js
+await init({ url: '/assets/ruby_fmt.wasm', encoding: 'none' })
+```
+
 ## API
 
 The package is written in TypeScript and ships its own declarations, so these

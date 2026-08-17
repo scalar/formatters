@@ -19,8 +19,8 @@
 // fails sooner, and reaching a bound costs a fraction of what reaching a wall
 // does.
 
-import { bootVm } from '../src/boot-vm'
-import { format } from '../src/format'
+import { format } from '../src/index'
+import { nodeVm } from '../src/node-vm'
 import { describe, expect, it } from 'bun:test'
 
 // ~37KB. Large enough that a pass moves the memory needle hard (~113MB of
@@ -77,9 +77,9 @@ describe('vm-recycle', () => {
     for (let pass = 1; pass <= PASSES; pass++) {
       expect(await format(SAMPLE), `diverged on pass ${pass}`).toBe(expected)
 
-      // Read through bootVm rather than a return value: this is the same cached
+      // Read through nodeVm rather than a return value: this is the same cached
       // VM format() just used, so its buffer is the live one being asserted on.
-      peak = Math.max(peak, (await bootVm()).memory.buffer.byteLength)
+      peak = Math.max(peak, (await nodeVm.boot()).memory.buffer.byteLength)
 
       const elapsed = performance.now() - startedAt
       if (elapsed > BUDGET_MS) {

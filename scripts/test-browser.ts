@@ -42,6 +42,30 @@ const CASES: BrowserCase[] = [
     source: 'pub fn add(a: i32,b:i32)->i32{a+b}',
     expected: 'pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n',
   },
+  {
+    directory: 'swift',
+    artifact: 'swift_fmt.wasm.br',
+    source: 'struct P{var x:Int\nvar y:Int}',
+    expected: 'struct P {\n  var x: Int\n  var y: Int\n}\n',
+  },
+  {
+    directory: 'ruby',
+    artifact: 'ruby_fmt.wasm.br',
+    source: 'class A\n  def initialize(b)\n@b=b\n  end\nend',
+    expected: 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
+  },
+  {
+    directory: 'java',
+    artifact: 'java_fmt.wasm.br',
+    source: 'class A{int x  =  1;void f(){g( "hi" );}}',
+    expected: 'class A {\n  int x = 1;\n\n  void f() {\n    g("hi");\n  }\n}\n',
+  },
+  {
+    directory: 'kotlin',
+    artifact: 'kotlin_fmt.wasm.br',
+    source: 'fun  f( ) {\nval x=1\n}',
+    expected: 'fun f() {\n  val x = 1\n}\n',
+  },
 ]
 
 const ROOT = path.join(import.meta.dir, '..')
@@ -49,17 +73,35 @@ const ROOT = path.join(import.meta.dir, '..')
 /** Bare specifiers each browser bundle imports, mapped to paths this server can serve. */
 const importMap = (packageDirectory: string): Record<string, string> => {
   const manifest = JSON.parse(readFileSync(path.join(packageDirectory, 'package.json'), 'utf8')) as {
+    name: string
     dependencies?: Record<string, string>
+    exports?: Record<string, unknown>
   }
 
-  const entries = Object.keys(manifest.dependencies ?? {}).map((specifier) => {
+  const dependencies = Object.keys(manifest.dependencies ?? {}).map((specifier) => {
     // Resolved from the package's own directory, so a hoisted install and a
     // nested one both land on the file the package would actually load.
     const resolved = Bun.resolveSync(specifier, packageDirectory)
     return [specifier, `/${path.relative(ROOT, resolved)}`] as const
   })
 
-  return Object.fromEntries(entries)
+  // Self-references, for the subpaths a package exports to itself - Java and
+  // Kotlin import TeaVM's runtime as `<name>/runtime` so a bundler can follow a
+  // literal specifier. A bundler resolves those through `exports`; here they go
+  // in the import map alongside everything else.
+  const own = Object.entries(manifest.exports ?? {})
+    .filter(
+      ([subpath, target]) => subpath.startsWith('./') && subpath !== './package.json' && typeof target === 'string',
+    )
+    .map(
+      ([subpath, target]) =>
+        [
+          `${manifest.name}${subpath.slice(1)}`,
+          `/${path.relative(ROOT, path.join(packageDirectory, target as string))}`,
+        ] as const,
+    )
+
+  return Object.fromEntries([...dependencies, ...own])
 }
 
 /**

@@ -26,10 +26,16 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "import": "./dist/index.browser.js",
+        "default": "./dist/index.browser.js"
+      },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./runtime": "./java_fmt.runtime.mjs",
     "./wasm": "./java_fmt.wasm.br"
   },
   "files": [
@@ -50,5 +56,8 @@
     "types:check": "tsc -p tsconfig.json --noEmit",
     "wasm:build": "../../build/java_fmt_teavm/build.sh",
     "prepack": "node ../../scripts/check-publishable.ts"
+  },
+  "dependencies": {
+    "brotli-dec-wasm": "^2.3.2"
   }
 }

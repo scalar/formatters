@@ -17,6 +17,51 @@ Bun is the development toolchain — package manager, test runner, script runner
 It is never a runtime requirement of a published package. `bun run test:node`
 loads each package under plain Node so the constraint is enforced, not assumed.
 
+Five of the seven packages — Ruby, Java, Kotlin, Swift, Rust — also run in a
+browser, behind a `browser` export condition. That is an addition to the Node
+constraint, never a relaxation of it: the Node entry stays the default and stays
+free of anything a browser needs. `bun run test:browser` enforces the browser
+half the same way `test:node` enforces the Node half, in real Chromium against
+the built `dist`.
+
+## The browser split
+
+A package that runs in both places has exactly one environment-dependent
+question — where do the wasm bytes come from — and the structure exists to keep
+it to that one question.
+
+```
+src/
+  format.ts              createFormat(source) — the whole formatter, environment-free
+  boot-module.ts         createBootModule(source) — instantiation, environment-free
+  compile-artifact.ts    Node: fs + zlib
+  fetch-artifact.ts      browser: fetch + DecompressionStream
+  decompress-brotli.ts   browser: native brotli, or a lazily imported wasm decoder
+  index.ts               Node entry: createFormat(compileArtifact)
+  index.browser.ts       browser entry: createFormat(fetched) + init
+```
+
+`format.ts` and `boot-module.ts` are factories over an artifact source rather
+than importers of one. That is what lets both entry points share a single
+implementation while the browser build never mentions `node:fs` — a bundler that
+followed a `node:` import here would fail loudly, and a bundler that shimmed it
+would fail quietly, which is worse.
+
+Compression stays brotli on both sides. The artifact is committed once, and the
+browser reads that same file; a gzip twin sized for browsers without native
+brotli would cost 41–59% more over the wire *and* double what every Node install
+carries for a file it never opens. The 208KB wasm decoder covers engines without
+`DecompressionStream('brotli')` — Chrome, as of 141 — and is dynamically imported
+so no Node process resolves it and no capable browser fetches it. `init` lets a
+caller who serves the artifact themselves skip it entirely.
+
+C# and PHP have no browser entry. C#'s .NET runtime imports its four
+`runtime/*.js` files as ES modules by URL, so a browser build would require every
+consumer to serve them as static assets. PHP would need `@php-wasm/web` instead
+of `@php-wasm/node-8-4`, and its `formatSync` (worker_threads + `Atomics.wait`)
+and batch pool (`child_process.fork`) have no browser equivalent that keeps the
+same API. Both are documented in the README rather than left to be discovered.
+
 ## Repo structure
 
 ```

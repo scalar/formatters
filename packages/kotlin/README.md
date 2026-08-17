@@ -73,6 +73,39 @@ is judged on what its engine actually does. See
 [`packages/java`](../java#readme) for the long version; both packages are TeaVM
 output and hit the same two things.
 
+## It runs in the browser too
+
+The import does not change — bundlers and browsers pick the `browser` export
+condition on their own, and `format` has the same signature and returns the same
+bytes. Only the wasm's route in differs: fetched rather than read from disk.
+
+```js
+import { format, init } from '@scalar/kotlin-fmt'
+
+// Optional. The artifact resolves next to the module by default, which is what
+// Vite, webpack, Rollup, esbuild and a plain CDN all handle unaided.
+await init({ url: '/assets/kotlin_fmt.wasm.br' })
+
+await format(source)
+```
+
+Run it in a worker. Booting compiles 3.8 MB of wasm, which is a visibly frozen
+tab if it happens on the main thread.
+
+The engine floor is checked at boot and is real: the module uses the final wasm
+exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
+earliest.
+
+The browser reads the same brotli artifact as Node (0.91 MB over the wire) and
+expands it with `DecompressionStream('brotli')` where the engine has it, or a
+208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
+`Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
+entirely:
+
+```js
+await init({ url: '/assets/kotlin_fmt.wasm', encoding: 'none' })
+```
+
 ## This is the real ktfmt, and the output is exact
 
 This is **actual [ktfmt](https://github.com/facebook/ktfmt) 0.64** — including

@@ -1,74 +1,92 @@
 import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/browser_wasi_shim'
 
-import { compileArtifact } from './compile-artifact'
-import type { SwiftFormatModule } from './types'
-
-let modulePromise: Promise<SwiftFormatModule> | undefined
+import type { ArtifactSource, SwiftFormatModule } from './types'
 
 /**
- * Boots swift-format (wasm) and returns the handles a format needs.
+ * Builds the boot/recycle pair for one artifact source.
  *
- * The module is a WASI reactor: it is instantiated once and its `run` export is
- * called per format, rather than being re-instantiated each time. That measured
- * 2.5x faster over a 442-file corpus, and unlike the Ruby package's VM its
- * linear memory plateaus - 54MB after boot, 75MB after the first hundred files,
- * flat from there through 7.2MB of cumulative input.
+ * The source is a parameter rather than an import because this package has two
+ * of them - `compile-artifact.ts` reads the file from disk under Node,
+ * `fetch-artifact.ts` fetches it over HTTP in a browser - and the browser build
+ * must not so much as mention `node:fs`. Passing the source in is what keeps
+ * the two entry points sharing this file instead of duplicating it.
  *
- * `@bjorn3/browser_wasi_shim` rather than `node:wasi` for the same reason the
- * Ruby package uses it: it is pure JavaScript with an in-memory filesystem, so
- * the source being formatted never touches disk.
+ * Each call closes over its own cache, so the module is booted at most once per
+ * source per process.
  */
-export const bootModule = (): Promise<SwiftFormatModule> => {
-  if (modulePromise) return modulePromise
+export const createBootModule = (
+  compileArtifact: ArtifactSource,
+): { boot: () => Promise<SwiftFormatModule>; recycle: () => void } => {
+  let modulePromise: Promise<SwiftFormatModule> | undefined
 
-  modulePromise = (async () => {
-    const workFiles = new Map<string, File>()
-    const diagnostics: string[] = []
+  /**
+   * Boots swift-format (wasm) and returns the handles a format needs.
+   *
+   * The module is a WASI reactor: it is instantiated once and its `run` export is
+   * called per format, rather than being re-instantiated each time. That measured
+   * 2.5x faster over a 442-file corpus, and unlike the Ruby package's VM its
+   * linear memory plateaus - 54MB after boot, 75MB after the first hundred files,
+   * flat from there through 7.2MB of cumulative input.
+   *
+   * `@bjorn3/browser_wasi_shim` rather than `node:wasi` for the same reason the
+   * Ruby package uses it: it is pure JavaScript with an in-memory filesystem, so
+   * the source being formatted never touches disk. Carrying no Node built-ins of
+   * its own, it is also what makes the browser build possible at all.
+   */
+  const boot = (): Promise<SwiftFormatModule> => {
+    if (modulePromise) return modulePromise
 
-    // fds 0/1/2 are stdin/stdout/stderr; preopened dirs start at fd 3. Passing
-    // a directory in one of the first three slots silently makes it stdio.
-    const wasi = new WASI(
-      ['swift_fmt'],
-      [],
-      [
-        new OpenFile(new File([])),
-        ConsoleStdout.lineBuffered(() => {}),
-        ConsoleStdout.lineBuffered((line) => diagnostics.push(line)),
-        new PreopenDirectory('/work', workFiles),
-      ],
-      // Required: the shim's debug.enable(undefined) resolves to `true`, so
-      // omitting this floods stdout with "wasi:" tracing on every syscall.
-      { debug: false },
-    )
+    modulePromise = (async () => {
+      const workFiles = new Map<string, File>()
+      const diagnostics: string[] = []
 
-    const instance = await WebAssembly.instantiate(await compileArtifact(), {
-      wasi_snapshot_preview1: wasi.wasiImport,
-    })
+      // fds 0/1/2 are stdin/stdout/stderr; preopened dirs start at fd 3. Passing
+      // a directory in one of the first three slots silently makes it stdio.
+      const wasi = new WASI(
+        ['swift_fmt'],
+        [],
+        [
+          new OpenFile(new File([])),
+          ConsoleStdout.lineBuffered(() => {}),
+          ConsoleStdout.lineBuffered((line) => diagnostics.push(line)),
+          new PreopenDirectory('/work', workFiles),
+        ],
+        // Required: the shim's debug.enable(undefined) resolves to `true`, so
+        // omitting this floods stdout with "wasi:" tracing on every syscall.
+        { debug: false },
+      )
 
-    // A reactor exports `_initialize` instead of `_start`; this runs the Swift
-    // runtime's global initialisers without running a main.
-    //
-    // The shim types `initialize` against a narrower instance than
-    // `WebAssembly.Instance` - it wants `exports.memory` declared, which the
-    // standard type does not carry - so the instance is widened here rather
-    // than the shim's expectations being weakened.
-    wasi.initialize(instance as unknown as Parameters<typeof wasi.initialize>[0])
+      const instance = await WebAssembly.instantiate(await compileArtifact(), {
+        wasi_snapshot_preview1: wasi.wasiImport,
+      })
 
-    const run = instance.exports['run'] as () => number
-    return { run, workFiles, diagnostics } satisfies SwiftFormatModule
-  })()
+      // A reactor exports `_initialize` instead of `_start`; this runs the Swift
+      // runtime's global initialisers without running a main.
+      //
+      // The shim types `initialize` against a narrower instance than
+      // `WebAssembly.Instance` - it wants `exports.memory` declared, which the
+      // standard type does not carry - so the instance is widened here rather
+      // than the shim's expectations being weakened.
+      wasi.initialize(instance as unknown as Parameters<typeof wasi.initialize>[0])
 
-  return modulePromise
-}
+      const run = instance.exports['run'] as () => number
+      return { run, workFiles, diagnostics } satisfies SwiftFormatModule
+    })()
 
-/**
- * Drops the cached instance so the next format boots a fresh one.
- *
- * A shared instance is shared failure state: a trap leaves the Swift runtime
- * mid-call with no way to unwind, and every later `run` on that instance would
- * inherit the mess. Dropping it costs an instantiate (~150ms), not a
- * decompress and compile - `compileArtifact` still has the module cached.
- */
-export const recycleModule = (): void => {
-  modulePromise = undefined
+    return modulePromise
+  }
+
+  /**
+   * Drops the cached instance so the next format boots a fresh one.
+   *
+   * A shared instance is shared failure state: a trap leaves the Swift runtime
+   * mid-call with no way to unwind, and every later `run` on that instance would
+   * inherit the mess. Dropping it costs an instantiate (~150ms), not a
+   * decompress and compile - the artifact source still has the module cached.
+   */
+  const recycle = (): void => {
+    modulePromise = undefined
+  }
+
+  return { boot, recycle }
 }

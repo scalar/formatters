@@ -28,11 +28,19 @@ const ARTIFACT = path.join(here, '..', 'ruby_fmt.wasm.br')
  * and re-compile 20MB. A WebAssembly.Module is instantiable any number of times
  * and each instance gets its own memory, which is exactly what recycling needs.
  */
-let compiledModule: WebAssembly.Module | undefined
+let modulePromise: Promise<WebAssembly.Module> | undefined
 
-/** Decompresses and compiles the wasm artifact, at most once per process. */
-export const compileArtifact = (): WebAssembly.Module => {
-  if (compiledModule) return compiledModule
+/**
+ * Decompresses and compiles the wasm artifact, at most once per process.
+ *
+ * Async, and compiled with `WebAssembly.compile` rather than the `Module`
+ * constructor, so that this matches the browser source's signature and so no
+ * caller is built around a synchronous compile. That last part is what makes a
+ * browser build possible at all: browsers reject a synchronous compile of more
+ * than 4KB on the main thread, and this artifact is 20MB.
+ */
+export const compileArtifact = (): Promise<WebAssembly.Module> => {
+  if (modulePromise) return modulePromise
 
   if (!fs.existsSync(ARTIFACT)) {
     throw new Error(
@@ -42,6 +50,6 @@ export const compileArtifact = (): WebAssembly.Module => {
     )
   }
 
-  compiledModule = new WebAssembly.Module(zlib.brotliDecompressSync(fs.readFileSync(ARTIFACT)))
-  return compiledModule
+  modulePromise = WebAssembly.compile(zlib.brotliDecompressSync(fs.readFileSync(ARTIFACT)))
+  return modulePromise
 }

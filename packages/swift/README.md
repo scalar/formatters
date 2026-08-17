@@ -48,6 +48,39 @@ await format(source, { lineLength: 120, indentation: { spaces: 4 } })
 await format(source, { rules: { OrderedImports: false } })
 ```
 
+## It runs in the browser too
+
+The import does not change — bundlers and browsers pick the `browser` export
+condition on their own, and `format` has the same signature and returns the same
+bytes. Only the wasm's route in differs: fetched rather than read from disk.
+
+```js
+import { format, init } from '@scalar/swift-fmt'
+
+// Optional. The artifact resolves next to the module by default, which is what
+// Vite, webpack, Rollup, esbuild and a plain CDN all handle unaided.
+await init({ url: '/assets/swift_fmt.wasm.br' })
+
+await format(source)
+```
+
+Run it in a worker. Booting compiles 48.7 MB of wasm, which is a visibly frozen
+tab if it happens on the main thread.
+
+This is the largest artifact in the repo by a wide margin. Load it behind an
+explicit user action rather than on page load, and give it a worker — `init`
+exists partly so that download can be scheduled deliberately.
+
+The browser reads the same brotli artifact as Node (12.4 MB over the wire) and
+expands it with `DecompressionStream('brotli')` where the engine has it, or a
+208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
+`Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
+entirely:
+
+```js
+await init({ url: '/assets/swift_fmt.wasm', encoding: 'none' })
+```
+
 ## This is the real swift-format, and the output is exact
 
 This is **actual [swift-format](https://github.com/swiftlang/swift-format)
