@@ -1,7 +1,7 @@
 import { File } from '@bjorn3/browser_wasi_shim'
 
-import { bootModule, recycleModule } from './boot-module'
-import type { FormatOptions } from './types'
+import { createBootModule } from './boot-module'
+import type { ArtifactSource, FormatFunction, FormatOptions } from './types'
 
 /** Statuses the Rust side returns. See build/rust_fmt/crates/rust_fmt/src/lib.rs. */
 const STATUS_OK = 0
@@ -40,54 +40,67 @@ const renderConfig = (options: FormatOptions): string => {
 }
 
 /**
- * Formats Rust source with rustfmt compiled to WebAssembly.
+ * Builds `format` over one artifact source.
  *
- * The first call decompresses, compiles and boots the module (~150ms); later
- * calls reuse it and take a few milliseconds.
- *
- * Options are rustfmt's own configuration keys and anything omitted keeps
- * rustfmt's default. Note that a `rustfmt.toml` on disk is *not* consulted - the
- * module has no filesystem to search - so a project's configuration has to be
- * read and passed in by the caller.
+ * The entry points call this: `index.ts` with the source that reads the wasm
+ * from disk, `index.browser.ts` with the one that fetches it. Everything below
+ * this line is identical either way, which is the point - the environment
+ * difference is confined to how the bytes arrive.
  */
-export const format = async (source: string, options: FormatOptions = {}): Promise<string> => {
-  const { run, workFiles, diagnostics } = await bootModule()
+export const createFormat = (compileArtifact: ArtifactSource): FormatFunction => {
+  const { boot, recycle } = createBootModule(compileArtifact)
 
-  const encoder = new TextEncoder()
-  workFiles.set('input.rs', new File(encoder.encode(String(source))))
-  workFiles.set('config', new File(encoder.encode(renderConfig(options))))
-  workFiles.delete('output.rs')
-  diagnostics.length = 0
+  /**
+   * Formats Rust source with rustfmt compiled to WebAssembly.
+   *
+   * The first call decompresses, compiles and boots the module (~150ms under
+   * Node, ~600ms in a browser where the decompression is not native); later
+   * calls reuse it and take a few milliseconds.
+   *
+   * Options are rustfmt's own configuration keys and anything omitted keeps
+   * rustfmt's default. Note that a `rustfmt.toml` on disk is *not* consulted - the
+   * module has no filesystem to search - so a project's configuration has to be
+   * read and passed in by the caller.
+   */
+  return async (source: string, options: FormatOptions = {}): Promise<string> => {
+    const { run, workFiles, diagnostics } = await boot()
 
-  let status: number
-  try {
-    status = run()
-  } catch (error) {
-    // A trap leaves the module mid-call, so this instance is finished - every
-    // later call on it would inherit whatever state it died in. The likeliest
-    // cause by far is source nested deeply enough to exhaust the module's
-    // stack, which is worth reporting as itself rather than as a bare
-    // RuntimeError.
-    recycleModule()
-    throw new Error(
-      "rustfmt crashed while formatting. This is usually deeply nested source exhausting the module's stack. " +
-        `(${error instanceof Error ? error.message : String(error)})`,
-    )
-  }
+    const encoder = new TextEncoder()
+    workFiles.set('input.rs', new File(encoder.encode(String(source))))
+    workFiles.set('config', new File(encoder.encode(renderConfig(options))))
+    workFiles.delete('output.rs')
+    diagnostics.length = 0
 
-  if (status !== STATUS_OK) {
-    const detail = diagnostics.join('\n').replace(/^rust_fmt: /gm, '')
-    if (status === STATUS_BAD_CONFIG) {
-      throw new Error(detail || 'rustfmt rejected the configuration')
+    let status: number
+    try {
+      status = run()
+    } catch (error) {
+      // A trap leaves the module mid-call, so this instance is finished - every
+      // later call on it would inherit whatever state it died in. The likeliest
+      // cause by far is source nested deeply enough to exhaust the module's
+      // stack, which is worth reporting as itself rather than as a bare
+      // RuntimeError.
+      recycle()
+      throw new Error(
+        "rustfmt crashed while formatting. This is usually deeply nested source exhausting the module's stack. " +
+          `(${error instanceof Error ? error.message : String(error)})`,
+      )
     }
-    if (status === STATUS_FORMAT_FAILED) {
-      throw new Error(detail || 'rustfmt could not parse the source')
+
+    if (status !== STATUS_OK) {
+      const detail = diagnostics.join('\n').replace(/^rust_fmt: /gm, '')
+      if (status === STATUS_BAD_CONFIG) {
+        throw new Error(detail || 'rustfmt rejected the configuration')
+      }
+      if (status === STATUS_FORMAT_FAILED) {
+        throw new Error(detail || 'rustfmt could not parse the source')
+      }
+      throw new Error(detail || `rustfmt failed with status ${status}`)
     }
-    throw new Error(detail || `rustfmt failed with status ${status}`)
+
+    const output = workFiles.get('output.rs') as File | undefined
+    if (!output) throw new Error('rustfmt reported success but produced no output')
+
+    return new TextDecoder().decode(output.data)
   }
-
-  const output = workFiles.get('output.rs') as File | undefined
-  if (!output) throw new Error('rustfmt reported success but produced no output')
-
-  return new TextDecoder().decode(output.data)
 }

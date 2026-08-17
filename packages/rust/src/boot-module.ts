@@ -1,77 +1,96 @@
 import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/browser_wasi_shim'
 
-import { compileArtifact } from './compile-artifact'
-import type { RustFormatModule } from './types'
-
-let modulePromise: Promise<RustFormatModule> | undefined
+import type { ArtifactSource, RustFormatModule } from './types'
 
 /**
- * Boots rustfmt (wasm) and returns the handles a format needs.
+ * Builds the boot/recycle pair for one artifact source.
  *
- * The module is a WASI reactor: it is instantiated once and its `run` export is
- * called per format, rather than being re-instantiated each time. That matters
- * more here than elsewhere - the whole 345-file rustfmt corpus runs through one
- * instance in ~530ms, where instantiating per file costs more than the
- * formatting does. Linear memory plateaus at ~35MB and stays there across the
- * corpus.
+ * The source is a parameter rather than an import because this package has two
+ * of them - `compile-artifact.ts` reads the file from disk under Node,
+ * `fetch-artifact.ts` fetches it over HTTP in a browser - and the browser build
+ * must not so much as mention `node:fs`. Passing the source in is what keeps
+ * the two entry points sharing this file instead of duplicating it.
  *
- * `@bjorn3/browser_wasi_shim` rather than `node:wasi` for the same reason the
- * Ruby and Swift packages use it: it is pure JavaScript with an in-memory
- * filesystem, so the source being formatted never touches disk. It also avoids
- * a real defect in `node:wasi` - repeatedly instantiating a module this size
- * segfaults Node outright after about fifteen instances.
+ * Each call closes over its own cache, so the module is booted at most once per
+ * source per process.
  */
-export const bootModule = (): Promise<RustFormatModule> => {
-  if (modulePromise) return modulePromise
+export const createBootModule = (
+  compileArtifact: ArtifactSource,
+): { boot: () => Promise<RustFormatModule>; recycle: () => void } => {
+  let modulePromise: Promise<RustFormatModule> | undefined
 
-  modulePromise = (async () => {
-    const workFiles = new Map<string, File>()
-    const diagnostics: string[] = []
+  /**
+   * Boots rustfmt (wasm) and returns the handles a format needs.
+   *
+   * The module is a WASI reactor: it is instantiated once and its `run` export is
+   * called per format, rather than being re-instantiated each time. That matters
+   * more here than elsewhere - the whole 345-file rustfmt corpus runs through one
+   * instance in ~530ms, where instantiating per file costs more than the
+   * formatting does. Linear memory plateaus at ~35MB and stays there across the
+   * corpus.
+   *
+   * `@bjorn3/browser_wasi_shim` rather than `node:wasi` for the same reason the
+   * Ruby and Swift packages use it: it is pure JavaScript with an in-memory
+   * filesystem, so the source being formatted never touches disk. It also avoids
+   * a real defect in `node:wasi` - repeatedly instantiating a module this size
+   * segfaults Node outright after about fifteen instances - and, since it carries
+   * no Node built-ins of its own, it is what makes the browser build possible at
+   * all.
+   */
+  const boot = (): Promise<RustFormatModule> => {
+    if (modulePromise) return modulePromise
 
-    // fds 0/1/2 are stdin/stdout/stderr; preopened dirs start at fd 3. Passing
-    // a directory in one of the first three slots silently makes it stdio.
-    const wasi = new WASI(
-      ['rust_fmt'],
-      [],
-      [
-        new OpenFile(new File([])),
-        ConsoleStdout.lineBuffered(() => {}),
-        ConsoleStdout.lineBuffered((line) => diagnostics.push(line)),
-        new PreopenDirectory('/work', workFiles),
-      ],
-      // Required: the shim's debug.enable(undefined) resolves to `true`, so
-      // omitting this floods stdout with "wasi:" tracing on every syscall.
-      { debug: false },
-    )
+    modulePromise = (async () => {
+      const workFiles = new Map<string, File>()
+      const diagnostics: string[] = []
 
-    const instance = await WebAssembly.instantiate(await compileArtifact(), {
-      wasi_snapshot_preview1: wasi.wasiImport,
-    })
+      // fds 0/1/2 are stdin/stdout/stderr; preopened dirs start at fd 3. Passing
+      // a directory in one of the first three slots silently makes it stdio.
+      const wasi = new WASI(
+        ['rust_fmt'],
+        [],
+        [
+          new OpenFile(new File([])),
+          ConsoleStdout.lineBuffered(() => {}),
+          ConsoleStdout.lineBuffered((line) => diagnostics.push(line)),
+          new PreopenDirectory('/work', workFiles),
+        ],
+        // Required: the shim's debug.enable(undefined) resolves to `true`, so
+        // omitting this floods stdout with "wasi:" tracing on every syscall.
+        { debug: false },
+      )
 
-    // A reactor exports `_initialize` instead of `_start`; this runs the
-    // module's initialisers without running a main.
-    //
-    // The shim types `initialize` against a narrower instance than
-    // `WebAssembly.Instance` - it wants `exports.memory` declared, which the
-    // standard type does not carry - so the instance is widened here rather
-    // than the shim's expectations being weakened.
-    wasi.initialize(instance as unknown as Parameters<typeof wasi.initialize>[0])
+      const instance = await WebAssembly.instantiate(await compileArtifact(), {
+        wasi_snapshot_preview1: wasi.wasiImport,
+      })
 
-    const run = instance.exports['run'] as () => number
-    return { run, workFiles, diagnostics } satisfies RustFormatModule
-  })()
+      // A reactor exports `_initialize` instead of `_start`; this runs the
+      // module's initialisers without running a main.
+      //
+      // The shim types `initialize` against a narrower instance than
+      // `WebAssembly.Instance` - it wants `exports.memory` declared, which the
+      // standard type does not carry - so the instance is widened here rather
+      // than the shim's expectations being weakened.
+      wasi.initialize(instance as unknown as Parameters<typeof wasi.initialize>[0])
 
-  return modulePromise
-}
+      const run = instance.exports['run'] as () => number
+      return { run, workFiles, diagnostics } satisfies RustFormatModule
+    })()
 
-/**
- * Drops the cached instance so the next format boots a fresh one.
- *
- * A shared instance is shared failure state: a trap leaves the module mid-call
- * with no way to unwind, and every later `run` on that instance would inherit
- * the mess. Dropping it costs an instantiate, not a decompress and compile -
- * `compileArtifact` still has the module cached.
- */
-export const recycleModule = (): void => {
-  modulePromise = undefined
+    return modulePromise
+  }
+
+  /**
+   * Drops the cached instance so the next format boots a fresh one.
+   *
+   * A shared instance is shared failure state: a trap leaves the module mid-call
+   * with no way to unwind, and every later `run` on that instance would inherit
+   * the mess. Dropping it costs an instantiate, not a decompress and compile -
+   * the artifact source still has the compiled module cached.
+   */
+  const recycle = (): void => {
+    modulePromise = undefined
+  }
+
+  return { boot, recycle }
 }
