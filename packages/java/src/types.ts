@@ -58,11 +58,21 @@ export type Formatter = (source: string, options?: FormatOptions) => Promise<str
  */
 export type FormatterSync = (source: string, options?: FormatOptions) => string
 
+/**
+ * Boots the module, so that `formatSync` can be called afterwards.
+ *
+ * Optional for `format`, which boots on demand, and required exactly once before
+ * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
+ * the second call resolves against the first. The browser build's `init` takes
+ * an {@link InitOptions} as well, for pointing the package at its artifact.
+ */
+export type InitFunction = () => Promise<void>
+
 /** What `createFormat` returns: the package's public functions over one module loader. */
 export type Formatters = {
   format: Formatter
   formatSync: FormatterSync
-  init: () => Promise<void>
+  init: InitFunction
 }
 
 /**

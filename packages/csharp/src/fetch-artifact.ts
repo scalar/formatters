@@ -112,20 +112,33 @@ export const createArtifactLoader = (): {
     },
 
     openResources: (): Promise<ResourceLoader> => {
-      resourcesPromise ??= readArchive().then((raw) => {
-        const archive = indexArchive(raw)
+      // The rejection is not cached. A transient fetch failure would otherwise
+      // stick for the life of the page - every later call awaiting the same dead
+      // promise - with `init` refusing to run again because something was already
+      // in flight. Dropping it on failure is what leaves a retry possible.
+      resourcesPromise ??= readArchive()
+        .then((raw) => {
+          const archive = indexArchive(raw)
 
-        return (type, name, defaultUri) => {
-          // The runtime asks for assets by name; `defaultUri` is the fallback
-          // for the rare entry whose name is a path.
-          const basename = name || (defaultUri ?? '').split('/').pop() || ''
+          return (type: string, name: string, defaultUri: string) => {
+            // The runtime asks for assets by name, and `defaultUri`'s last
+            // segment is the fallback for the rare entry whose name is a path.
+            // It has to be derived separately: folding it into one `basename`
+            // makes it collapse to `name` whenever `name` is set, which is every
+            // time, and the fallback silently never fires - as it does not in the
+            // Node loader, which reads the two independently.
+            const fromUri = (defaultUri ?? '').split('/').pop() ?? ''
 
-          if (MODULE_TYPES.has(type)) return runtimeUrl(basename)
+            if (MODULE_TYPES.has(type)) return runtimeUrl(name) ?? runtimeUrl(fromUri)
 
-          const bytes = archive.read(name) ?? archive.read(basename)
-          return bytes ? Promise.resolve(new Response(bytes)) : undefined
-        }
-      })
+            const bytes = archive.read(name) ?? archive.read(fromUri)
+            return bytes ? Promise.resolve(new Response(bytes)) : undefined
+          }
+        })
+        .catch((error: unknown) => {
+          resourcesPromise = undefined
+          throw error
+        })
 
       return resourcesPromise
     },
@@ -143,8 +156,19 @@ export const createArtifactLoader = (): {
    * archive; afterwards it throws rather than silently doing nothing.
    */
   const init = async (next: InitOptions = {}): Promise<void> => {
-    if (resourcesPromise) throw new Error('init must be called before the first format, and only once')
-    options = next
+    // Calling this again is not only allowed, it is the documented way to
+    // recover: `formatSync` asks for another `init` when it cannot rebuild the
+    // runtime itself. Only *re-pointing* is refused, and only once the assets
+    // have been read - by then they are loaded and a new `url` could not take
+    // effect, so saying so beats appearing to work.
+    if (resourcesPromise && Object.keys(next).length > 0) {
+      throw new Error(
+        'init can only be given options before the first format - the assets have already been read. ' +
+          'Call init() with no arguments to boot again.',
+      )
+    }
+
+    if (!resourcesPromise) options = next
     await source.openResources()
   }
 

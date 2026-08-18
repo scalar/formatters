@@ -9,6 +9,7 @@ export type {
   FormatOptions,
   FormatSyncFunction,
   Formatters,
+  InitFunction,
   InitOptions,
   SwiftFormatModule,
 } from './types'

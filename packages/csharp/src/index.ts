@@ -8,6 +8,7 @@ export type {
   Formatter,
   FormatterSync,
   Formatters,
+  InitFunction,
   ModuleExports,
   RuntimeSource,
 } from './types'

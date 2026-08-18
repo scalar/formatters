@@ -117,6 +117,8 @@ export const createBootModule = (loadModule: ModuleLoader): BootModule => {
    * awaits the same promise.
    */
   const boot = (): Promise<FormatFunction> => {
+    // The rejection is not cached, so a boot that failed on a transient problem
+    // can be retried by calling again rather than sticking for the process.
     bootPromise ??= (async () => {
       checkRuntime()
       const exports = await loadModule()
@@ -126,7 +128,10 @@ export const createBootModule = (loadModule: ModuleLoader): BootModule => {
       }
       current = format as FormatFunction
       return current
-    })()
+    })().catch((error: unknown) => {
+      bootPromise = undefined
+      throw error
+    })
 
     return bootPromise
   }

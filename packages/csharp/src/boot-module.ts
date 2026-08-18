@@ -25,6 +25,8 @@ export const createBootModule = (source: RuntimeSource): BootModule => {
    * same promise, which is what makes `format` milliseconds after the first use.
    */
   const boot = (): Promise<ModuleExports> => {
+    // The rejection is not cached, so a boot that failed on a transient problem
+    // can be retried by calling again rather than sticking for the process.
     bootPromise ??= (async () => {
       // The assets are prepared before the builder runs, because the runtime
       // asks for them synchronously once it starts and the browser source has a
@@ -38,7 +40,10 @@ export const createBootModule = (source: RuntimeSource): BootModule => {
 
       current = await runtime.getAssemblyExports(main)
       return current
-    })()
+    })().catch((error: unknown) => {
+      bootPromise = undefined
+      throw error
+    })
 
     return bootPromise
   }

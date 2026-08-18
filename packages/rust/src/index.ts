@@ -8,6 +8,7 @@ export type {
   FormatOptions,
   FormatSyncFunction,
   Formatters,
+  InitFunction,
   RustFormatModule,
 } from './types'
 

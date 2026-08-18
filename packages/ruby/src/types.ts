@@ -44,11 +44,24 @@ export type FormatFunction = (source: string, options?: FormatOptions) => Promis
  */
 export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
 
+/**
+ * Boots the VM, so that `formatSync` can be called afterwards.
+ *
+ * Optional for `format`, which boots on demand, and required exactly once before
+ * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
+ * the second call resolves against the first. The browser build's `init` takes
+ * an {@link InitOptions} as well, for pointing the package at its artifact. *
+ * For Ruby this is also the recovery call: `formatSync` refuses once the VM has
+ * outgrown what a synchronous caller can clear, and awaiting this again replaces
+ * it.
+ */
+export type InitFunction = () => Promise<void>
+
 /** What `createFormat` returns: the package's public functions over one VM. */
 export type Formatters = {
   format: FormatFunction
   formatSync: FormatSyncFunction
-  init: () => Promise<void>
+  init: InitFunction
 }
 
 /**

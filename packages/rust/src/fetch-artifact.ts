@@ -24,7 +24,15 @@ export const createArtifactLoader = (): {
 
   /** Reads the configured source down to raw wasm bytes. */
   const readBytes = async (): Promise<Uint8Array> => {
-    if (options.bytes) return new Uint8Array(ArrayBuffer.isView(options.bytes) ? options.bytes.buffer : options.bytes)
+    if (options.bytes) {
+      // Sliced to the view's own window rather than handed `.buffer`: a pooled
+      // Buffer or a subarray shares an allocation much larger than the artifact,
+      // and compiling from offset zero would read the wrong region entirely.
+      const view = options.bytes
+      return ArrayBuffer.isView(view)
+        ? new Uint8Array(view.buffer, view.byteOffset, view.byteLength)
+        : new Uint8Array(view)
+    }
 
     const url = options.url ?? new URL('../rust_fmt.wasm.br', import.meta.url)
     const response = await fetch(url)
@@ -48,7 +56,17 @@ export const createArtifactLoader = (): {
    * forever, while an instance is dropped and replaced whenever a format traps.
    */
   const compileArtifact: ArtifactSource = () => {
-    modulePromise ??= readBytes().then((wasm) => WebAssembly.compile(wasm))
+    // The rejection is not cached. A transient fetch failure would otherwise
+    // stick for the life of the page - every later call awaiting the same dead
+    // promise - with `init` refusing to run again because something was already
+    // in flight. Dropping it on failure is what leaves a retry possible.
+    modulePromise ??= readBytes()
+      .then((wasm) => WebAssembly.compile(wasm))
+      .catch((error: unknown) => {
+        modulePromise = undefined
+        throw error
+      })
+
     return modulePromise
   }
 
@@ -64,8 +82,19 @@ export const createArtifactLoader = (): {
    * the module; afterwards it throws rather than silently doing nothing.
    */
   const init = async (next: InitOptions = {}): Promise<void> => {
-    if (modulePromise) throw new Error('init must be called before the first format, and only once')
-    options = next
+    // Calling this again is not only allowed, it is the documented way to
+    // recover: `formatSync` asks for another `init` when it cannot rebuild the
+    // instance itself. Only *re-pointing* is refused, and only once the artifact
+    // has been read - by then the bytes are compiled and a new `url` could not
+    // take effect, so saying so beats appearing to work.
+    if (modulePromise && Object.keys(next).length > 0) {
+      throw new Error(
+        'init can only be given options before the first format - the artifact has already been read. ' +
+          'Call init() with no arguments to boot again.',
+      )
+    }
+
+    if (!modulePromise) options = next
     await compileArtifact()
   }
 

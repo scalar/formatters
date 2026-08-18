@@ -174,7 +174,7 @@ const browser = await chromium.launch({
   ...(executablePath ? { executablePath } : {}),
 })
 
-const failed: string[] = []
+const failed = new Set<string>()
 
 for (const { directory, source, expected } of CASES) {
   const packageDirectory = path.join(ROOT, 'packages', directory)
@@ -184,15 +184,21 @@ for (const { directory, source, expected } of CASES) {
 
   if (!existsSync(entry)) {
     console.error(`  dist/index.browser.js is missing - run \`bun run build\` first`)
-    failed.push(directory)
+    failed.add(directory)
     continue
   }
 
-  const page = await browser.newPage()
   const problems: string[] = []
-  page.on('pageerror', (error) => problems.push(error.message))
 
-  await page.goto(`${origin}/__harness__/${directory}`)
+  /** A page wired to report uncaught errors, since every one of them opens one. */
+  const openPage = async () => {
+    const opened = await browser.newPage()
+    opened.on('pageerror', (error) => problems.push(error.message))
+    await opened.goto(`${origin}/__harness__/${directory}`)
+    return opened
+  }
+
+  const page = await openPage()
 
   const entryUrl = `${origin}/${path.relative(ROOT, entry)}`
 
@@ -213,10 +219,10 @@ for (const { directory, source, expected } of CASES) {
       console.error(`  output did not match the Node build`)
       console.error(`    expected ${JSON.stringify(expected)}`)
       console.error(`    received ${JSON.stringify(result.output)}`)
-      failed.push(directory)
+      failed.add(directory)
     } else if (!result.hasInit) {
       console.error(`  the browser entry does not export init`)
-      failed.push(directory)
+      failed.add(directory)
     } else {
       console.log(`  formats in the browser, byte-identical to Node (${result.ms}ms cold)`)
     }
@@ -225,8 +231,7 @@ for (const { directory, source, expected } of CASES) {
     // `await init()`, then a formatter called from a function that cannot await.
     // That shape is why it exists - a code generator formatting each file inside
     // the synchronous builder that emits it - so the test takes it too.
-    const syncPage = await browser.newPage()
-    await syncPage.goto(`${origin}/__harness__/${directory}`)
+    const syncPage = await openPage()
     const sync = await syncPage.evaluate(
       async ([entryUrl, source]) => {
         const module = await import(/* webpackIgnore: true */ entryUrl as string)
@@ -253,19 +258,18 @@ for (const { directory, source, expected } of CASES) {
 
     if (!sync.refusedBeforeInit) {
       console.error(`  formatSync did not refuse before init`)
-      failed.push(directory)
+      failed.add(directory)
     } else if (sync.output !== expected || !sync.isString) {
       console.error(`  formatSync did not match the Node build`)
       console.error(`    received ${JSON.stringify(sync.output)}`)
-      failed.push(directory)
+      failed.add(directory)
     } else {
       console.log(`  formatSync returns a string from a synchronous caller, matching format`)
     }
 
     // A second page, because `init` configures the loader before it compiles and
     // the first one has already compiled. Same output, different route in.
-    const rawPage = await browser.newPage()
-    await rawPage.goto(`${origin}/__harness__/${directory}`)
+    const rawPage = await openPage()
     const viaInit = await rawPage.evaluate(
       async ([entryUrl, source, rawUrl]) => {
         const module = await import(/* webpackIgnore: true */ entryUrl as string)
@@ -278,18 +282,18 @@ for (const { directory, source, expected } of CASES) {
 
     if (viaInit !== expected) {
       console.error(`  init({ encoding: 'none' }) did not produce the same output`)
-      failed.push(directory)
+      failed.add(directory)
     } else {
       console.log(`  formats from an uncompressed artifact via init, no decoder involved`)
     }
   } catch (error) {
     console.error(`  ${error instanceof Error ? error.message : String(error)}`)
-    failed.push(directory)
+    failed.add(directory)
   }
 
   if (problems.length > 0) {
     console.error(`  page errors: ${problems.join('; ')}`)
-    if (!failed.includes(directory)) failed.push(directory)
+    failed.add(directory)
   }
 
   await page.close()
@@ -298,8 +302,8 @@ for (const { directory, source, expected } of CASES) {
 await browser.close()
 server.stop()
 
-if (failed.length > 0) {
-  console.error(`\n${failed.length} package(s) failed in the browser: ${failed.join(', ')}`)
+if (failed.size > 0) {
+  console.error(`\n${failed.size} package(s) failed in the browser: ${[...failed].join(', ')}`)
   process.exit(1)
 }
 

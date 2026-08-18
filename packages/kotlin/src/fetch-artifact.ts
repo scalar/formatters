@@ -61,11 +61,18 @@ export const createArtifactLoader = (): {
    * Compiles and instantiates the module, resolving to its exports, once per page.
    */
   const loadModule: ModuleLoader = () => {
+    // The rejection is not cached. A transient fetch failure would otherwise
+    // stick for the life of the page - every later call awaiting the same dead
+    // promise - with `init` refusing to run again because something was already
+    // in flight. Dropping it on failure is what leaves a retry possible.
     exportsPromise ??= (async () => {
       const [runtime, wasm] = await Promise.all([import('@scalar/kotlin-fmt/runtime') as Promise<Runtime>, readBytes()])
       const { exports } = await runtime.load(wasm, {})
       return exports
-    })()
+    })().catch((error: unknown) => {
+      exportsPromise = undefined
+      throw error
+    })
 
     return exportsPromise
   }
@@ -82,8 +89,19 @@ export const createArtifactLoader = (): {
    * module; afterwards it throws rather than silently doing nothing.
    */
   const init = async (next: InitOptions = {}): Promise<void> => {
-    if (exportsPromise) throw new Error('init must be called before the first format, and only once')
-    options = next
+    // Calling this again is not only allowed, it is the documented way to
+    // recover: `formatSync` asks for another `init` when it cannot rebuild the
+    // instance itself. Only *re-pointing* is refused, and only once the artifact
+    // has been read - by then the bytes are loaded and a new `url` could not
+    // take effect, so saying so beats appearing to work.
+    if (exportsPromise && Object.keys(next).length > 0) {
+      throw new Error(
+        'init can only be given options before the first format - the artifact has already been read. ' +
+          'Call init() with no arguments to boot again.',
+      )
+    }
+
+    if (!exportsPromise) options = next
     await loadModule()
   }
 

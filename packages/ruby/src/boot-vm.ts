@@ -70,7 +70,13 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
 
       current = { vm, workFiles, memory: wasi.inst.exports.memory }
       return current
-    })()
+    })().catch((error: unknown) => {
+      // The rejection is not cached, so a boot that failed on a transient
+      // problem can be retried by calling again rather than sticking for the
+      // process.
+      vmPromise = undefined
+      throw error
+    })
 
     return vmPromise
   }

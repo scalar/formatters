@@ -9,6 +9,7 @@ export type {
   Formatter,
   FormatterSync,
   Formatters,
+  InitFunction,
   InitOptions,
   ModuleExports,
   RuntimeSource,

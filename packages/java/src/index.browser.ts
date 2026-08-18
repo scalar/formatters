@@ -9,6 +9,7 @@ export type {
   Formatter,
   FormatterSync,
   Formatters,
+  InitFunction,
   InitOptions,
   ModuleLoader,
 } from './types'

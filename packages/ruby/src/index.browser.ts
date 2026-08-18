@@ -10,6 +10,7 @@ export type {
   FormatOptions,
   FormatSyncFunction,
   Formatters,
+  InitFunction,
   InitOptions,
   RubyFormatterVm,
 } from './types'

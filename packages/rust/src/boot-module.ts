@@ -123,11 +123,18 @@ export const createBootModule = (compileArtifact: ArtifactSource): BootModule =>
   let current: RustFormatModule | undefined
 
   const boot = (): Promise<RustFormatModule> => {
-    bootPromise ??= compileArtifact().then(async (module) => {
-      compiled = module
-      current = await instantiate(module)
-      return current
-    })
+    // The rejection is not cached, so a boot that failed on a transient problem
+    // can be retried by calling again rather than sticking for the process.
+    bootPromise ??= compileArtifact()
+      .then(async (module) => {
+        compiled = module
+        current = await instantiate(module)
+        return current
+      })
+      .catch((error: unknown) => {
+        bootPromise = undefined
+        throw error
+      })
 
     return bootPromise
   }
@@ -162,10 +169,15 @@ export const createBootModule = (compileArtifact: ArtifactSource): BootModule =>
 
     current = instantiateSync(compiled)
 
-    // Nothing synchronous is left to try. Clearing the cached boot is what makes
-    // the next `init` - or the next async `format` - build a working instance
-    // again, rather than handing back the dead one.
-    if (!current) bootPromise = undefined
+    // The cached boot has to be replaced either way, or the async `format` would
+    // keep resolving to the instance that just trapped: `boot` hands back
+    // `bootPromise`, not `current`, so leaving it alone recovers the synchronous
+    // path and strands the asynchronous one.
+    //
+    // Cleared rather than replaced when there is nothing to replace it with, so
+    // the next `boot` builds a working instance instead of handing back the dead
+    // one.
+    bootPromise = current ? Promise.resolve(current) : undefined
 
     return current
   }
