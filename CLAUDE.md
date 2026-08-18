@@ -16,6 +16,16 @@ manager, test runner, script runner — but nothing a published package does at
 runtime may depend on it. `bun run test:node` exists to keep that honest: it
 loads each package and formats through it under plain Node.
 
+Six packages (everything but PHP) also run in a browser, behind a `browser`
+export condition, and `bun run test:browser` holds that to the same standard in
+real Chromium. It is an addition to the rule above, never a relaxation: the Node
+entry stays the default, and `src/index.browser.ts` is the only file that may not
+touch `node:` built-ins — while `src/index.ts` is the only one that may.
+
+Each package exports `format` (async), `formatSync` (needs `await init()` first)
+and `init`. Booting is the only asynchronous step, so the two formatters run the
+same code and produce the same bytes.
+
 ## Exactness is a claim about a named tool
 
 A package is "exact" only when it *is* the reference tool compiled to wasm, not

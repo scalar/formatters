@@ -64,6 +64,61 @@ raw `CompileError`. The second check compiles a 28-byte probe module instead of
 reading a version number, so bun — which reports a Node version of its own,
 below this floor — is judged on what its engine actually does.
 
+## Formatting without awaiting
+
+`formatSync` is for callers with no `await` to give — a code generator that
+formats each file inside the synchronous builder that emits it, a template
+renderer, a plugin hook that has to return a string.
+
+```js
+import { formatSync, init } from '@scalar/java-fmt'
+
+await init()
+const formatted = formatSync(source)
+```
+
+Booting is the one thing that cannot be made synchronous, so `init` covers it
+once and `formatSync` throws until it has. Everything after that already was
+synchronous — `format` was only ever awaiting the boot, and both produce the
+same bytes.
+
+Prefer `format` where you can await: it needs no setup call and cannot throw that
+error.
+
+## It runs in the browser too
+
+The import does not change — bundlers and browsers pick the `browser` export
+condition on their own, and `format` has the same signature and returns the same
+bytes. Only the wasm's route in differs: fetched rather than read from disk.
+
+```js
+import { format, init } from '@scalar/java-fmt'
+
+// Optional. The artifact resolves next to the module by default, which Vite,
+// Rollup, webpack and a plain CDN handle unaided. esbuild does not rewrite
+// `new URL(..., import.meta.url)`, so there it needs naming.
+await init({ url: '/assets/java_fmt.wasm.br' })
+
+await format(source)
+```
+
+Run it in a worker. Booting compiles 3.3 MB of wasm, which is a visibly frozen
+tab if it happens on the main thread.
+
+The engine floor is checked at boot and is real: the module uses the final wasm
+exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
+earliest.
+
+The browser reads the same brotli artifact as Node (0.83 MB over the wire) and
+expands it with `DecompressionStream('brotli')` where the engine has it, or a
+208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
+`Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
+entirely:
+
+```js
+await init({ url: '/assets/java_fmt.wasm', encoding: 'none' })
+```
+
 ## This is the real google-java-format, and the output is exact
 
 This is **actual [google-java-format](https://github.com/google/google-java-format)

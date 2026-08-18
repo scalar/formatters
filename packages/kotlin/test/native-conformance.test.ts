@@ -26,7 +26,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { format } from '../src/format'
+import { format } from '../src/index'
 import type { FormatOptions } from '../src/types'
 import { describe, expect, it } from 'bun:test'
 

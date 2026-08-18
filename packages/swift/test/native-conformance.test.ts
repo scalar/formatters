@@ -15,7 +15,7 @@
 
 import { execFileSync } from 'node:child_process'
 
-import { format } from '../src/format'
+import { format } from '../src/index'
 import { describe, expect, it } from 'bun:test'
 
 const nativeVersion = (): string | undefined => {

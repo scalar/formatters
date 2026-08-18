@@ -57,6 +57,78 @@ export type FormatOptions = {
 }
 
 /**
+ * Supplies the compiled wasm module, however this environment gets hold of it.
+ *
+ * There are two implementations - one reads the artifact from disk, one fetches
+ * it - and each caches the compiled module itself, so this is called once per
+ * boot rather than once per format.
+ */
+export type ArtifactSource = () => Promise<WebAssembly.Module>
+
+/** The package's asynchronous entry point, exported by both builds as `format`. */
+export type FormatFunction = (source: string, options?: FormatOptions) => Promise<string>
+
+/**
+ * The package's synchronous entry point, exported by both builds as `formatSync`.
+ *
+ * Usable only once `init` has resolved, because booting cannot be made
+ * synchronous - the wasm has to be read or fetched, and compiled - and throws
+ * with that instruction until then.
+ */
+export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
+
+/**
+ * Boots the module, so that `formatSync` can be called afterwards.
+ *
+ * Optional for `format`, which boots on demand, and required exactly once before
+ * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
+ * the second call resolves against the first. The browser build's `init` takes
+ * an {@link InitOptions} as well, for pointing the package at its artifact.
+ */
+export type InitFunction = () => Promise<void>
+
+/** What `createFormat` returns: the package's public functions over one artifact source. */
+export type Formatters = {
+  format: FormatFunction
+  formatSync: FormatSyncFunction
+  init: InitFunction
+}
+
+/**
+ * The instance lifecycle `createBootModule` hands back.
+ *
+ * `peek` is what makes a synchronous format possible: it answers "is the module
+ * ready" without an await, so a synchronous caller can be told to init rather
+ * than being handed a promise it cannot use. `recycle` returns the replacement
+ * so a trap can be recovered from on the same synchronous path.
+ */
+export type BootModule = {
+  boot: () => Promise<RustFormatModule>
+  peek: () => RustFormatModule | undefined
+  recycle: () => RustFormatModule | undefined
+}
+
+/**
+ * Options for the browser build's `init`, which is the seam for telling the
+ * package where its artifact lives. Every field is optional; the defaults
+ * resolve `rust_fmt.wasm.br` relative to the module and expand it here.
+ */
+export type InitOptions = {
+  /** Where to fetch the artifact from. Defaults to the `.br` beside this package. */
+  url?: string | URL
+  /** The artifact itself, already in hand. Skips the fetch entirely. */
+  bytes?: ArrayBuffer | ArrayBufferView
+  /**
+   * How the bytes at `url` are encoded. Defaults to `brotli`, matching the
+   * committed artifact. Use `none` when the server sets `Content-Encoding: br`
+   * - the browser will have expanded it before this package sees it - or when
+   * `url` points at an uncompressed `.wasm`. Either skips the decoder, and with
+   * it the 208KB download on engines without native brotli.
+   */
+  encoding?: 'brotli' | 'none'
+}
+
+/**
  * The module's `run` export, plus the handles a format needs around it.
  *
  * `run` takes no arguments and returns a status code: source, configuration and

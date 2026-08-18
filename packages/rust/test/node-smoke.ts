@@ -13,9 +13,20 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { format } from '../dist/index.js'
+import { format, formatSync, init } from '../dist/index.js'
 
 test('formats Rust under plain Node', async () => {
   const out = await format('pub fn add(a: i32,b:i32)->i32{a+b}')
   assert.equal(out, 'pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n')
+})
+
+// The synchronous entry point matters most to callers whose seams cannot await -
+// a code generator that formats each file inside the builder that emits it. It
+// is worth asserting here rather than only on bun, because "works under plain
+// Node" is the promise this file exists to keep.
+test('formats Rust synchronously under plain Node, after init', async () => {
+  await init()
+  const out = formatSync('pub fn add(a: i32,b:i32)->i32{a+b}')
+  assert.equal(out, 'pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n')
+  assert.equal(typeof out, 'string')
 })

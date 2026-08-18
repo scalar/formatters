@@ -26,6 +26,11 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "import": "./dist/index.browser.js",
+        "default": "./dist/index.browser.js"
+      },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
@@ -52,6 +57,7 @@
   },
   "dependencies": {
     "@bjorn3/browser_wasi_shim": "^0.4.2",
-    "@ruby/wasm-wasi": "^2.8.1"
+    "@ruby/wasm-wasi": "^2.8.1",
+    "brotli-dec-wasm": "^2.3.2"
   }
 }

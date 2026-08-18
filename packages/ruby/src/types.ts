@@ -11,6 +11,80 @@ export type FormatOptions = {
 }
 
 /**
+ * Supplies the compiled wasm module, however this environment gets hold of it.
+ *
+ * There are two implementations - one reads the artifact from disk, one fetches
+ * it - and each caches the compiled module itself, so this is called once per
+ * boot rather than once per format.
+ */
+export type ArtifactSource = () => Promise<WebAssembly.Module>
+
+/**
+ * A booted VM's lifecycle, as `createBootVm` hands it over.
+ *
+ * `createFormat` takes this rather than an `ArtifactSource` because the VM has
+ * to be shared, not just its artifact: the recycling test watches the very VM
+ * that `format` uses, and two closures over one artifact source would boot two.
+ */
+export type BootVm = {
+  boot: () => Promise<RubyFormatterVm>
+  peek: () => RubyFormatterVm | undefined
+  recycle: () => Promise<RubyFormatterVm>
+}
+
+/** The package's asynchronous entry point, exported by both builds as `format`. */
+export type FormatFunction = (source: string, options?: FormatOptions) => Promise<string>
+
+/**
+ * The package's synchronous entry point, exported by both builds as `formatSync`.
+ *
+ * Usable only once `init` has resolved, and - uniquely in this repo - only until
+ * the VM's linear memory passes the ceiling a synchronous caller cannot clear.
+ * See `formatSync` in `format.ts` for why Ruby is the exception.
+ */
+export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
+
+/**
+ * Boots the VM, so that `formatSync` can be called afterwards.
+ *
+ * Optional for `format`, which boots on demand, and required exactly once before
+ * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
+ * the second call resolves against the first. The browser build's `init` takes
+ * an {@link InitOptions} as well, for pointing the package at its artifact. *
+ * For Ruby this is also the recovery call: `formatSync` refuses once the VM has
+ * outgrown what a synchronous caller can clear, and awaiting this again replaces
+ * it.
+ */
+export type InitFunction = () => Promise<void>
+
+/** What `createFormat` returns: the package's public functions over one VM. */
+export type Formatters = {
+  format: FormatFunction
+  formatSync: FormatSyncFunction
+  init: InitFunction
+}
+
+/**
+ * Options for the browser build's `init`, which is the seam for telling the
+ * package where its artifact lives. Every field is optional; the defaults
+ * resolve `ruby_fmt.wasm.br` relative to the module and expand it here.
+ */
+export type InitOptions = {
+  /** Where to fetch the artifact from. Defaults to the `.br` beside this package. */
+  url?: string | URL
+  /** The artifact itself, already in hand. Skips the fetch entirely. */
+  bytes?: ArrayBuffer | ArrayBufferView
+  /**
+   * How the bytes at `url` are encoded. Defaults to `brotli`, matching the
+   * committed artifact. Use `none` when the server sets `Content-Encoding: br`
+   * - the browser will have expanded it before this package sees it - or when
+   * `url` points at an uncompressed `.wasm`. Either skips the decoder, and with
+   * it the 208KB download on engines without native brotli.
+   */
+  encoding?: 'brotli' | 'none'
+}
+
+/**
  * A booted Ruby VM together with the two handles formatting needs to reach
  * into it.
  *

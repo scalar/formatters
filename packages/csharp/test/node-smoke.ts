@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { format } from '../dist/index.js'
+import { format, formatSync, init } from '../dist/index.js'
 
 test('formats C# under plain Node', async () => {
   const out = await format('using B;using A;class A{int x  =  1;void F(){G( "hi" );}}')
@@ -31,4 +31,11 @@ test('formats C# under plain Node', async () => {
 
 test('reports a parse failure as an error under plain Node', async () => {
   await assert.rejects(() => format('class A{'), /CS1513/)
+})
+
+// The synchronous entry point matters most to callers whose seams cannot await -
+// a code generator that formats each file inside the builder that emits it.
+test('formats C# synchronously under plain Node, after init', async () => {
+  await init()
+  assert.equal(formatSync('class A{int x=1;}'), 'class A\n{\n    int x = 1;\n}\n')
 })

@@ -15,7 +15,7 @@
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 
-import { format } from '../src/format'
+import { format } from '../src/index'
 import { describe, expect, it } from 'bun:test'
 
 /** Kept in step with CSHARPIER_VERSION in build/csharp_fmt/build.sh. */

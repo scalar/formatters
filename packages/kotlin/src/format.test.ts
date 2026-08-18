@@ -1,4 +1,6 @@
-import { format } from './format'
+// Imports the wired entry point rather than `createFormat`, because `format`
+// bound to the on-disk artifact is what a Node consumer actually gets.
+import { format, formatSync, init } from './index'
 import type { FormatOptions } from './types'
 import { describe, expect, it } from 'bun:test'
 
@@ -65,5 +67,31 @@ describe('format', () => {
   // line and column included.
   it('rejects invalid syntax with ktfmt’s diagnostic', async () => {
     expect(format('fun f( {')).rejects.toThrow(/ParseError: 1:7: error: Expecting '\)'/)
+  })
+})
+
+describe('formatSync', () => {
+  it('produces the same bytes as the async format', async () => {
+    const source = 'fun  f( ) {\nval x=1\n}'
+    const expected = await format(source)
+    expect(formatSync(source)).toBe(expected)
+  })
+
+  it('reports a parse failure rather than returning the source unchanged', async () => {
+    await init()
+    expect(() => formatSync('fun f( {')).toThrow()
+  })
+
+  it('stays usable after a failed format', async () => {
+    await init()
+    expect(() => formatSync('fun f( {')).toThrow()
+    expect(formatSync('fun  f( ) {\nval x=1\n}')).toBe('fun f() {\n  val x = 1\n}\n')
+  })
+
+  it('returns a string rather than a promise, which is the whole point', async () => {
+    await init()
+    const result = formatSync('fun  f( ) {\nval x=1\n}') as unknown
+    expect(result).toBeString()
+    expect(result).not.toHaveProperty('then')
   })
 })

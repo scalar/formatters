@@ -13,9 +13,19 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { format } from '../dist/index.js'
+import { format, formatSync, init } from '../dist/index.js'
 
 test('formats Ruby under plain Node', async () => {
   const out = await format('class A\n  def initialize(b)\n@b=b\n  end\nend')
   assert.equal(out, 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n')
+})
+
+// The synchronous entry point matters most to callers whose seams cannot await -
+// a code generator that formats each file inside the builder that emits it.
+test('formats Ruby synchronously under plain Node, after init', async () => {
+  await init()
+  assert.equal(
+    formatSync('class A\n  def initialize(b)\n@b=b\n  end\nend'),
+    'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
+  )
 })

@@ -1,5 +1,4 @@
-import { loadModule } from './load-artifact'
-import type { FormatFunction } from './types'
+import type { BootModule, FormatFunction, ModuleLoader } from './types'
 
 /**
  * The major below which this artifact hangs. One of the two things that set the
@@ -56,45 +55,95 @@ const supportsExnref = (): boolean => {
   }
 }
 
-let bootPromise: Promise<FormatFunction> | undefined
-
-/** Fails loudly on a runtime where the module would hang, or not compile at all. */
+/**
+ * Fails loudly on a runtime where the module would hang, or not compile at all.
+ *
+ * Two checks, because they catch different things. The probe asks the engine
+ * directly and is the one that matters everywhere - a browser has no Node
+ * version to inspect, and bun reports one that would fail the version check
+ * while its JavaScriptCore takes the opcode happily. The version check exists
+ * only for the V8 inliner bug, which is not something an engine can be asked
+ * about, and so it runs only where there is a Node version to read.
+ */
 const checkRuntime = (): void => {
-  const major = Number.parseInt(process.versions.node ?? '0', 10)
-  if (major < MINIMUM_NODE_MAJOR) {
+  // `typeof` rather than a truthiness test: a bare `process` is a ReferenceError
+  // in a browser, and this file is on the browser build's path.
+  const version = typeof process === 'undefined' ? undefined : process.versions.node
+
+  if (version !== undefined && Number.parseInt(version, 10) < MINIMUM_NODE_MAJOR) {
     throw new Error(
-      `@scalar/kotlin-fmt needs Node ${MINIMUM_NODE_FOR_EXNREF} or newer (this is ${process.version}). ` +
-        "Older versions compile the module, but V8's wasm optimizer then consumes memory until the " +
-        'process is killed, so the first call would never return.',
+      `@scalar/kotlin-fmt needs Node ${MINIMUM_NODE_FOR_EXNREF} or newer (this is v${version}). ` +
+        "Older versions format correctly but V8's wasm optimizer then consumes memory until the " +
+        'process is killed, so it would never exit.',
     )
   }
 
   if (!supportsExnref()) {
+    // Phrased against whichever runtime this is. On Node the actionable answer
+    // is a version, so it leads with one; in a browser there is no version to
+    // name and the engine floor is the useful thing to say instead.
     throw new Error(
-      `@scalar/kotlin-fmt needs Node ${MINIMUM_NODE_FOR_EXNREF} or newer (this is ${process.version}). ` +
-        'The module uses the final wasm exception-handling opcodes, which V8 rejects on earlier ' +
-        'Node 24 releases; running this one with --experimental-wasm-exnref also works.',
+      version === undefined
+        ? '@scalar/kotlin-fmt needs an engine that accepts the final wasm exception-handling ' +
+            'opcodes. Chrome 137, Firefox 131 and Safari 18.4 accept them; older browsers do not.'
+        : `@scalar/kotlin-fmt needs Node ${MINIMUM_NODE_FOR_EXNREF} or newer (this is v${version}). ` +
+            'The module uses the final wasm exception-handling opcodes, which V8 rejects on earlier ' +
+            'Node 24 releases; running this one with --experimental-wasm-exnref also works.',
     )
   }
 }
 
 /**
- * Boots ktfmt compiled to wasm, resolving to the function it exports. The
- * module is compiled at most once per process; every later call awaits the same
- * promise.
+ * Builds the boot function for one module loader.
+ *
+ * The loader is a parameter rather than an import because this package has two
+ * of them - `load-artifact.ts` reads the file from disk under Node,
+ * `fetch-artifact.ts` fetches it over HTTP in a browser - and the browser build
+ * must not so much as mention `node:fs`. Passing the loader in is what keeps
+ * the two entry points sharing this file instead of duplicating it.
+ *
+ * Each call closes over its own cache, so the module is booted at most once per
+ * loader per process.
  */
-export const bootModule = async (): Promise<FormatFunction> => {
-  if (bootPromise) return bootPromise
+export const createBootModule = (loadModule: ModuleLoader): BootModule => {
+  let bootPromise: Promise<FormatFunction> | undefined
 
-  bootPromise = (async () => {
-    checkRuntime()
-    const exports = await loadModule()
-    const format = exports['format']
-    if (typeof format !== 'function') {
-      throw new Error('kotlin_fmt.wasm did not export format; the artifact and the runtime are out of step.')
-    }
-    return format as FormatFunction
-  })()
+  /** The booted export, readable without awaiting - see `peek`. */
+  let current: FormatFunction | undefined
 
-  return bootPromise
+  /**
+   * Boots ktfmt compiled to wasm, resolving to the function it
+   * exports. The module is compiled at most once per process; every later call
+   * awaits the same promise.
+   */
+  const boot = (): Promise<FormatFunction> => {
+    // The rejection is not cached, so a boot that failed on a transient problem
+    // can be retried by calling again rather than sticking for the process.
+    bootPromise ??= (async () => {
+      checkRuntime()
+      const exports = await loadModule()
+      const format = exports['format']
+      if (typeof format !== 'function') {
+        throw new Error('kotlin_fmt.wasm did not export format; the artifact and the runtime are out of step.')
+      }
+      current = format as FormatFunction
+      return current
+    })().catch((error: unknown) => {
+      bootPromise = undefined
+      throw error
+    })
+
+    return bootPromise
+  }
+
+  /**
+   * The booted export, or `undefined` if the boot has not finished.
+   *
+   * This is what `formatSync` is built on: it turns "has the async work already
+   * happened" into a question a synchronous caller can ask, instead of one only
+   * an `await` can answer.
+   */
+  const peek = (): FormatFunction | undefined => current
+
+  return { boot, peek }
 }

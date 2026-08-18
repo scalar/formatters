@@ -55,6 +55,65 @@ Source that does not parse throws, carrying the diagnostics CSharpier produced:
 
 **Node 22 or newer.**
 
+## Formatting without awaiting
+
+`formatSync` is for callers with no `await` to give — a code generator that
+formats each file inside the synchronous builder that emits it, a template
+renderer, a plugin hook that has to return a string.
+
+```js
+import { formatSync, init } from '@scalar/csharp-fmt'
+
+await init()
+const formatted = formatSync(source)
+```
+
+Booting is the one thing that cannot be made synchronous, so `init` covers it
+once and `formatSync` throws until it has. Everything after that already was
+synchronous — `format` was only ever awaiting the boot, and both produce the
+same bytes.
+
+Prefer `format` where you can await: it needs no setup call and cannot throw that
+error.
+
+## It runs in the browser too
+
+The import does not change — bundlers and browsers pick the `browser` export
+condition on their own, and `format` has the same signature and returns the same
+bytes. Only the assets' route in differs: fetched rather than read from disk.
+
+```js
+import { format, init } from '@scalar/csharp-fmt'
+
+// Optional. Both the archive and the runtime's four JavaScript files resolve
+// next to the module by default, which Vite, Rollup, webpack and a plain CDN
+// handle unaided. esbuild does not rewrite `new URL(..., import.meta.url)`, so
+// there they need naming.
+await init({ url: '/assets/csharp_fmt.br', runtimeBaseUrl: '/assets/dotnet' })
+
+await format(source)
+```
+
+Run it in a worker. Booting is ~1s of decompression, module loading and Roslyn
+warm-up, which is a visibly frozen tab if it happens on the main thread.
+
+This is the one package whose assets are not all bytes. The assemblies, the
+runtime wasm and the ICU data all come out of the archive, but `dotnet.js`,
+`dotnet.boot.js`, `dotnet.runtime.js` and `dotnet.native.js` are ES modules the
+.NET runtime imports *by URL*, so they have to exist at one. That is what
+`runtimeBaseUrl` is for; the default needs no configuration, and a real Vite
+production build emits all four under hashed names and still boots.
+
+The browser reads the same brotli archive as Node (4.2 MB over the wire, 21 MB
+expanded) and expands it with `DecompressionStream('brotli')` where the engine
+has it, or a 208 KB wasm decoder where it does not — Chrome, today. Serving the
+archive with `Content-Encoding: br`, or serving it uncompressed, skips the
+decoder entirely:
+
+```js
+await init({ url: '/assets/csharp_fmt', encoding: 'none' })
+```
+
 ## This is the real CSharpier, and the output is exact
 
 This is **actual [CSharpier](https://github.com/belav/csharpier) 1.3.0** —

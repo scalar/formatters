@@ -13,9 +13,17 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { format } from '../dist/index.js'
+import { format, formatSync, init } from '../dist/index.js'
 
 test('formats Swift under plain Node', async () => {
   const out = await format('struct P{var x:Int\nvar y:Int}')
+  assert.equal(out, 'struct P {\n  var x: Int\n  var y: Int\n}\n')
+})
+
+// The synchronous entry point matters most to callers whose seams cannot await -
+// a code generator that formats each file inside the builder that emits it.
+test('formats Swift synchronously under plain Node, after init', async () => {
+  await init()
+  const out = formatSync('struct P{var x:Int\nvar y:Int}')
   assert.equal(out, 'struct P {\n  var x: Int\n  var y: Int\n}\n')
 })

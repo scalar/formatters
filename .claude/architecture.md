@@ -17,6 +17,69 @@ Bun is the development toolchain — package manager, test runner, script runner
 It is never a runtime requirement of a published package. `bun run test:node`
 loads each package under plain Node so the constraint is enforced, not assumed.
 
+Ruby, Java, Kotlin, C#, Swift and Rust also run in a browser, behind a `browser`
+export condition. PHP has no browser entry. That is an addition to the Node
+constraint, never a relaxation of it: the Node entry stays the default and stays
+free of anything a browser needs. `bun run test:browser` enforces the browser
+half the same way `test:node` enforces the Node half, in real Chromium against
+the built `dist`.
+
+## The browser split
+
+A package that runs in both places has exactly one environment-dependent
+question — where do the wasm bytes come from — and the structure exists to keep
+it to that one question.
+
+```
+src/
+  format.ts              createFormat(source) — the whole formatter, environment-free
+  boot-module.ts         createBootModule(source) — instantiation, environment-free
+  compile-artifact.ts    Node: fs + zlib
+  fetch-artifact.ts      browser: fetch + DecompressionStream
+  decompress-brotli.ts   browser: native brotli, or a lazily imported wasm decoder
+  index.ts               Node entry: createFormat(compileArtifact)
+  index.browser.ts       browser entry: createFormat(fetched) + init
+```
+
+Each package exports `format`, `formatSync` and `init`. Booting is the only
+asynchronous step there has ever been - fetching or reading the wasm, and
+compiling it - so `formatSync` is the same code `format` runs after its await,
+guarded by a `peek()` that answers "is it booted" without one. Two limits shape
+it, both measured rather than assumed: a browser main thread refuses both
+`WebAssembly.Module` and `WebAssembly.Instance` above 8MB, so booting always uses
+async `WebAssembly.instantiate` and only trap recovery tries the synchronous
+form; and Ruby cannot recycle synchronously at all, because
+`RubyVM.instantiateModule` is async, so its `formatSync` refuses past a memory
+ceiling and asks for another `init`.
+
+`format.ts` and `boot-module.ts` are factories over an artifact source rather
+than importers of one. That is what lets both entry points share a single
+implementation while the browser build never mentions `node:fs` — a bundler that
+followed a `node:` import here would fail loudly, and a bundler that shimmed it
+would fail quietly, which is worse.
+
+Compression stays brotli on both sides. The artifact is committed once, and the
+browser reads that same file; a gzip twin sized for browsers without native
+brotli would cost 41–59% more over the wire *and* double what every Node install
+carries for a file it never opens. The 208KB wasm decoder covers engines without
+`DecompressionStream('brotli')` — Chrome, as of 141 — and is dynamically imported
+so no Node process resolves it and no capable browser fetches it. `init` lets a
+caller who serves the artifact themselves skip it entirely.
+
+C# fits the same shape with one wrinkle: its assets are not all bytes. The .NET
+runtime imports four `runtime/*.js` files as ES modules by URL, so those cannot
+be handed over the way the assemblies are. Its resource loader answers those by
+returning a URL string rather than a `Response` — the runtime accepts either —
+and the URLs come from four *static* `new URL(name, import.meta.url)` literals.
+Static matters: a bundler only rewrites the form it can read at build time, so
+one literal per file is the difference between the assets being emitted and the
+consumer being told to copy them. Verified against a real Vite build, which
+emits all four hashed and still boots.
+
+One caveat that applies everywhere: Vite, Rollup and webpack rewrite
+`new URL(..., import.meta.url)`; esbuild does not. `init` is the escape hatch,
+and the reason every browser entry has one.
+
 ## Repo structure
 
 ```

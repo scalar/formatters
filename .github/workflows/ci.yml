@@ -142,3 +142,28 @@ jobs:
 
       - name: Load the built packages under plain Node
         run: bun run test:node
+
+  # The other half of the same constraint: every package that claims a `browser` export condition
+  # loads and formats in a real browser, with no `node:` built-ins, no `process` and no filesystem.
+  # Six of the seven claim one; the script has nothing to run for the seventh.
+  #
+  # Chromium specifically, and not only because it is the cheapest one to run: it is the engine
+  # without native `DecompressionStream('brotli')`, so it is the one that exercises the wasm
+  # decoder fallback. A browser with native brotli would take a path this cannot see.
+  browser-smoke:
+    name: Browser Smoke Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Load the built packages in a browser
+        run: bun run test:browser

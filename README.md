@@ -24,15 +24,15 @@ Composer, no native binaries, no postinstall downloads.
 
 ## Packages
 
-| Package | Reference | Artifact | Status |
-|:---|:---|---:|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree | 3.8 MB | ✅ exact +1 fix |
-| [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact |
-| [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact |
-| [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact |
-| [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.4 MB | ✅ exact |
-| [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact |
-| [`@scalar/rust-fmt`](packages/rust) | rustfmt | 1.3 MB | ✅ exact |
+| Package | Reference | Artifact | Status | Browser |
+|:---|:---|---:|:---|:---|
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree | 3.8 MB | ✅ exact +1 fix | ✅ |
+| [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact | ✅ |
+| [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
+| [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
+| [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.4 MB | ✅ exact | ✅ |
+| [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact | — |
+| [`@scalar/rust-fmt`](packages/rust) | rustfmt | 1.3 MB | ✅ exact | ✅ |
 
 Artifact is the brotli-compressed module as committed and published — the whole
 tool, its parser and its language runtime in one file. The JavaScript that loads
@@ -50,6 +50,11 @@ ships: a fix for a syntax_tree bug that turns valid `case`/`in` code into a
 syntax error. It is a single patch, it is tested against native syntax_tree so
 it cannot drift quietly, and it goes away when the fix lands upstream —
 [details below](#ruby).
+
+Browser is the same claim held to the same standard: ✅ means the package has a
+`browser` export condition and `bun run test:browser` loads that build in real
+Chromium and asserts byte-identical output to the Node build. It is not a
+prediction that it ought to work.
 
 ## Installation
 
@@ -74,6 +79,107 @@ const formatted: string = await format('x=[1,2,3].map{|n| n*2}', options)
 
 `format` is async because the first call boots a Ruby VM. The VM is cached, so
 every later call is milliseconds.
+
+### Formatting without awaiting
+
+Some callers have no `await` to give — a code generator that formats each file
+inside the synchronous builder that emits it, a template renderer, a plugin hook
+that has to return a string. Every package exports `formatSync` for them:
+
+```ts
+import { formatSync, init } from '@scalar/ruby-fmt'
+
+await init()
+const formatted: string = formatSync('x=[1,2,3].map{|n| n*2}')
+```
+
+Booting is the one thing that cannot be made synchronous — the wasm has to be
+read or fetched, and compiled — so `init` covers it once and `formatSync` throws
+until it has. Everything after that already was synchronous; `format` was only
+ever awaiting the boot.
+
+Prefer `format` where you can await: it needs no setup call and cannot throw that
+error. Ruby carries one extra caveat — see [its README](packages/ruby#readme) —
+because recycling its VM is asynchronous too.
+
+## Browsers
+
+Ruby, Java, Kotlin, C#, Swift and Rust run in a browser as well as under Node.
+The import does not change; bundlers and browsers pick the `browser` export
+condition on their own:
+
+```ts
+import { format } from '@scalar/rust-fmt'
+
+await format('pub fn add(a: i32,b:i32)->i32{a+b}')
+```
+
+Same function, same options, same bytes out. What differs is only how the wasm
+arrives: fetched rather than read from disk.
+
+**Run it in a worker.** Every one of these compiles multi-megabyte wasm and holds
+tens to hundreds of megabytes of linear memory. On the main thread that is a
+frozen tab, and Swift — 12.4 MB over the wire, 48.7 MB of wasm — is one you want
+behind an explicit user action rather than on page load.
+
+### Where the bytes come from
+
+The default resolves the artifact next to the module. Vite, Rollup and webpack
+recognise that form, emit the artifact as a hashed asset and rewrite the URL to
+match; a CDN resolves it with no build step at all. esbuild is the exception —
+it leaves the URL alone — so an esbuild build needs the artifact copied beside
+its output, or named explicitly. Either way, `init` says so:
+
+```ts
+import { format, init } from '@scalar/rust-fmt'
+
+await init({ url: '/assets/rust_fmt.wasm.br' })
+```
+
+`init` is optional, it must come before the first `format`, and it doubles as a
+way to pay the download up front rather than during the first call.
+
+### Compression
+
+The browser reads the same brotli-compressed artifact the Node build does, rather
+than a second copy in a friendlier format — a gzip twin would cost 41–59% more
+over the wire and would double what every Node install carries for a file it
+never opens.
+
+Why decompress at all, when browsers already decode brotli for free? Because
+that is *transfer* encoding — it happens when a server sends `Content-Encoding:
+br`, and the browser undoes it before your code sees a byte. This artifact is
+compressed *at rest*: the `.br` is what is committed and published, which is what
+keeps an install megabytes rather than tens of megabytes. A bundler or CDN serves
+it as opaque bytes with no encoding declared, so nothing has told the browser it
+is brotli and nothing decodes it.
+
+Expanding it uses `DecompressionStream('brotli')` where the engine has it
+(Safari 18.4+, Firefox 147+) and falls back to a 208 KB wasm decoder otherwise.
+Chrome has not shipped native brotli yet, so today the fallback is the common
+path; it is loaded dynamically, so engines that do not need it never fetch it,
+and it disappears from the equation as Chrome catches up.
+
+If you serve the artifact yourself you can skip the decoder entirely, either by
+setting `Content-Encoding: br` on the `.br` file or by serving an uncompressed
+`.wasm`. Both are the same call:
+
+```ts
+await init({ url: '/assets/rust_fmt.wasm', encoding: 'none' })
+```
+
+### C# carries one extra file set
+
+C#'s runtime is the Blazor runtime, and it is the only package whose assets are
+not all bytes: it imports four `runtime/*.js` files as ES modules *by URL*, so
+they have to exist at one. They resolve next to the module by default and Vite,
+Rollup and webpack emit them as hashed assets unaided — verified against a real
+Vite production build, which rewrites all four and still boots. Where they land
+somewhere those cannot derive, name the directory:
+
+```ts
+await init({ runtimeBaseUrl: '/assets/dotnet' })
+```
 
 ## Inspired by the wasm-fmt packages
 
@@ -299,6 +405,7 @@ bun install
 bun run build      # compile each package's TypeScript to dist/
 bun run test       # bun test suite
 bun run test:node  # load the built packages under plain Node (24+ for Java)
+bun run test:browser  # load the built browser packages in real Chromium
 bun run check      # biome lint + format check
 bun run types:check
 ```
@@ -320,6 +427,14 @@ Bun is the development toolchain — package manager, test runner, script runner
 but nothing a published package does at runtime may depend on it. That is what
 `bun run test:node` is for: it loads each package's built `dist` under plain
 Node and formats through it.
+
+`bun run test:browser` holds the browser builds to the same standard, in a real
+Chromium: it serves the repo, resolves bare specifiers through an import map the
+way a bundler would, and asserts each package's output matches the Node build
+byte for byte. Chromium rather than a faster headless engine because it is the
+one without native brotli, so it is the one that exercises the wasm decoder
+fallback. It needs a browser (`bunx playwright install chromium`), or point
+`CHROMIUM_EXECUTABLE` at one you already have.
 
 ## Contributing
 

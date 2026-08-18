@@ -42,6 +42,67 @@ Ruby VM — about 1.1s. That work is cached, so every later call is ~4ms.
 
 ---
 
+## Formatting without awaiting
+
+`formatSync` is for callers with no `await` to give — a code generator that
+formats each file inside the synchronous builder that emits it, a template
+renderer, a plugin hook that has to return a string.
+
+```js
+import { formatSync, init } from '@scalar/ruby-fmt'
+
+await init()
+const formatted = formatSync(source)
+```
+
+Booting is the one thing that cannot be made synchronous, so `init` covers it
+once and `formatSync` throws until it has. Everything after that already was
+synchronous — `format` was only ever awaiting the boot, and both produce the
+same bytes.
+
+Ruby is the one package with a caveat here. Formatting leaks the VM's linear
+memory and only a recycle reclaims it, and recycling is asynchronous — so a long
+synchronous run eventually has to come up for air. `formatSync` says so when it
+happens; `await init()` again and carry on. The limit it refuses at is set well
+above the one `format` recycles at, precisely so those pauses are rare.
+
+Prefer `format` where you can await: it needs no setup call and cannot throw that
+error.
+
+## It runs in the browser too
+
+The import does not change — bundlers and browsers pick the `browser` export
+condition on their own, and `format` has the same signature and returns the same
+bytes. Only the wasm's route in differs: fetched rather than read from disk.
+
+```js
+import { format, init } from '@scalar/ruby-fmt'
+
+// Optional. The artifact resolves next to the module by default, which Vite,
+// Rollup, webpack and a plain CDN handle unaided. esbuild does not rewrite
+// `new URL(..., import.meta.url)`, so there it needs naming.
+await init({ url: '/assets/ruby_fmt.wasm.br' })
+
+await format(source)
+```
+
+Run it in a worker. Booting compiles 20.3 MB of wasm, which is a visibly frozen
+tab if it happens on the main thread.
+
+Formatting grows the VM's linear memory until it is recycled at 400 MB — a
+ceiling picked for a Node process. A tab has less room to absorb that, so keep
+large files off the main thread.
+
+The browser reads the same brotli artifact as Node (3.8 MB over the wire) and
+expands it with `DecompressionStream('brotli')` where the engine has it, or a
+208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
+`Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
+entirely:
+
+```js
+await init({ url: '/assets/ruby_fmt.wasm', encoding: 'none' })
+```
+
 ## API
 
 The package is written in TypeScript and ships its own declarations, so these
