@@ -41,6 +41,17 @@ src/
   index.browser.ts       browser entry: createFormat(fetched) + init
 ```
 
+Each package exports `format`, `formatSync` and `init`. Booting is the only
+asynchronous step there has ever been - fetching or reading the wasm, and
+compiling it - so `formatSync` is the same code `format` runs after its await,
+guarded by a `peek()` that answers "is it booted" without one. Two limits shape
+it, both measured rather than assumed: a browser main thread refuses both
+`WebAssembly.Module` and `WebAssembly.Instance` above 8MB, so booting always uses
+async `WebAssembly.instantiate` and only trap recovery tries the synchronous
+form; and Ruby cannot recycle synchronously at all, because
+`RubyVM.instantiateModule` is async, so its `formatSync` refuses past a memory
+ceiling and asks for another `init`.
+
 `format.ts` and `boot-module.ts` are factories over an artifact source rather
 than importers of one. That is what lets both entry points share a single
 implementation while the browser build never mentions `node:fs` — a bundler that

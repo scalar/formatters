@@ -19,6 +19,9 @@ import type { ArtifactSource, BootVm, RubyFormatterVm } from './types'
 export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
   let vmPromise: Promise<RubyFormatterVm> | undefined
 
+  /** The live VM, readable without awaiting - see `peek`. */
+  let current: RubyFormatterVm | undefined
+
   /**
    * Boots CRuby (wasm) and loads syntax_tree into it. Formats reuse the same VM:
    * the first call costs ~1.1s all in and dominates everything else, after which
@@ -65,7 +68,8 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       // and the evidence that it changes nothing else.
       vm.eval(IN_PATTERN_THEN_PATCH)
 
-      return { vm, workFiles, memory: wasi.inst.exports.memory }
+      current = { vm, workFiles, memory: wasi.inst.exports.memory }
+      return current
     })()
 
     return vmPromise
@@ -81,8 +85,18 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
    */
   const recycle = (): Promise<RubyFormatterVm> => {
     vmPromise = undefined
+    current = undefined
     return boot()
   }
 
-  return { boot, recycle }
+  /**
+   * The booted VM, or `undefined` if the boot has not finished.
+   *
+   * This is what `formatSync` is built on: it turns "has the async work already
+   * happened" into a question a synchronous caller can ask, instead of one only
+   * an `await` can answer.
+   */
+  const peek = (): RubyFormatterVm | undefined => current
+
+  return { boot, peek, recycle }
 }

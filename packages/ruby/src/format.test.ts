@@ -1,6 +1,6 @@
 // Imports the wired entry point rather than `createFormat`, because `format`
 // bound to the on-disk artifact is what a Node consumer actually gets.
-import { format } from './index'
+import { format, formatSync, init } from './index'
 import type { FormatOptions } from './types'
 import { describe, expect, it } from 'bun:test'
 
@@ -96,5 +96,38 @@ describe('format', () => {
   it('returns Ruby that parses for endless range patterns', async () => {
     const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n')
     expect(format(out)).resolves.toBe(out)
+  })
+})
+
+describe('formatSync', () => {
+  it('produces the same bytes as the async format', async () => {
+    const source = 'class A\n  def initialize(b)\n@b=b\n  end\nend'
+    const expected = await format(source)
+    expect(formatSync(source)).toBe(expected)
+  })
+
+  it('honours the same options', async () => {
+    await init()
+    expect(formatSync('x=1', { printWidth: 100 })).toBe('x = 1\n')
+  })
+
+  it('reports a parse failure rather than returning the source unchanged', async () => {
+    await init()
+    expect(() => formatSync('def (')).toThrow()
+  })
+
+  it('stays usable after a failed format', async () => {
+    await init()
+    expect(() => formatSync('def (')).toThrow()
+    expect(formatSync('class A\n  def initialize(b)\n@b=b\n  end\nend')).toBe(
+      'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
+    )
+  })
+
+  it('returns a string rather than a promise, which is the whole point', async () => {
+    await init()
+    const result = formatSync('x=1') as unknown
+    expect(result).toBeString()
+    expect(result).not.toHaveProperty('then')
   })
 })

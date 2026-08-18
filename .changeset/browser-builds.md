@@ -16,6 +16,18 @@ resolve a build that fetches the wasm artifact instead of reading it from disk.
 A new `init({ url, bytes, encoding })` is exported from the browser entry for
 callers whose artifact does not sit where the default resolves it.
 
+Every package also gains `formatSync`, a synchronous entry point for callers
+with no `await` to give - a code generator that formats each file inside the
+synchronous builder that emits it, for instance. `init` boots the module once;
+`formatSync` throws until it has. This is additive: booting was always the only
+asynchronous step, so `formatSync` runs the same code `format` did after its
+await, and both produce the same bytes.
+
+Ruby's `formatSync` carries one caveat, because recycling its VM is asynchronous
+too: it refuses once the VM outgrows what a synchronous caller can clear, and
+says to `await init()` again. The limit is set well above the ceiling `format`
+recycles at, so the pauses are rare.
+
 The Node entry is unchanged and remains the default for every existing consumer.
 
 Nothing is duplicated to make this work: the browser reads the same committed

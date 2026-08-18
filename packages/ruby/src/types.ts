@@ -28,11 +28,28 @@ export type ArtifactSource = () => Promise<WebAssembly.Module>
  */
 export type BootVm = {
   boot: () => Promise<RubyFormatterVm>
+  peek: () => RubyFormatterVm | undefined
   recycle: () => Promise<RubyFormatterVm>
 }
 
-/** What `createFormat` returns, and what every entry point exports as `format`. */
+/** The package's asynchronous entry point, exported by both builds as `format`. */
 export type FormatFunction = (source: string, options?: FormatOptions) => Promise<string>
+
+/**
+ * The package's synchronous entry point, exported by both builds as `formatSync`.
+ *
+ * Usable only once `init` has resolved, and - uniquely in this repo - only until
+ * the VM's linear memory passes the ceiling a synchronous caller cannot clear.
+ * See `formatSync` in `format.ts` for why Ruby is the exception.
+ */
+export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
+
+/** What `createFormat` returns: the package's public functions over one VM. */
+export type Formatters = {
+  format: FormatFunction
+  formatSync: FormatSyncFunction
+  init: () => Promise<void>
+}
 
 /**
  * Options for the browser build's `init`, which is the seam for telling the

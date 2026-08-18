@@ -1,4 +1,4 @@
-import type { FormatFunction, ModuleLoader } from './types'
+import type { BootModule, FormatFunction, ModuleLoader } from './types'
 
 /**
  * The major below which this artifact hangs. One of the two things that set the
@@ -105,27 +105,40 @@ const checkRuntime = (): void => {
  * Each call closes over its own cache, so the module is booted at most once per
  * loader per process.
  */
-export const createBootModule = (loadModule: ModuleLoader): (() => Promise<FormatFunction>) => {
+export const createBootModule = (loadModule: ModuleLoader): BootModule => {
   let bootPromise: Promise<FormatFunction> | undefined
+
+  /** The booted export, readable without awaiting - see `peek`. */
+  let current: FormatFunction | undefined
 
   /**
    * Boots ktfmt compiled to wasm, resolving to the function it
    * exports. The module is compiled at most once per process; every later call
    * awaits the same promise.
    */
-  return (): Promise<FormatFunction> => {
-    if (bootPromise) return bootPromise
-
-    bootPromise = (async () => {
+  const boot = (): Promise<FormatFunction> => {
+    bootPromise ??= (async () => {
       checkRuntime()
       const exports = await loadModule()
       const format = exports['format']
       if (typeof format !== 'function') {
         throw new Error('kotlin_fmt.wasm did not export format; the artifact and the runtime are out of step.')
       }
-      return format as FormatFunction
+      current = format as FormatFunction
+      return current
     })()
 
     return bootPromise
   }
+
+  /**
+   * The booted export, or `undefined` if the boot has not finished.
+   *
+   * This is what `formatSync` is built on: it turns "has the async work already
+   * happened" into a question a synchronous caller can ask, instead of one only
+   * an `await` can answer.
+   */
+  const peek = (): FormatFunction | undefined => current
+
+  return { boot, peek }
 }

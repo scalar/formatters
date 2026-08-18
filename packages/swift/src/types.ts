@@ -63,8 +63,38 @@ export type FormatOptions = {
  */
 export type ArtifactSource = () => Promise<WebAssembly.Module>
 
-/** What `createFormat` returns, and what every entry point exports as `format`. */
+/** The package's asynchronous entry point, exported by both builds as `format`. */
 export type FormatFunction = (source: string, options?: FormatOptions) => Promise<string>
+
+/**
+ * The package's synchronous entry point, exported by both builds as `formatSync`.
+ *
+ * Usable only once `init` has resolved, because booting cannot be made
+ * synchronous - the wasm has to be read or fetched, and compiled - and throws
+ * with that instruction until then.
+ */
+export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
+
+/** What `createFormat` returns: the package's public functions over one artifact source. */
+export type Formatters = {
+  format: FormatFunction
+  formatSync: FormatSyncFunction
+  init: () => Promise<void>
+}
+
+/**
+ * The instance lifecycle `createBootModule` hands back.
+ *
+ * `peek` is what makes a synchronous format possible: it answers "is the module
+ * ready" without an await, so a synchronous caller can be told to init rather
+ * than being handed a promise it cannot use. `recycle` returns the replacement
+ * so a trap can be recovered from on the same synchronous path.
+ */
+export type BootModule = {
+  boot: () => Promise<SwiftFormatModule>
+  peek: () => SwiftFormatModule | undefined
+  recycle: () => SwiftFormatModule | undefined
+}
 
 /**
  * Options for the browser build's `init`, which is the seam for telling the

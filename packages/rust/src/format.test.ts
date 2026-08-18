@@ -1,6 +1,6 @@
 // Imports the wired entry point rather than `createFormat`, because `format`
 // bound to the on-disk artifact is what a Node consumer actually gets.
-import { format } from './index'
+import { format, formatSync, init } from './index'
 import type { FormatOptions } from './types'
 import { describe, expect, it } from 'bun:test'
 
@@ -87,5 +87,38 @@ describe('format', () => {
       expect(format('fn ( {{{ not rust')).rejects.toThrow()
       expect(await format('fn a(){}')).toBe('fn a() {}\n')
     })
+  })
+})
+
+describe('formatSync', () => {
+  it('produces the same bytes as the async format', async () => {
+    const source = 'pub fn add(a: i32,b:i32)->i32{a+b}'
+    const expected = await format(source)
+
+    // `format` above has booted the module, which is what formatSync requires.
+    expect(formatSync(source)).toBe(expected)
+  })
+
+  it('honours the same options', async () => {
+    await init()
+    expect(formatSync('fn f(){let x=1;}', { tabSpaces: 2 })).toBe('fn f() {\n  let x = 1;\n}\n')
+  })
+
+  it('reports a parse failure rather than returning the source unchanged', async () => {
+    await init()
+    expect(() => formatSync('fn f( {')).toThrow()
+  })
+
+  it('stays usable after a failed format', async () => {
+    await init()
+    expect(() => formatSync('fn f( {')).toThrow()
+    expect(formatSync('fn f(){}')).toBe('fn f() {}\n')
+  })
+
+  it('returns a string rather than a promise, which is the whole point', async () => {
+    await init()
+    const result = formatSync('fn f(){}') as unknown
+    expect(result).toBeString()
+    expect(result).not.toHaveProperty('then')
   })
 })

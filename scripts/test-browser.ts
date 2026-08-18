@@ -221,6 +221,47 @@ for (const { directory, source, expected } of CASES) {
       console.log(`  formats in the browser, byte-identical to Node (${result.ms}ms cold)`)
     }
 
+    // The synchronous entry point, exercised the way its callers use it: one
+    // `await init()`, then a formatter called from a function that cannot await.
+    // That shape is why it exists - a code generator formatting each file inside
+    // the synchronous builder that emits it - so the test takes it too.
+    const syncPage = await browser.newPage()
+    await syncPage.goto(`${origin}/__harness__/${directory}`)
+    const sync = await syncPage.evaluate(
+      async ([entryUrl, source]) => {
+        const module = await import(/* webpackIgnore: true */ entryUrl as string)
+
+        // Before init, the synchronous path has nothing to run on and must say so
+        // rather than hand back a promise a synchronous caller cannot use.
+        let refusedBeforeInit = false
+        try {
+          module.formatSync(source)
+        } catch {
+          refusedBeforeInit = true
+        }
+
+        await module.init()
+
+        // Deliberately not async: if `formatSync` returned a promise this would
+        // return "[object Promise]" and the comparison below would fail.
+        const build = () => `${module.formatSync(source)}`
+        return { refusedBeforeInit, output: build(), isString: typeof module.formatSync(source) === 'string' }
+      },
+      [entryUrl, source] as const,
+    )
+    await syncPage.close()
+
+    if (!sync.refusedBeforeInit) {
+      console.error(`  formatSync did not refuse before init`)
+      failed.push(directory)
+    } else if (sync.output !== expected || !sync.isString) {
+      console.error(`  formatSync did not match the Node build`)
+      console.error(`    received ${JSON.stringify(sync.output)}`)
+      failed.push(directory)
+    } else {
+      console.log(`  formatSync returns a string from a synchronous caller, matching format`)
+    }
+
     // A second page, because `init` configures the loader before it compiles and
     // the first one has already compiled. Same output, different route in.
     const rawPage = await browser.newPage()

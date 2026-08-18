@@ -1,4 +1,4 @@
-import type { ModuleExports, RuntimeSource } from './types'
+import type { BootModule, ModuleExports, RuntimeSource } from './types'
 
 /**
  * Builds the boot function for one runtime source.
@@ -12,8 +12,11 @@ import type { ModuleExports, RuntimeSource } from './types'
  * Each call closes over its own cache, so the runtime is booted at most once per
  * source per process.
  */
-export const createBootModule = (source: RuntimeSource): (() => Promise<ModuleExports>) => {
+export const createBootModule = (source: RuntimeSource): BootModule => {
   let bootPromise: Promise<ModuleExports> | undefined
+
+  /** The booted exports, readable without awaiting - see `peek`. */
+  let current: ModuleExports | undefined
 
   /**
    * Boots CSharpier compiled to wasm and resolves to the module's exports.
@@ -21,7 +24,7 @@ export const createBootModule = (source: RuntimeSource): (() => Promise<ModuleEx
    * The module is booted at most once per process; every later call awaits the
    * same promise, which is what makes `format` milliseconds after the first use.
    */
-  return (): Promise<ModuleExports> => {
+  const boot = (): Promise<ModuleExports> => {
     bootPromise ??= (async () => {
       // The assets are prepared before the builder runs, because the runtime
       // asks for them synchronously once it starts and the browser source has a
@@ -33,9 +36,21 @@ export const createBootModule = (source: RuntimeSource): (() => Promise<ModuleEx
       const main = runtime.getConfig().mainAssemblyName
       if (!main) throw new Error('the .NET runtime booted without naming its main assembly')
 
-      return runtime.getAssemblyExports(main)
+      current = await runtime.getAssemblyExports(main)
+      return current
     })()
 
     return bootPromise
   }
+
+  /**
+   * The booted exports, or `undefined` if the boot has not finished.
+   *
+   * This is what `formatSync` is built on: it turns "has the async work already
+   * happened" into a question a synchronous caller can ask, instead of one only
+   * an `await` can answer.
+   */
+  const peek = (): ModuleExports | undefined => current
+
+  return { boot, peek }
 }

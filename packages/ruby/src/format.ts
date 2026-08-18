@@ -1,6 +1,6 @@
 import { File } from '@bjorn3/browser_wasi_shim'
 
-import type { BootVm, FormatFunction, FormatOptions } from './types'
+import type { BootVm, FormatOptions, Formatters, RubyFormatterVm } from './types'
 
 /** syntax_tree's own default line width. */
 const DEFAULT_PRINT_WIDTH = 80
@@ -21,20 +21,73 @@ const DEFAULT_PRINT_WIDTH = 80
 const MEMORY_LIMIT_BYTES = 400_000_000
 
 /**
- * Builds `format` over one booted VM.
+ * The ceiling `formatSync` refuses at, higher than the one `format` recycles at.
+ *
+ * `format` recycles at 400MB because a recycle briefly holds the outgoing VM's
+ * linear memory and the incoming one at once, and 400MB keeps that pair near
+ * 1GB. `formatSync` never pays that: it cannot recycle at all, so it holds one
+ * VM and can be let much closer to the wasm32 signed-pointer wall at 2GB before
+ * it has to stop. The gap between the two is deliberate headroom - it is how
+ * many more samples a synchronous caller gets before it has to await.
+ */
+const SYNC_MEMORY_LIMIT_BYTES = 1_200_000_000
+
+/**
+ * Formats one source through an already-booted VM.
+ *
+ * Every step here is synchronous, which is the whole reason `formatSync` can
+ * exist: the only asynchronous thing this package does per format is decide
+ * whether to recycle first.
+ */
+const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatOptions): string => {
+  const { vm, workFiles } = booted
+
+  // printWidth ends up interpolated into Ruby source, so it is coerced and
+  // checked rather than trusted. TypeScript stops nothing here: the types are
+  // advisory to a JavaScript caller, and `{ printWidth: '80; system("…")' }` is
+  // perfectly expressible in plain JS.
+  const printWidth = Number(options.printWidth ?? DEFAULT_PRINT_WIDTH)
+  if (!Number.isInteger(printWidth) || printWidth < 1) {
+    throw new TypeError(`printWidth must be a positive integer, received ${String(options.printWidth)}`)
+  }
+
+  // The source is written straight into the guest filesystem rather than
+  // interpolated into Ruby code. Embedding it in a Ruby string literal would
+  // be unsafe: Ruby interpolates #{...} inside double quotes, and JSON escaping
+  // does not escape '#', so any Ruby snippet containing #{} would be evaluated.
+  workFiles.set('input.rb', new File(new TextEncoder().encode(source)))
+
+  // The result is parsed before it is returned. A formatter that emits source
+  // its own language cannot read is the one failure that has to be loud, and
+  // syntax_tree 6.3.0 does exactly that on some `case/in` patterns - see
+  // stree-patch.ts, which fixes the shapes we know about. This catches the ones
+  // we do not: Ripper is already loaded for syntax_tree's own parsing, so the
+  // check costs ~2.7ms against a ~28ms format and turns a silently corrupt file
+  // into an exception raised before anything is written.
+  return vm
+    .eval(
+      `out = SyntaxTree.format(File.read("/work/input.rb"), ${printWidth})
+       raise "syntax_tree produced source that Ruby cannot parse, so it was discarded rather than returned - please report this" if Ripper.sexp(out).nil?
+       out`,
+    )
+    .toString()
+}
+
+/**
+ * Builds the package's public functions over one booted VM.
  *
  * The entry points call this: `index.ts` with the VM built on the artifact read
  * from disk, `index.browser.ts` with the one built on the artifact fetched over
  * HTTP. Everything below this line is identical either way, which is the point
  * - the environment difference is confined to how the bytes arrive.
  */
-export const createFormat = ({ boot, recycle }: BootVm): FormatFunction => {
+export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
   /**
    * Formats Ruby source with syntax_tree running on CRuby compiled to
    * WebAssembly. The first call boots the VM (~1.1s); later calls reuse it and
    * take about 4ms.
    */
-  return async (source: string, options: FormatOptions = {}): Promise<string> => {
+  const format = async (source: string, options: FormatOptions = {}): Promise<string> => {
     // Formatting leaks: the VM's linear memory grows by roughly 74MB per 23KB of
     // input and is never released. It is not Ruby-level garbage - the object heap
     // stays flat at ~65k live slots and GC.start does not help - so nothing inside
@@ -44,36 +97,61 @@ export const createFormat = ({ boot, recycle }: BootVm): FormatFunction => {
     // bounds of the buffer`. Dropping the VM is the only lever we have, so this
     // trades a rare pause for not crashing.
     const booted = await boot()
-    const { vm, workFiles } = booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES ? await recycle() : booted
+    const vm = booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES ? await recycle() : booted
 
-    // printWidth ends up interpolated into Ruby source, so it is coerced and
-    // checked rather than trusted. TypeScript stops nothing here: the types are
-    // advisory to a JavaScript caller, and `{ printWidth: '80; system("…")' }` is
-    // perfectly expressible in plain JS.
-    const printWidth = Number(options.printWidth ?? DEFAULT_PRINT_WIDTH)
-    if (!Number.isInteger(printWidth) || printWidth < 1) {
-      throw new TypeError(`printWidth must be a positive integer, received ${String(options.printWidth)}`)
+    return formatThrough(vm, source, options)
+  }
+
+  /**
+   * Formats Ruby source without awaiting, for callers that cannot.
+   *
+   * Same syntax_tree, same options, same bytes out as `format`. Two things it
+   * cannot do, both following from the same fact - recycling the VM is
+   * asynchronous, because `RubyVM.instantiateModule` is:
+   *
+   * 1. It throws until `init` has resolved, like every `formatSync` here.
+   * 2. It throws once the VM's memory passes {@link SYNC_MEMORY_LIMIT_BYTES},
+   *    because clearing that needs a recycle it cannot perform.
+   *
+   * This is the one package in the repo where a long synchronous run has to come
+   * up for air: `await init()` again at that point and the VM is replaced. The
+   * limit is set high - well above the ceiling `format` recycles at - so that a
+   * caller formatting ordinary snippets gets a long run between pauses, and the
+   * error says exactly what to do rather than letting the VM walk into the 2GB
+   * wall and throw a `RangeError` from inside the glue.
+   */
+  const formatSync = (source: string, options: FormatOptions = {}): string => {
+    const booted = peek()
+    if (!booted) {
+      throw new Error(
+        'formatSync was called before the VM finished booting. Await init() once before the first ' +
+          'formatSync, or use the async format() instead, which waits on its own.',
+      )
     }
 
-    // The source is written straight into the guest filesystem rather than
-    // interpolated into Ruby code. Embedding it in a Ruby string literal would
-    // be unsafe: Ruby interpolates #{...} inside double quotes, and JSON escaping
-    // does not escape '#', so any Ruby snippet containing #{} would be evaluated.
-    workFiles.set('input.rb', new File(new TextEncoder().encode(source)))
-
-    // The result is parsed before it is returned. A formatter that emits source
-    // its own language cannot read is the one failure that has to be loud, and
-    // syntax_tree 6.3.0 does exactly that on some `case/in` patterns - see
-    // stree-patch.ts, which fixes the shapes we know about. This catches the ones
-    // we do not: Ripper is already loaded for syntax_tree's own parsing, so the
-    // check costs ~2.7ms against a ~28ms format and turns a silently corrupt file
-    // into an exception raised before anything is written.
-    return vm
-      .eval(
-        `out = SyntaxTree.format(File.read("/work/input.rb"), ${printWidth})
-       raise "syntax_tree produced source that Ruby cannot parse, so it was discarded rather than returned - please report this" if Ripper.sexp(out).nil?
-       out`,
+    if (booted.memory.buffer.byteLength > SYNC_MEMORY_LIMIT_BYTES) {
+      throw new Error(
+        'the Ruby VM has grown past what a synchronous caller can clear. Formatting leaks linear memory ' +
+          'and only a recycle reclaims it, which is asynchronous - await init() once to replace the VM, ' +
+          'then carry on with formatSync.',
       )
-      .toString()
+    }
+
+    return formatThrough(booted, source, options)
   }
+
+  /**
+   * Boots the VM, replacing one that has grown too large, so that `formatSync`
+   * can be called afterwards.
+   *
+   * Optional for `format`, which boots and recycles on demand, and required
+   * before the first `formatSync` - and again whenever `formatSync` reports that
+   * the VM needs replacing.
+   */
+  const init = async (): Promise<void> => {
+    const booted = await boot()
+    if (booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES) await recycle()
+  }
+
+  return { format, formatSync, init }
 }

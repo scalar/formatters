@@ -55,6 +55,27 @@ Source that does not parse throws, carrying the diagnostics CSharpier produced:
 
 **Node 22 or newer.**
 
+## Formatting without awaiting
+
+`formatSync` is for callers with no `await` to give — a code generator that
+formats each file inside the synchronous builder that emits it, a template
+renderer, a plugin hook that has to return a string.
+
+```js
+import { formatSync, init } from '@scalar/csharp-fmt'
+
+await init()
+const formatted = formatSync(source)
+```
+
+Booting is the one thing that cannot be made synchronous, so `init` covers it
+once and `formatSync` throws until it has. Everything after that already was
+synchronous — `format` was only ever awaiting the boot, and both produce the
+same bytes.
+
+Prefer `format` where you can await: it needs no setup call and cannot throw that
+error.
+
 ## It runs in the browser too
 
 The import does not change — bundlers and browsers pick the `browser` export

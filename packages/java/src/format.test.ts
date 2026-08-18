@@ -1,6 +1,6 @@
 // Imports the wired entry point rather than `createFormat`, because `format`
 // bound to the on-disk artifact is what a Node consumer actually gets.
-import { format } from './index'
+import { format, formatSync, init } from './index'
 import type { FormatOptions } from './types'
 import { describe, expect, it } from 'bun:test'
 
@@ -53,5 +53,33 @@ describe('format', () => {
   it('keeps formatting after a syntax error', async () => {
     await expect(format('class Broken {')).rejects.toThrow()
     expect(await format('class A{}')).toBe('class A {}\n')
+  })
+})
+
+describe('formatSync', () => {
+  it('produces the same bytes as the async format', async () => {
+    const source = 'class A{int x  =  1;void f(){g( "hi" );}}'
+    const expected = await format(source)
+    expect(formatSync(source)).toBe(expected)
+  })
+
+  it('reports a parse failure rather than returning the source unchanged', async () => {
+    await init()
+    expect(() => formatSync('class A{')).toThrow()
+  })
+
+  it('stays usable after a failed format', async () => {
+    await init()
+    expect(() => formatSync('class A{')).toThrow()
+    expect(formatSync('class A{int x  =  1;void f(){g( "hi" );}}')).toBe(
+      'class A {\n  int x = 1;\n\n  void f() {\n    g("hi");\n  }\n}\n',
+    )
+  })
+
+  it('returns a string rather than a promise, which is the whole point', async () => {
+    await init()
+    const result = formatSync('class A{int x  =  1;void f(){g( "hi" );}}') as unknown
+    expect(result).toBeString()
+    expect(result).not.toHaveProperty('then')
   })
 })

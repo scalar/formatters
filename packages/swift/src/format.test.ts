@@ -1,6 +1,6 @@
 // Imports the wired entry point rather than `createFormat`, because `format`
 // bound to the on-disk artifact is what a Node consumer actually gets.
-import { format } from './index'
+import { format, formatSync, init } from './index'
 import type { FormatOptions } from './types'
 import { describe, expect, it } from 'bun:test'
 
@@ -73,5 +73,31 @@ describe('format', () => {
   // swift-format leaves an empty file alone rather than emitting a newline.
   it('leaves empty input untouched', async () => {
     expect(await format('')).toBe('')
+  })
+})
+
+describe('formatSync', () => {
+  it('produces the same bytes as the async format', async () => {
+    const source = 'struct P{var x:Int\nvar y:Int}'
+    const expected = await format(source)
+    expect(formatSync(source)).toBe(expected)
+  })
+
+  it('reports a parse failure rather than returning the source unchanged', async () => {
+    await init()
+    expect(() => formatSync('struct {{{ not swift')).toThrow()
+  })
+
+  it('stays usable after a failed format', async () => {
+    await init()
+    expect(() => formatSync('struct {{{ not swift')).toThrow()
+    expect(formatSync('struct A{}')).toBe('struct A {}\n')
+  })
+
+  it('returns a string rather than a promise, which is the whole point', async () => {
+    await init()
+    const result = formatSync('struct A{}') as unknown
+    expect(result).toBeString()
+    expect(result).not.toHaveProperty('then')
   })
 })

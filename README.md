@@ -80,6 +80,28 @@ const formatted: string = await format('x=[1,2,3].map{|n| n*2}', options)
 `format` is async because the first call boots a Ruby VM. The VM is cached, so
 every later call is milliseconds.
 
+### Formatting without awaiting
+
+Some callers have no `await` to give — a code generator that formats each file
+inside the synchronous builder that emits it, a template renderer, a plugin hook
+that has to return a string. Every package exports `formatSync` for them:
+
+```ts
+import { formatSync, init } from '@scalar/ruby-fmt'
+
+await init()
+const formatted: string = formatSync('x=[1,2,3].map{|n| n*2}')
+```
+
+Booting is the one thing that cannot be made synchronous — the wasm has to be
+read or fetched, and compiled — so `init` covers it once and `formatSync` throws
+until it has. Everything after that already was synchronous; `format` was only
+ever awaiting the boot.
+
+Prefer `format` where you can await: it needs no setup call and cannot throw that
+error. Ruby carries one extra caveat — see [its README](packages/ruby#readme) —
+because recycling its VM is asynchronous too.
+
 ## Browsers
 
 Ruby, Java, Kotlin, C#, Swift and Rust run in a browser as well as under Node.
