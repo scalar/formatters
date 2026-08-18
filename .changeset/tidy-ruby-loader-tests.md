@@ -1,4 +1,5 @@
 ---
+"@scalar/ruby-fmt": patch
 ---
 
-Test the Ruby browser artifact loader without compiling the full formatter module.
+Copy artifact views into a standalone byte window before compiling them.

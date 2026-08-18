@@ -1,4 +1,5 @@
 import { decompressBrotli } from './decompress-brotli'
+import { toArtifactBytes } from './to-artifact-bytes'
 import type { ArtifactSource, InitOptions } from './types'
 
 /**
@@ -25,13 +26,7 @@ export const createArtifactLoader = (): {
   /** Reads the configured source down to raw wasm bytes. */
   const readBytes = async (): Promise<Uint8Array> => {
     if (options.bytes) {
-      // Sliced to the view's own window rather than handed `.buffer`: a pooled
-      // Buffer or a subarray shares an allocation much larger than the artifact,
-      // and compiling from offset zero would read the wrong region entirely.
-      const view = options.bytes
-      return ArrayBuffer.isView(view)
-        ? new Uint8Array(view.buffer, view.byteOffset, view.byteLength)
-        : new Uint8Array(view)
+      return toArtifactBytes(options.bytes)
     }
 
     const url = options.url ?? new URL('../ruby_fmt.wasm.br', import.meta.url)
