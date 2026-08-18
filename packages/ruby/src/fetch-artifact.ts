@@ -16,7 +16,9 @@ import type { ArtifactSource, InitOptions } from './types'
  * so an esbuild build has to copy the artifact next to its output or name it
  * with `init({ url })`. That is what `init` is for.
  */
-export const createArtifactLoader = (): {
+export const createArtifactLoader = (
+  compile: (bytes: Uint8Array) => Promise<WebAssembly.Module> = (bytes) => WebAssembly.compile(bytes),
+): {
   compileArtifact: ArtifactSource
   init: (options?: InitOptions) => Promise<void>
 } => {
@@ -56,7 +58,7 @@ export const createArtifactLoader = (): {
     // promise - with `init` refusing to run again because something was already
     // in flight. Dropping it on failure is what leaves a retry possible.
     modulePromise ??= readBytes()
-      .then((wasm) => WebAssembly.compile(wasm))
+      .then(compile)
       .catch((error: unknown) => {
         modulePromise = undefined
         throw error
