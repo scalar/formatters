@@ -1,12 +1,8 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import zlib from 'node:zlib'
-
 import { createArtifactLoader } from './fetch-artifact'
 import { describe, expect, it } from 'bun:test'
 
-/** The artifact already expanded, so these tests never reach for the network. */
-const wasm = zlib.brotliDecompressSync(fs.readFileSync(path.join(import.meta.dir, '..', 'ruby_fmt.wasm.br')))
+/** The smallest valid wasm module, so these tests never reach for the network. */
+const wasm = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
 
 describe('fetch-artifact', () => {
   // `bytes` is the escape hatch for a caller who already has the artifact, and a
