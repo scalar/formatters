@@ -36,8 +36,11 @@ let modulePromise: Promise<WebAssembly.Module> | undefined
  * Async, and compiled with `WebAssembly.compile` rather than the `Module`
  * constructor, so that this matches the browser source's signature and so no
  * caller is built around a synchronous compile. That last part is what makes a
- * browser build possible at all: browsers reject a synchronous compile of more
- * than 4KB on the main thread, and this artifact is 20MB.
+ * browser build possible at all: a browser main thread refuses a synchronous
+ * compile above 8MB - "WebAssembly.Compile is disallowed on the main thread, if
+ * the buffer size is larger than 8MB", measured on Chrome 141 - and this
+ * artifact is 20.3MB. Rust's 6.2MB would squeak under; Swift's 48.7MB would not,
+ * and neither would this.
  */
 export const compileArtifact = (): Promise<WebAssembly.Module> => {
   if (modulePromise) return modulePromise
