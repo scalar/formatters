@@ -33,8 +33,6 @@ package whose assets are not all bytes: the .NET runtime imports four
 `runtime/*.js` files as ES modules by URL. They resolve next to the module by
 default and Vite, Rollup and webpack emit them as hashed assets unaided.
 
-PHP is unaffected and stays Node-only; the README says why.
-
 One caveat worth knowing: Vite, Rollup and webpack rewrite
 `new URL(..., import.meta.url)`, and esbuild does not. Under esbuild the
 artifact needs copying beside the output or naming with `init({ url })`.

@@ -145,7 +145,7 @@ jobs:
 
   # The other half of the same constraint: every package that claims a `browser` export condition
   # loads and formats in a real browser, with no `node:` built-ins, no `process` and no filesystem.
-  # Six of the seven claim one - PHP does not, and the script has nothing to run for it.
+  # Six of the seven claim one; the script has nothing to run for the seventh.
   #
   # Chromium specifically, and not only because it is the cheapest one to run: it is the engine
   # without native `DecompressionStream('brotli')`, so it is the one that exercises the wasm

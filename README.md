@@ -31,7 +31,7 @@ Composer, no native binaries, no postinstall downloads.
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
 | [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.4 MB | ✅ exact | ✅ |
-| [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact | ❌ Node only |
+| [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact | — |
 | [`@scalar/rust-fmt`](packages/rust) | rustfmt | 1.3 MB | ✅ exact | ✅ |
 
 Artifact is the brotli-compressed module as committed and published — the whole
@@ -54,8 +54,7 @@ it cannot drift quietly, and it goes away when the fix lands upstream —
 Browser is the same claim held to the same standard: ✅ means the package has a
 `browser` export condition and `bun run test:browser` loads that build in real
 Chromium and asserts byte-identical output to the Node build. It is not a
-prediction that it ought to work. PHP is the one package that stays Node-only —
-[see below](#browsers).
+prediction that it ought to work.
 
 ## Installation
 
@@ -83,9 +82,9 @@ every later call is milliseconds.
 
 ## Browsers
 
-Six of the seven packages — everything but PHP — run in a browser as well as
-under Node. The import does not change; bundlers and browsers pick the `browser`
-export condition on their own:
+Ruby, Java, Kotlin, C#, Swift and Rust run in a browser as well as under Node.
+The import does not change; bundlers and browsers pick the `browser` export
+condition on their own:
 
 ```ts
 import { format } from '@scalar/rust-fmt'
@@ -125,6 +124,14 @@ than a second copy in a friendlier format — a gzip twin would cost 41–59% mo
 over the wire and would double what every Node install carries for a file it
 never opens.
 
+Why decompress at all, when browsers already decode brotli for free? Because
+that is *transfer* encoding — it happens when a server sends `Content-Encoding:
+br`, and the browser undoes it before your code sees a byte. This artifact is
+compressed *at rest*: the `.br` is what is committed and published, which is what
+keeps an install megabytes rather than tens of megabytes. A bundler or CDN serves
+it as opaque bytes with no encoding declared, so nothing has told the browser it
+is brotli and nothing decodes it.
+
 Expanding it uses `DecompressionStream('brotli')` where the engine has it
 (Safari 18.4+, Firefox 147+) and falls back to a 208 KB wasm decoder otherwise.
 Chrome has not shipped native brotli yet, so today the fallback is the common
@@ -151,15 +158,6 @@ somewhere those cannot derive, name the directory:
 ```ts
 await init({ runtimeBaseUrl: '/assets/dotnet' })
 ```
-
-### Why PHP is not here
-
-PHP needs a different package altogether — `@php-wasm/node-8-4` is the Node
-build, and the browser wants `@php-wasm/web`. Beyond that, `formatSync` is built
-on `node:worker_threads` and `Atomics.wait`, which in a browser means
-SharedArrayBuffer and cross-origin isolation the consumer often cannot arrange,
-and `format`'s batch pool forks child processes. A browser build would be a
-meaningfully smaller API, not the same one.
 
 ## Inspired by the wasm-fmt packages
 
