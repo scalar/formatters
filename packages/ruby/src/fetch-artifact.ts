@@ -1,4 +1,5 @@
 import { decompressBrotli } from './decompress-brotli'
+import { toArtifactBytes } from './to-artifact-bytes'
 import type { ArtifactSource, InitOptions } from './types'
 
 /**
@@ -15,7 +16,9 @@ import type { ArtifactSource, InitOptions } from './types'
  * so an esbuild build has to copy the artifact next to its output or name it
  * with `init({ url })`. That is what `init` is for.
  */
-export const createArtifactLoader = (): {
+export const createArtifactLoader = (
+  compile: (bytes: Uint8Array) => Promise<WebAssembly.Module> = (bytes) => WebAssembly.compile(bytes),
+): {
   compileArtifact: ArtifactSource
   init: (options?: InitOptions) => Promise<void>
 } => {
@@ -25,13 +28,7 @@ export const createArtifactLoader = (): {
   /** Reads the configured source down to raw wasm bytes. */
   const readBytes = async (): Promise<Uint8Array> => {
     if (options.bytes) {
-      // Sliced to the view's own window rather than handed `.buffer`: a pooled
-      // Buffer or a subarray shares an allocation much larger than the artifact,
-      // and compiling from offset zero would read the wrong region entirely.
-      const view = options.bytes
-      return ArrayBuffer.isView(view)
-        ? new Uint8Array(view.buffer, view.byteOffset, view.byteLength)
-        : new Uint8Array(view)
+      return toArtifactBytes(options.bytes)
     }
 
     const url = options.url ?? new URL('../ruby_fmt.wasm.br', import.meta.url)
@@ -61,7 +58,7 @@ export const createArtifactLoader = (): {
     // promise - with `init` refusing to run again because something was already
     // in flight. Dropping it on failure is what leaves a retry possible.
     modulePromise ??= readBytes()
-      .then((wasm) => WebAssembly.compile(wasm))
+      .then(compile)
       .catch((error: unknown) => {
         modulePromise = undefined
         throw error
