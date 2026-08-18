@@ -1,6 +1,6 @@
 {
   "name": "@scalar/kotlin-fmt",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Kotlin formatter (ktfmt on wasm) - runs on plain Node, no JVM",
   "keywords": [
     "kotlin",

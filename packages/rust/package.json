@@ -1,6 +1,6 @@
 {
   "name": "@scalar/rust-fmt",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Rust formatter (rustfmt on wasm) - runs on plain Node, no Rust toolchain",
   "keywords": [
     "rust",
