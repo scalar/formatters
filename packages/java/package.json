@@ -1,6 +1,6 @@
 {
   "name": "@scalar/java-fmt",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Java formatter (google-java-format on wasm) - runs on plain Node, no JVM",
   "keywords": [
     "java",
