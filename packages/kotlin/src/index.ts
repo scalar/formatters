@@ -1,5 +1,6 @@
 import { createFormat } from './format'
 import { loadModule } from './load-artifact'
+import { ktfmtVersion } from './version'
 
 export type {
   BootModule,
@@ -19,6 +20,6 @@ export type {
  */
 const { format, formatSync, init } = createFormat(loadModule)
 
-export { format, formatSync, init }
+export { format, formatSync, init, ktfmtVersion }
 
 export default format

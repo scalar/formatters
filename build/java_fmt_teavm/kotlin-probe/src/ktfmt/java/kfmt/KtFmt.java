@@ -20,6 +20,81 @@ import org.teavm.jso.JSExport;
  * from here against one from FormatAll.java on a JVM.
  */
 public final class KtFmt {
+  static {
+    silenceThreadsThisRuntimeCannotRun();
+  }
+
+  /**
+   * What the class library's single-threaded stand-ins say when they refuse.
+   *
+   * <p>Two shapes rather than one because {@code Object.wait} words it
+   * differently from the locks and queues. Matching the message rather than just
+   * the type matters: a background thread can raise an
+   * {@code UnsupportedOperationException} that means something - "Operation is
+   * not supported for read-only collection" from the Kotlin stdlib, or one of
+   * TeaVM's own "not supported" gaps - and those have to keep printing.
+   */
+  private static final String[] REFUSALS = {
+    // LockSupport.park, BlockingQueue.take, Condition.await, CompletableFuture.get
+    "would block the only thread",
+    // Object.wait
+    "cannot be satisfied with one thread",
+  };
+
+  /**
+   * Stops the runtime reporting the death of a thread it was never going to run.
+   *
+   * <p>{@code Parser}'s initializer builds a {@code CoreProjectEnvironment}, whose
+   * constructor registers IntelliJ's {@code CodeInsightContextManagerImpl}, which
+   * launches two coroutines on the project scope - {@code Dispatchers.Default},
+   * since the scope carries no dispatcher of its own. That starts
+   * kotlinx.coroutines' scheduler, whose workers park waiting for work. Parking
+   * is what a single-threaded runtime cannot do, so the classlib throws
+   * {@code UnsupportedOperationException} - "LockSupport.park would block the
+   * only thread" - the worker dies with it, and TeaVM's default handler prints
+   * the stack trace to stderr. It happens once per process, on the timer turns
+   * after the first format call resolves rather than during it, which is what
+   * makes it look like a diagnostic about the file being formatted. It is not:
+   * on a JVM those workers park and idle forever, and the formatting is finished
+   * either way.
+   *
+   * <p>So the handler drops exactly the refusals above, and prints everything
+   * else. Those coroutines are real, and a genuine failure on one is the only
+   * way it would ever be seen. If TeaVM rewords a refusal the noise comes back
+   * rather than the silence spreading, and packages/kotlin/test/quiet.test.ts
+   * fails on it.
+   *
+   * <p>The main thread never reaches this handler at all - a failure inside
+   * {@code format} is caught below and returned as a status.
+   */
+  private static void silenceThreadsThisRuntimeCannotRun() {
+    Thread.setDefaultUncaughtExceptionHandler(
+        (thread, error) -> {
+          if (!isRefusalToRunWithoutThreads(error)) {
+            error.printStackTrace();
+          }
+        });
+  }
+
+  /** Whether this is a single-threaded stand-in refusing, rather than a failure. */
+  private static boolean isRefusalToRunWithoutThreads(Throwable error) {
+    if (!(error instanceof UnsupportedOperationException)) {
+      return false;
+    }
+
+    String message = error.getMessage();
+    if (message == null) {
+      return false;
+    }
+
+    for (String refusal : REFUSALS) {
+      if (message.endsWith(refusal)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @JSExport
   public static String format(String source, String options) {
     try {

@@ -26,14 +26,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { format } from '../src/index'
+import { format, ktfmtVersion } from '../src/index'
 import type { FormatOptions } from '../src/types'
 import { describe, expect, it } from 'bun:test'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
-/** Kept in step with KTFMT_VERSION in the build scripts. */
-const KTFMT_VERSION = '0.64'
+/** The version the artifact carries, which src/version.test.ts holds to the build script's pin. */
+const KTFMT_VERSION = ktfmtVersion
 
 /** How to invoke a native ktfmt of the version we compiled. */
 type NativeCommand = { file: string; args: string[] }

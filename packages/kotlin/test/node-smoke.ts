@@ -29,9 +29,34 @@ const [major = 0, minor = 0] = process.versions.node.split('.').map(Number)
 const tooOld =
   major < 24 || (major === 24 && minor < 15) ? `needs Node 24.15 or newer, this is ${process.version}` : false
 
+// TeaVM's stderr is wired to console.error, so this collects what the module
+// writes there rather than what Node writes. Installed before any formatting,
+// because the noise it guards against fired once per process - and `node --test`
+// gives this file a process of its own, so nothing else can have spent it.
+const printed: string[] = []
+const realConsoleError = console.error
+if (!tooOld) {
+  console.error = (...args: unknown[]) => {
+    printed.push(args.map(String).join(' '))
+  }
+}
+
 test('formats Kotlin under plain Node', { skip: tooOld }, async () => {
   const out = await format('fun  f( ) {\nval x=1\n}')
   assert.equal(out, 'fun f() {\n  val x = 1\n}\n')
+})
+
+// V8 and JavaScriptCore reported this differently - four lines under bun, forty
+// under Node, where the exception arrives with fake stack frames attached - so
+// it is asserted on both. The bun half is packages/kotlin/test/quiet.test.ts.
+test('writes nothing to stderr', { skip: tooOld }, async () => {
+  // The report was scheduled with setTimeout and landed on the turns after the
+  // first format resolved, not during it, so this has to yield before it looks.
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  console.error = realConsoleError
+
+  assert.deepEqual(printed, [])
 })
 
 test('reports an unsupported runtime instead of hanging on it', { skip: !tooOld }, async () => {

@@ -73,6 +73,23 @@ is judged on what its engine actually does. See
 [`packages/java`](../java#readme) for the long version; both packages are TeaVM
 output and hit the same two things.
 
+## The version it carries
+
+```js
+import { ktfmtVersion } from '@scalar/kotlin-fmt'
+
+ktfmtVersion // '0.64'
+```
+
+"Exact against ktfmt" is a claim about a named release, so the release is
+readable rather than something you look up. It is what a consumer needs to
+install the matching jar — to verify its own committed bytes in CI, or to pin a
+container image — and having it here means that number is not maintained twice,
+once in your repository and once in ours.
+
+`src/version.test.ts` reads `KTFMT_VERSION` out of the build script and fails if
+the two ever disagree, so the export cannot go stale across a bump.
+
 ## Formatting without awaiting
 
 `formatSync` is for callers with no `await` to give — a code generator that
@@ -175,6 +192,20 @@ One group is a deliberate divergence rather than a fix: `Thread.yield`,
 this module is single-threaded. They are also what makes it small — a single
 `Thread.yield()` reachable in kotlinx-coroutines made a third of the program a
 coroutine and the module 37% larger.
+
+`LockSupport.park` is one of those stand-ins, and it used to be audible. Opening
+ktfmt's parser builds an IntelliJ `CoreProjectEnvironment`, which launches two
+coroutines and so starts kotlinx-coroutines' scheduler; its workers park waiting
+for work, the stand-in throws, and TeaVM's default handler wrote the resulting
+stack trace to `console.error` — once per process, on the timer turns after the
+first `format` had already resolved. Formatting was correct throughout. The
+module now installs a handler that drops exactly that — an
+`UnsupportedOperationException` whose message is one of the stand-ins refusing,
+"would block the only thread" or "cannot be satisfied with one thread" — and
+prints everything else, because those coroutines are real and a genuine failure
+on one is the only way it would ever be seen. `packages/kotlin/test/quiet.test.ts`
+formats in a child process and asserts its stderr is empty, so if TeaVM rewords a
+refusal the noise comes back rather than the silence spreading.
 
 ## Building it
 
