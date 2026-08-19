@@ -158,7 +158,7 @@ toolchain-free checkout still passes.
 
 ### `@scalar/ruby-fmt` (`packages/ruby`)
 
-Reference: **syntax_tree**. Status: exact.
+Reference: **syntax_tree + RuboCop**. Status: exact.
 
 Runs actual CRuby compiled to WebAssembly with the actual syntax_tree gem loaded
 into it. It works because syntax_tree and prettier_print are pure Ruby whose only
@@ -166,6 +166,27 @@ C dependency is Ripper, which is already inside CRuby's stdlib.
 
 `format()` is async because the first call boots a Ruby VM; the VM is cached, so
 later calls are milliseconds.
+
+**Two tools, one artifact.** `format(source, { rubocop: true })` runs the real
+`rubocop --autocorrect --only Layout` over syntax_tree's output, because
+syntax_tree reprints a file without trying to satisfy RuboCop and about 30% of
+its output still trips stock `rubocop --only Layout`. They share one artifact so
+that a process using both does not carry two copies of CRuby. RuboCop is
+required into the VM on first use rather than at boot - it costs about four
+seconds, which a caller who never passes the option should not pay - and
+`src/rubocop.ts` documents which of RuboCop's own parts drive the correction and
+which are deliberately left out.
+
+The two tools genuinely disagree about multiline indentation, so order decides
+the result: syntax_tree first, RuboCop second. Running syntax_tree over the
+result would undo about a third of RuboCop's corrections.
+
+The gem pins in `build/ruby_fmt/Gemfile` are load-bearing beyond
+reproducibility. `rubocop-ast` is held at 1.42.0 because 1.43.0 requires prism
+~> 1.4 at load time and the prism CRuby compiles in is 1.2.0 - a prism *gem*
+cannot override it, because a static wasm build resolves `require "prism/prism"`
+from the built-in extension table before `$LOAD_PATH`. `rubocop` is then held at
+1.74.0, the newest release that accepts a rubocop-ast that old.
 
 **WASI comes from `@bjorn3/browser_wasi_shim`, not `node:wasi`,** even though the
 package only ever runs on Node. The interfaces are compatible —

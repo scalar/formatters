@@ -4,6 +4,14 @@ import { format, formatSync, init } from './index'
 import type { FormatOptions } from './types'
 import { describe, expect, it } from 'bun:test'
 
+/**
+ * Generous, because the first call into a VM that asks for RuboCop has to
+ * require it, and 698 cop files take about eight seconds to load under wasm.
+ * Only the first test to ask pays it, but which test that is depends on run
+ * order, so they all carry it.
+ */
+const RUBOCOP_TIMEOUT_MS = 60_000
+
 describe('format', () => {
   it('formats a class body', async () => {
     const out = await format('class A\n  def initialize(b)\n@b=b\n  end\nend')
@@ -97,6 +105,88 @@ describe('format', () => {
     const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n')
     expect(format(out)).resolves.toBe(out)
   })
+
+  // Everything below turns on the RuboCop pass. The first of these matters most:
+  // the option is opt-in precisely so that the bytes this package has always
+  // returned keep being returned, and a regression there breaks consumers who
+  // never asked for RuboCop at all.
+  it(
+    'leaves output untouched when rubocop is not asked for',
+    async () => {
+      const source = 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n'
+      const expected = await format(source)
+
+      expect(await format(source, { rubocop: false })).toBe(expected)
+      expect(expected).toBe(source)
+    },
+    RUBOCOP_TIMEOUT_MS,
+  )
+
+  // Layout/EmptyLinesAroundAttributeAccessor and Layout/EmptyLineBetweenDefs.
+  // syntax_tree does not insert blank lines at all, so these are corrections it
+  // could never make on its own.
+  it(
+    'adds the blank lines rubocop wants around accessors and defs',
+    async () => {
+      const source = 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n'
+
+      expect(await format(source, { rubocop: true })).toBe(
+        'class Client\n  attr_reader :base_url\n\n  def to_s\n    @base_url\n  end\nend\n',
+      )
+    },
+    RUBOCOP_TIMEOUT_MS,
+  )
+
+  // Layout/EmptyLineAfterGuardClause.
+  it(
+    'adds a blank line after a guard clause',
+    async () => {
+      const source = 'def call(user)\n  return unless user\n  user.name\nend\n'
+
+      expect(await format(source, { rubocop: true })).toBe('def call(user)\n  return unless user\n\n  user.name\nend\n')
+    },
+    RUBOCOP_TIMEOUT_MS,
+  )
+
+  // Layout/MultilineMethodCallIndentation - the disagreement that accounts for
+  // most of what syntax_tree alone leaves behind. syntax_tree indents the
+  // continuation of a broken chain; RuboCop's default aligns it.
+  it(
+    're-indents a wrapped method chain the way rubocop wants it',
+    async () => {
+      const source =
+        'result = some_object.method_one.method_two(argument_one, argument_two).method_three(argument_four)\n'
+
+      expect(await format(source, { rubocop: true })).toBe(
+        'result =\n  some_object\n  .method_one\n  .method_two(argument_one, argument_two)\n  .method_three(argument_four)\n',
+      )
+    },
+    RUBOCOP_TIMEOUT_MS,
+  )
+
+  // The pipeline has to reach a fixed point, or a consumer formatting on save
+  // would see the file change on every keystroke.
+  it(
+    'is idempotent with the rubocop pass on',
+    async () => {
+      const once = await format('class A\n  attr_reader :b\n  def c\n@b\n  end\nend', { rubocop: true })
+
+      expect(await format(once, { rubocop: true })).toBe(once)
+    },
+    RUBOCOP_TIMEOUT_MS,
+  )
+
+  // The RuboCop pass is loaded into the VM on first use and stays there. A
+  // plain format afterwards has to be unaffected by that.
+  it(
+    'leaves plain formatting alone after a rubocop pass has run',
+    async () => {
+      await format('def a\n  1\nend\n', { rubocop: true })
+
+      expect(await format('x=1')).toBe('x = 1\n')
+    },
+    RUBOCOP_TIMEOUT_MS,
+  )
 })
 
 describe('formatSync', () => {
@@ -130,4 +220,18 @@ describe('formatSync', () => {
     expect(result).toBeString()
     expect(result).not.toHaveProperty('then')
   })
+
+  // Requiring RuboCop is synchronous Ruby, so formatSync can ask for it too -
+  // its first such call is simply a slow one, and the bytes are the same.
+  it(
+    'runs the rubocop pass and produces the same bytes as format',
+    async () => {
+      await init()
+      const source = 'class A\n  attr_reader :b\n  def c\n@b\n  end\nend'
+      const expected = await format(source, { rubocop: true })
+
+      expect(formatSync(source, { rubocop: true })).toBe(expected)
+    },
+    RUBOCOP_TIMEOUT_MS,
+  )
 })

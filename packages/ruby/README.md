@@ -42,6 +42,70 @@ Ruby VM — about 1.1s. That work is cached, so every later call is ~4ms.
 
 ---
 
+## Clean under RuboCop, not just canonical
+
+syntax_tree reprints a file; it does not try to satisfy RuboCop. Over 397 files
+of real Ruby, about 30% of its output still trips stock `rubocop --only Layout`
+— overwhelmingly `Layout/MultilineOperationIndentation`,
+`Layout/MultilineMethodCallIndentation` and `Layout/FirstArgumentIndentation`,
+where the two tools simply disagree about how a wrapped expression should be
+indented. So if a consumer's CI runs RuboCop, formatted output can still fail it.
+
+`rubocop: true` closes that gap by running the real
+[RuboCop](https://github.com/rubocop/rubocop) over syntax_tree's output:
+
+```js
+import { format } from '@scalar/ruby-fmt'
+
+await format(source, { rubocop: true })
+```
+
+It is exactly `rubocop --autocorrect --only Layout`. Layout only — RuboCop's
+other departments rewrite code rather than lay it out, and `-A` will happily
+delete an unused assignment or turn an `if` into a ternary, which is not
+something a function called `format` should do.
+
+The order matters and is not arbitrary. The two tools disagree, so whichever
+runs last decides; syntax_tree reprints the whole file while RuboCop only
+corrects offenses in what it is handed. syntax_tree first, RuboCop second is
+therefore the only pairing that is both canonically reprinted *and* clean.
+Running them the other way round gives neither: over those same 397 files,
+re-running syntax_tree on RuboCop's output reverts it in 116 of them.
+
+Off by default. The bytes this package returned before this option existed are
+the bytes it still returns without it.
+
+### What it costs
+
+| | syntax_tree only | with `rubocop: true` |
+|:---|:---|:---|
+| first call into a VM | ~1.1 s, to boot the VM | plus ~4 s, to require RuboCop |
+| every call after | ~4 ms | 2–3× that |
+| artifact | 3.8 MB before | 5.1 MB now, for everyone |
+
+The four seconds are RuboCop's 698 cop files being read and evaluated by a Ruby
+that is itself running on WebAssembly. Nothing here can make that cheaper, so it
+is spent as late as possible instead: RuboCop is required on the first call that
+asks for it rather than at boot, and a caller who never passes the option never
+waits for it at all.
+
+Both costs are per VM, so they are paid again after a
+[recycle](#known-bug-the-vm-leaks-and-recycles-itself-to-survive-it). The
+multipliers are the part worth trusting — the absolute figures come from one
+machine, measured in the same run as the syntax_tree ones beside them.
+
+`formatSync` accepts the option too — loading RuboCop is synchronous Ruby, so
+the first synchronous call that asks for it is simply a slow one.
+
+### When it gives up
+
+Corrections can introduce offenses, so RuboCop corrects in a loop until the
+source stops changing. Two cops can also undo one another forever. When that
+happens — a repeated checksum, or 200 rounds without settling, both RuboCop's
+own conditions — `format` rejects rather than returning half-corrected source.
+
+---
+
 ## Formatting without awaiting
 
 `formatSync` is for callers with no `await` to give — a code generator that
@@ -86,14 +150,15 @@ await init({ url: '/assets/ruby_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 20.3 MB of wasm, which is a visibly frozen
-tab if it happens on the main thread.
+Run it in a worker. Booting compiles 35.7 MB of wasm, which is a visibly frozen
+tab if it happens on the main thread — and `rubocop: true` adds several seconds
+of Ruby on top of that the first time it is asked for.
 
 Formatting grows the VM's linear memory until it is recycled at 400 MB — a
 ceiling picked for a Node process. A tab has less room to absorb that, so keep
 large files off the main thread.
 
-The browser reads the same brotli artifact as Node (3.8 MB over the wire) and
+The browser reads the same brotli artifact as Node (5.1 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -122,6 +187,7 @@ const formatted: string = await format('foo(aaaaaaaaaa, bbbbbbbbbb, cccccccccc, 
 |:---|:---|:---|:---|
 | `source` | `string` | — | Ruby source. Invalid syntax rejects the promise. |
 | `options.printWidth` | `number` | `80` | Maximum line width — syntax_tree's own default. Must be a positive integer. |
+| `options.rubocop` | `boolean` | `false` | Run `rubocop --autocorrect --only Layout` over the result. [See above](#clean-under-rubocop-not-just-canonical). |
 
 `printWidth` is validated rather than trusted, because it is interpolated into
 the Ruby expression that drives the format. TypeScript stops nothing there: the
@@ -139,19 +205,35 @@ const artifact = import.meta.resolve('@scalar/ruby-fmt/wasm')
 
 ---
 
-## This is the real syntax_tree, and the output is exact
+## These are the real gems, and the output is exact
 
 There is no approximation here. This runs **actual
 CRuby 3.4.1 compiled to WebAssembly** ([ruby.wasm](https://github.com/ruby/ruby.wasm))
 with the **actual [syntax_tree](https://github.com/ruby-syntax-tree/syntax_tree)
-gem** baked into it. It is not a reimplementation, so it does not drift.
+gem** — and, for the RuboCop pass, the **actual
+[RuboCop](https://github.com/rubocop/rubocop) gem** — baked into it. Neither is
+a reimplementation, so neither drifts.
 
-`test/native-conformance.test.ts` asserts byte-identical output against the
-same gem running on a native Ruby. That test *asserts* rather than reports: any
-divergence is a real bug, not a known stylistic gap.
+Two conformance tests assert byte-identical output against the same gems running
+on a native Ruby, and both *assert* rather than report: any divergence is a real
+bug, not a known stylistic gap.
 
-It works because syntax_tree and prettier_print are pure Ruby with no native
-extensions. Their only C dependency is Ripper, which is built into CRuby.
+- `test/native-conformance.test.ts` compares syntax_tree.
+- `test/rubocop-conformance.test.ts` compares the Layout pass against
+  `RuboCop::CLI` — the real command-line entry point, with both gem versions
+  pinned at activation, because RuboCop's Layout output is not stable across
+  releases and a machine with several installed resolves the bare `rubocop`
+  binstub to the newest one.
+
+It works because all of it is pure Ruby with no native extensions of its own.
+syntax_tree and prettier_print need Ripper, RuboCop's parser needs racc, and
+both are part of CRuby.
+
+The versions are pinned in `build/ruby_fmt/Gemfile`, which is also where the
+conformance tests read them from, so the native side and the wasm side cannot
+drift apart. `rubocop-ast` is pinned alongside `rubocop` rather than left to
+resolve: it decides which parser produces the token stream the Layout cops see,
+so a newer one changes the output without RuboCop itself changing at all.
 
 ---
 
@@ -212,6 +294,8 @@ is a cached module-level value rather than an object you have to construct.
 | `src/format.ts` | `format` | The public entry point: recycle if needed, validate options, write input, format. |
 | `src/boot-vm.ts` | `bootVm`, `recycleVm` | Boots CRuby with syntax_tree required and patched, and caches the result. |
 | `src/stree-patch.ts` | `IN_PATTERN_THEN_PATCH` | The one fix applied on top of the gem, and why it is safe. |
+| `src/rubocop.ts` | `RUBOCOP_SETUP`, `RUBOCOP_CONFIG_YAML` | The Layout pass: how RuboCop is driven, and which of its parts are used. |
+| `src/wasi-shims.ts` | `createShimDirectory` | Stand-ins for the two stdlib extensions wasip1 cannot provide. |
 | `src/compile-artifact.ts` | `compileArtifact` | Locates, decompresses and compiles `ruby_fmt.wasm.br`, at most once per process. |
 | `src/types.ts` | `FormatOptions`, `RubyFormatterVm` | The two types the other files share. |
 
@@ -227,7 +311,7 @@ The package ships a single `ruby_fmt.wasm.br` containing CRuby and the gems.
 There is no directory to mount at boot and nothing to resolve at runtime.
 
 It is stored brotli-compressed, because the artifact is mostly Ruby source text
-and packs down about 5×. Decompression happens once per process (~100 ms via
+and packs down about 7×. Decompression happens once per process (~100 ms via
 `node:zlib`, no dependency added), not once per format — the compiled
 `WebAssembly.Module` is cached, so even recycling the VM after the memory leak
 reuses it.

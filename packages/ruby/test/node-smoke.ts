@@ -20,6 +20,13 @@ test('formats Ruby under plain Node', async () => {
   assert.equal(out, 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n')
 })
 
+// The RuboCop pass loads a second tool into the same VM, and the whole premise
+// of this file is that it all works with nothing installed but Node.
+test('runs the RuboCop pass under plain Node', async () => {
+  const out = await format('def call(user)\n  return unless user\n  user.name\nend\n', { rubocop: true })
+  assert.equal(out, 'def call(user)\n  return unless user\n\n  user.name\nend\n')
+})
+
 // The synchronous entry point matters most to callers whose seams cannot await -
 // a code generator that formats each file inside the builder that emits it.
 test('formats Ruby synchronously under plain Node, after init', async () => {

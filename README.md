@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree | 3.8 MB | ✅ exact +1 fix | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 5.1 MB | ✅ exact +1 fix | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -38,6 +38,11 @@ Artifact is the brotli-compressed module as committed and published — the whol
 tool, its parser and its language runtime in one file. The JavaScript that loads
 it is small by comparison: nothing for Ruby, Swift, PHP and Rust, a 16 KB
 generated runtime for Java and Kotlin, and 0.46 MB of .NET loader scripts for C#.
+
+Ruby names two tools because it carries two: syntax_tree does the formatting,
+and RuboCop's Layout department is available as an opt-in second pass so the
+result is clean under a consumer's own `rubocop` run. Everything else about that
+package is unchanged unless the option is passed.
 
 Exactness is only meaningful against a named reference tool, so the reference is
 stated per package. "Exact" means the package *is* that tool compiled to wasm —
@@ -196,7 +201,16 @@ CRuby compiled to wasm, so output is byte-identical to a native Ruby; a
 conformance test asserts that against a native `ruby` across classes, endless
 methods, `case`/`when`, blocks and heredocs.
 
-It ships as one 3.8 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
+It is also the one package with a second tool in it. syntax_tree reprints a
+file but does not try to satisfy RuboCop, and about 30% of its output still
+trips stock `rubocop --only Layout` - so `format(source, { rubocop: true })`
+runs the real RuboCop over the result and closes that gap. Layout only, and off
+by default; a second conformance test asserts byte-identity against
+`RuboCop::CLI` with both gem versions pinned. See
+[`packages/ruby`](packages/ruby#clean-under-rubocop-not-just-canonical) for what
+it costs, which is not nothing.
+
+It ships as one 5.1 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
 formatter never loads is stripped, then `wasm-opt -Os` and brotli. It is
 committed, so a fresh clone needs nothing extra; `bun run ruby:build` rebuilds it

@@ -2,12 +2,34 @@ import type { File } from '@bjorn3/browser_wasi_shim'
 import type { RubyVM } from '@ruby/wasm-wasi'
 
 /**
- * Options accepted by `format`. Everything here mirrors a syntax_tree option,
- * so the defaults are syntax_tree's defaults rather than ones we picked.
+ * Options accepted by `format`.
+ *
+ * `printWidth` mirrors a syntax_tree option, so its default is syntax_tree's
+ * rather than one we picked. `rubocop` turns on a second pass and is ours.
  */
 export type FormatOptions = {
   /** Maximum line width. syntax_tree's default is 80. */
   printWidth?: number
+  /**
+   * Run `rubocop --autocorrect --only Layout` over syntax_tree's output.
+   *
+   * Off by default, so the bytes this package has always returned are the bytes
+   * it still returns. Turn it on when the formatted source has to survive a
+   * consumer's `rubocop` run: syntax_tree alone leaves Layout offenses in about
+   * 30% of real files, mostly multiline operation and method-call indentation,
+   * and this pass clears them.
+   *
+   * Two costs come with it. The first call into a VM requires RuboCop, which
+   * takes roughly four seconds - 698 cop files, read and evaluated by a Ruby
+   * that is itself running on WebAssembly - and each format afterwards costs
+   * two to three times what syntax_tree alone does. Both are per VM, so they
+   * are paid again after a recycle.
+   *
+   * Note that the two tools genuinely disagree - running syntax_tree over the
+   * result would undo some of these corrections. RuboCop goes second here, so
+   * RuboCop wins.
+   */
+  rubocop?: boolean
 }
 
 /**
@@ -101,4 +123,13 @@ export type RubyFormatterVm = {
   workFiles: Map<string, File>
   /** The VM's wasm linear memory, watched so the VM can be recycled before it dies. */
   memory: WebAssembly.Memory
+  /**
+   * Whether RuboCop has been required into this VM yet.
+   *
+   * Mutable, and deliberately per VM rather than per module: requiring RuboCop
+   * is expensive enough to want caching, and a recycled VM has not done it,
+   * so a module-level flag would leave `format` calling into a constant that
+   * the new VM has never heard of.
+   */
+  rubocopLoaded: boolean
 }

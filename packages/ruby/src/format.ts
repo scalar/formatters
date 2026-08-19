@@ -1,5 +1,6 @@
 import { File } from '@bjorn3/browser_wasi_shim'
 
+import { RUBOCOP_CONFIG_PATH, RUBOCOP_SETUP } from './rubocop'
 import type { BootVm, FormatOptions, Formatters, RubyFormatterVm } from './types'
 
 /** syntax_tree's own default line width. */
@@ -33,6 +34,33 @@ const MEMORY_LIMIT_BYTES = 400_000_000
 const SYNC_MEMORY_LIMIT_BYTES = 1_200_000_000
 
 /**
+ * Where the source being formatted lives in the guest filesystem.
+ *
+ * `/work` is the preopened directory that `workFiles` backs, so the entry
+ * written into that map is this path without the prefix. RuboCop wants the
+ * full path: it is what offenses are reported against and what a
+ * `# rubocop:disable` directive resolves relative to.
+ */
+const INPUT_PATH = '/work/input.rb'
+
+/**
+ * Requires RuboCop into a VM that has not had it yet, and builds the Layout
+ * pass over it.
+ *
+ * Lazy rather than part of the boot because it costs about four seconds, which
+ * is not a bill to hand a caller who only ever wanted syntax_tree. Synchronous
+ * because `vm.eval` is, which is what lets `formatSync` ask for RuboCop too -
+ * its first such call is simply a slow one.
+ */
+const ensureRuboCop = (booted: RubyFormatterVm): void => {
+  if (booted.rubocopLoaded) return
+
+  booted.vm.eval(RUBOCOP_SETUP)
+  booted.vm.eval(`ScalarRubyFmt.setup("/work/${RUBOCOP_CONFIG_PATH}")`)
+  booted.rubocopLoaded = true
+}
+
+/**
  * Formats one source through an already-booted VM.
  *
  * Every step here is synchronous, which is the whole reason `formatSync` can
@@ -57,6 +85,16 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // does not escape '#', so any Ruby snippet containing #{} would be evaluated.
   workFiles.set('input.rb', new File(new TextEncoder().encode(source)))
 
+  if (options.rubocop) ensureRuboCop(booted)
+
+  // RuboCop runs on syntax_tree's output, never on the raw input, and the order
+  // is not arbitrary: the two disagree about multiline indentation, so whichever
+  // runs last decides. syntax_tree reprints the whole file and RuboCop only
+  // corrects offenses in what it is given, so syntax_tree first and RuboCop
+  // second is the pairing that both reprints canonically *and* comes out clean
+  // under `rubocop --only Layout`. The other order does neither.
+  const rubocopPass = options.rubocop ? `out = ScalarRubyFmt.correct(out, ${JSON.stringify(INPUT_PATH)})\n` : ''
+
   // The result is parsed before it is returned. A formatter that emits source
   // its own language cannot read is the one failure that has to be loud, and
   // syntax_tree 6.3.0 does exactly that on some `case/in` patterns - see
@@ -66,8 +104,8 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // into an exception raised before anything is written.
   return vm
     .eval(
-      `out = SyntaxTree.format(File.read("/work/input.rb"), ${printWidth})
-       raise "syntax_tree produced source that Ruby cannot parse, so it was discarded rather than returned - please report this" if Ripper.sexp(out).nil?
+      `out = SyntaxTree.format(File.read(${JSON.stringify(INPUT_PATH)}), ${printWidth})
+       ${rubocopPass}raise "the formatter produced source that Ruby cannot parse, so it was discarded rather than returned - please report this" if Ripper.sexp(out).nil?
        out`,
     )
     .toString()

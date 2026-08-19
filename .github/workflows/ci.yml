@@ -104,6 +104,15 @@ jobs:
       - name: Install the pinned syntax_tree
         run: gem install syntax_tree --no-document -v "$(sed -n 's/^gem "syntax_tree", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
 
+      # Same story for the RuboCop pass, and rubocop-ast has to be pinned alongside rubocop rather
+      # than left to resolve: it decides which parser produces the token stream the Layout cops
+      # see, so a newer one can change the output without rubocop itself changing at all. That is
+      # also why the Gemfile pins it - see the comment there.
+      - name: Install the pinned rubocop
+        run: |
+          gem install rubocop --no-document -v "$(sed -n 's/^gem "rubocop", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
+          gem install rubocop-ast --no-document -v "$(sed -n 's/^gem "rubocop-ast", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
+
       - name: Run unit tests
         run: bun run test
 
