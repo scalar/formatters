@@ -13,21 +13,26 @@ export type FormatOptions = {
   /**
    * Run `rubocop --autocorrect --only Layout` over syntax_tree's output.
    *
-   * Off by default, so the bytes this package has always returned are the bytes
-   * it still returns. Turn it on when the formatted source has to survive a
-   * consumer's `rubocop` run: syntax_tree alone leaves Layout offenses in about
-   * 30% of real files, mostly multiline operation and method-call indentation,
-   * and this pass clears them.
+   * **On by default.** syntax_tree alone leaves Layout offenses in about 30% of
+   * real files - mostly multiline operation and method-call indentation, where
+   * the two tools genuinely disagree - so without this pass, formatted output
+   * can still fail a consumer's own `rubocop` run. Formatting that a linter
+   * rejects is not finished, so clearing it is the default rather than an
+   * opt-in.
    *
-   * Two costs come with it. The first call into a VM requires RuboCop, which
-   * takes roughly four seconds - 698 cop files, read and evaluated by a Ruby
-   * that is itself running on WebAssembly - and each format afterwards costs
-   * two to three times what syntax_tree alone does. Both are per VM, so they
-   * are paid again after a recycle.
+   * Set it to `false` for syntax_tree on its own. That is worth doing when
+   * neither cost below is worth paying: the first call into a VM requires
+   * RuboCop, which takes roughly four seconds - 698 cop files, read and
+   * evaluated by a Ruby that is itself running on WebAssembly - and each format
+   * afterwards costs two to three times what syntax_tree alone does. Both are
+   * per VM, so they are paid again after a recycle. Opting out skips all of it:
+   * RuboCop is never loaded at all.
    *
-   * Note that the two tools genuinely disagree - running syntax_tree over the
-   * result would undo some of these corrections. RuboCop goes second here, so
-   * RuboCop wins.
+   * The order is fixed and matters. The two tools disagree, so whichever runs
+   * last decides; RuboCop goes second, so RuboCop wins. It cannot go first,
+   * because RuboCop corrects offenses within the line structure it is handed
+   * and never reprints - on 116 files whose formatting differed only in line
+   * breaking, RuboCop alone mapped none of them to a common result.
    */
   rubocop?: boolean
 }
@@ -67,7 +72,14 @@ export type FormatFunction = (source: string, options?: FormatOptions) => Promis
 export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
 
 /**
- * Boots the VM, so that `formatSync` can be called afterwards.
+ * Boots the VM and loads RuboCop into it, so that `formatSync` can be called
+ * afterwards.
+ *
+ * RuboCop is loaded here rather than on first use because it is the default
+ * pass and requiring it is synchronous - left to `formatSync`, that first call
+ * would stall for four seconds in a caller that cannot wait at all. A caller
+ * who only ever passes `rubocop: false` should skip this and let `format` boot
+ * on its own, which never loads RuboCop.
  *
  * Optional for `format`, which boots on demand, and required exactly once before
  * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so

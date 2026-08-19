@@ -148,8 +148,13 @@ describe('native-conformance', () => {
     // rather than being silently skipped.
     const expectations = samples.map(([name, source], index) => ({ name, source, expected: native[index] ?? '' }))
 
+    // `rubocop: false` because the claim under test is about syntax_tree alone.
+    // The RuboCop pass is on by default and would correct this output further,
+    // which is a real difference from the native `SyntaxTree.format` on the
+    // other side of the comparison - and one that `rubocop-conformance.test.ts`
+    // covers on its own terms.
     for (const { name, source, expected } of expectations) {
-      expect(await format(source), `diverged on: ${name}`).toBe(expected)
+      expect(await format(source, { rubocop: false }), `diverged on: ${name}`).toBe(expected)
     }
   })
 
@@ -157,7 +162,7 @@ describe('native-conformance', () => {
     const [native] = nativeAll([ENDLESS_RANGE_PATTERN])
     expect(nativeParses(native ?? '')).toBe(false)
 
-    const ours = await format(ENDLESS_RANGE_PATTERN)
+    const ours = await format(ENDLESS_RANGE_PATTERN, { rubocop: false })
     expect(ours).not.toBe(native)
     expect(nativeParses(ours)).toBe(true)
   })

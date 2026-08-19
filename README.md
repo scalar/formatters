@@ -39,10 +39,10 @@ tool, its parser and its language runtime in one file. The JavaScript that loads
 it is small by comparison: nothing for Ruby, Swift, PHP and Rust, a 16 KB
 generated runtime for Java and Kotlin, and 0.46 MB of .NET loader scripts for C#.
 
-Ruby names two tools because it carries two: syntax_tree does the formatting,
-and RuboCop's Layout department is available as an opt-in second pass so the
-result is clean under a consumer's own `rubocop` run. Everything else about that
-package is unchanged unless the option is passed.
+Ruby names two tools because it runs two: syntax_tree reprints the file, then
+RuboCop's Layout department corrects what syntax_tree leaves behind, so the
+result is clean under a consumer's own `rubocop` run. Both are the real gems,
+each held to the exactness rule below by its own conformance test.
 
 Exactness is only meaningful against a named reference tool, so the reference is
 stated per package. "Exact" means the package *is* that tool compiled to wasm —
@@ -201,14 +201,21 @@ CRuby compiled to wasm, so output is byte-identical to a native Ruby; a
 conformance test asserts that against a native `ruby` across classes, endless
 methods, `case`/`when`, blocks and heredocs.
 
-It is also the one package with a second tool in it. syntax_tree reprints a
-file but does not try to satisfy RuboCop, and about 30% of its output still
-trips stock `rubocop --only Layout` - so `format(source, { rubocop: true })`
-runs the real RuboCop over the result and closes that gap. Layout only, and off
-by default; a second conformance test asserts byte-identity against
-`RuboCop::CLI` with both gem versions pinned. See
-[`packages/ruby`](packages/ruby#clean-under-rubocop-not-just-canonical) for what
-it costs, which is not nothing.
+It is also the one package that runs two tools, because neither does the whole
+job. syntax_tree reprints a file - it throws away the input's line breaking and
+decides it again - but about 30% of its output still trips stock
+`rubocop --only Layout`. RuboCop corrects those offenses but never reprints: on
+116 files whose formatting differed only in line breaking, RuboCop alone brought
+none of them to a common result, and syntax_tree brought 91. So `format` runs
+syntax_tree and then `rubocop --autocorrect --only Layout`, in that order,
+and a second conformance test asserts byte-identity against `RuboCop::CLI` with
+both gem versions pinned.
+
+`format(source, { rubocop: false })` is syntax_tree on its own for anyone who
+wants it - RuboCop is then never even loaded, which is worth about four seconds
+on the first call. See
+[`packages/ruby`](packages/ruby#two-tools-and-why-both) for the rest of what it
+costs.
 
 It ships as one 5.1 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the

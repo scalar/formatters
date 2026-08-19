@@ -7,6 +7,15 @@ import type { BootVm, FormatOptions, Formatters, RubyFormatterVm } from './types
 const DEFAULT_PRINT_WIDTH = 80
 
 /**
+ * Whether the RuboCop pass runs when the caller says nothing.
+ *
+ * On, because syntax_tree alone leaves Layout offenses in about 30% of real
+ * files and output a linter rejects is not finished output. `rubocop: false`
+ * turns it off and skips loading RuboCop entirely.
+ */
+const DEFAULT_RUBOCOP = true
+
+/**
  * Recycle the VM once its linear memory passes this. The hard wall is the
  * wasm32 signed-pointer boundary at 2GB; this leaves room for one more format
  * to finish - a single large file can add ~75MB on its own.
@@ -69,6 +78,7 @@ const ensureRuboCop = (booted: RubyFormatterVm): void => {
  */
 const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatOptions): string => {
   const { vm, workFiles } = booted
+  const rubocop = options.rubocop ?? DEFAULT_RUBOCOP
 
   // printWidth ends up interpolated into Ruby source, so it is coerced and
   // checked rather than trusted. TypeScript stops nothing here: the types are
@@ -85,7 +95,7 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // does not escape '#', so any Ruby snippet containing #{} would be evaluated.
   workFiles.set('input.rb', new File(new TextEncoder().encode(source)))
 
-  if (options.rubocop) ensureRuboCop(booted)
+  if (rubocop) ensureRuboCop(booted)
 
   // RuboCop runs on syntax_tree's output, never on the raw input, and the order
   // is not arbitrary: the two disagree about multiline indentation, so whichever
@@ -93,7 +103,7 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // corrects offenses in what it is given, so syntax_tree first and RuboCop
   // second is the pairing that both reprints canonically *and* comes out clean
   // under `rubocop --only Layout`. The other order does neither.
-  const rubocopPass = options.rubocop ? `out = ScalarRubyFmt.correct(out, ${JSON.stringify(INPUT_PATH)})\n` : ''
+  const rubocopPass = rubocop ? `out = ScalarRubyFmt.correct(out, ${JSON.stringify(INPUT_PATH)})\n` : ''
 
   // The result is parsed before it is returned. A formatter that emits source
   // its own language cannot read is the one failure that has to be loud, and
@@ -143,9 +153,9 @@ export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
   /**
    * Formats Ruby source without awaiting, for callers that cannot.
    *
-   * Same syntax_tree, same options, same bytes out as `format`. Two things it
-   * cannot do, both following from the same fact - recycling the VM is
-   * asynchronous, because `RubyVM.instantiateModule` is:
+   * Same tools, same options, same bytes out as `format`. Two things it cannot
+   * do, both following from the same fact - recycling the VM is asynchronous,
+   * because `RubyVM.instantiateModule` is:
    *
    * 1. It throws until `init` has resolved, like every `formatSync` here.
    * 2. It throws once the VM's memory passes {@link SYNC_MEMORY_LIMIT_BYTES},
@@ -179,16 +189,26 @@ export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
   }
 
   /**
-   * Boots the VM, replacing one that has grown too large, so that `formatSync`
-   * can be called afterwards.
+   * Boots the VM and loads RuboCop into it, so that `formatSync` can be called
+   * afterwards.
    *
-   * Optional for `format`, which boots and recycles on demand, and required
-   * before the first `formatSync` - and again whenever `formatSync` reports that
-   * the VM needs replacing.
+   * Optional for `format`, which boots and loads on demand, and required before
+   * the first `formatSync` - and again whenever `formatSync` reports that the VM
+   * needs replacing.
    */
   const init = async (): Promise<void> => {
     const booted = await boot()
-    if (booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES) await recycle()
+    const ready = booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES ? await recycle() : booted
+
+    // RuboCop is loaded here, not left to the first format, because it is the
+    // default pass and `init` exists precisely so that the first `formatSync`
+    // is not a surprise. Requiring RuboCop is synchronous Ruby, so without this
+    // that first call would stall for four seconds in a caller that chose the
+    // synchronous entry point because it cannot wait at all.
+    //
+    // A caller who only ever passes `rubocop: false` should skip `init` and let
+    // `format` boot on its own - then RuboCop is never loaded.
+    ensureRuboCop(ready)
   }
 
   return { format, formatSync, init }

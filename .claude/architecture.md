@@ -167,19 +167,24 @@ C dependency is Ripper, which is already inside CRuby's stdlib.
 `format()` is async because the first call boots a Ruby VM; the VM is cached, so
 later calls are milliseconds.
 
-**Two tools, one artifact.** `format(source, { rubocop: true })` runs the real
-`rubocop --autocorrect --only Layout` over syntax_tree's output, because
-syntax_tree reprints a file without trying to satisfy RuboCop and about 30% of
-its output still trips stock `rubocop --only Layout`. They share one artifact so
-that a process using both does not carry two copies of CRuby. RuboCop is
-required into the VM on first use rather than at boot - it costs about four
-seconds, which a caller who never passes the option should not pay - and
-`src/rubocop.ts` documents which of RuboCop's own parts drive the correction and
-which are deliberately left out.
+**Two tools, one artifact, both by default.** `format` runs syntax_tree and then
+the real `rubocop --autocorrect --only Layout`. Neither subsumes the other:
+syntax_tree reprints (it discards the input's line breaking and decides it
+again) but about 30% of its output still trips stock `rubocop --only Layout`,
+while RuboCop corrects offenses without ever reprinting - measured on 116 files
+whose formatting differed only in line breaking, RuboCop alone mapped 0 of them
+to a common result and syntax_tree mapped 91. They share one artifact so that a
+process does not carry two copies of CRuby, and `src/rubocop.ts` documents which
+of RuboCop's own parts drive the correction and which are deliberately left out.
 
-The two tools genuinely disagree about multiline indentation, so order decides
-the result: syntax_tree first, RuboCop second. Running syntax_tree over the
-result would undo about a third of RuboCop's corrections.
+Order decides the result, because the two disagree about multiline indentation:
+syntax_tree first, RuboCop second. Running syntax_tree afterwards would revert
+RuboCop in 116 of 397 files.
+
+`rubocop: false` opts out, and then RuboCop is never required into the VM at all
+- worth about four seconds on the first call. `init` does load it, because it is
+the default pass and `formatSync` would otherwise stall for those seconds in a
+caller that chose the synchronous entry point precisely because it cannot wait.
 
 The gem pins in `build/ruby_fmt/Gemfile` are load-bearing beyond
 reproducibility. `rubocop-ast` is held at 1.42.0 because 1.43.0 requires prism

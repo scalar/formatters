@@ -61,18 +61,19 @@ const CASES: BrowserCase[] = [
   {
     directory: 'ruby',
     artifact: 'ruby_fmt.wasm.br',
-    source: 'class A\n  def initialize(b)\n@b=b\n  end\nend',
-    expected: 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
+    source: 'def call(user)\n  return unless user\n  user.name\nend\n',
+    // The default pipeline is syntax_tree *and* RuboCop. The blank line comes
+    // from Layout/EmptyLineAfterGuardClause, which syntax_tree cannot produce on
+    // its own - so this fails loudly if the RuboCop pass silently did nothing.
+    expected: 'def call(user)\n  return unless user\n\n  user.name\nend\n',
   },
   {
     directory: 'ruby',
-    label: 'ruby + rubocop',
+    label: 'ruby (syntax_tree only)',
     artifact: 'ruby_fmt.wasm.br',
-    source: 'def call(user)\n  return unless user\n  user.name\nend\n',
-    // Layout/EmptyLineAfterGuardClause, which syntax_tree cannot produce on its
-    // own - so this fails loudly if the RuboCop pass silently did nothing.
-    expected: 'def call(user)\n  return unless user\n\n  user.name\nend\n',
-    options: { rubocop: true },
+    source: 'class A\n  def initialize(b)\n@b=b\n  end\nend',
+    expected: 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
+    options: { rubocop: false },
   },
   {
     directory: 'java',

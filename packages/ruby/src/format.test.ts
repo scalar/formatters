@@ -2,15 +2,20 @@
 // bound to the on-disk artifact is what a Node consumer actually gets.
 import { format, formatSync, init } from './index'
 import type { FormatOptions } from './types'
-import { describe, expect, it } from 'bun:test'
+import { beforeAll, describe, expect, it } from 'bun:test'
 
 /**
- * Generous, because the first call into a VM that asks for RuboCop has to
- * require it, and 698 cop files take about eight seconds to load under wasm.
- * Only the first test to ask pays it, but which test that is depends on run
- * order, so they all carry it.
+ * Generous, because this boots the VM *and* requires RuboCop: 698 cop files,
+ * read and evaluated by a Ruby running on wasm, which takes several seconds.
  */
-const RUBOCOP_TIMEOUT_MS = 60_000
+const WARMUP_TIMEOUT_MS = 120_000
+
+// Warmed up front rather than left to whichever test happens to run first. The
+// RuboCop pass is on by default, so without this the load lands on an arbitrary
+// test and blows its timeout - and which test that is depends on run order.
+beforeAll(async () => {
+  await init()
+}, WARMUP_TIMEOUT_MS)
 
 describe('format', () => {
   it('formats a class body', async () => {
@@ -77,17 +82,17 @@ describe('format', () => {
   // a hash pattern it unwraps, and one where the endless range is not last -
   // because each one arrives at the trailing `..` by a different route.
   it('keeps then when an alternative pattern ends in an endless range', async () => {
-    const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n')
+    const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n', { rubocop: false })
     expect(out).toBe('case s\nin 300.. | 400.. then\n  a\nend\n')
   })
 
   it('keeps then when unwrapping a hash pattern leaves a trailing endless range', async () => {
-    const out = await format('case s\nin { status: 400.. } then\n  a\nend\n')
+    const out = await format('case s\nin { status: 400.. } then\n  a\nend\n', { rubocop: false })
     expect(out).toBe('case s\nin status: 400.. then\n  a\nend\n')
   })
 
   it('omits then when the endless range is not the last thing in the pattern', async () => {
-    const out = await format('case s\nin { status: 400.., body: String } then\n  a\nend\n')
+    const out = await format('case s\nin { status: 400.., body: String } then\n  a\nend\n', { rubocop: false })
     expect(out).toBe('case s\nin { status: 400.., body: String }\n  a\nend\n')
   })
 
@@ -95,98 +100,74 @@ describe('format', () => {
   // the rendered pattern rather than on its node types is what keeps this from
   // growing a stray `then`.
   it('does not add then for a literal that merely ends in dots', async () => {
-    const out = await format('case s\nin { m: "ends.." } then\n  a\nend\n')
+    const out = await format('case s\nin { m: "ends.." } then\n  a\nend\n', { rubocop: false })
     expect(out).toBe('case s\nin m: "ends.."\n  a\nend\n')
   })
 
   // Every case/in shape above is only interesting because the output has to be
   // parseable, so assert that directly on the one that used to break.
   it('returns Ruby that parses for endless range patterns', async () => {
-    const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n')
-    expect(format(out)).resolves.toBe(out)
+    const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n', { rubocop: false })
+    expect(format(out, { rubocop: false })).resolves.toBe(out)
   })
-
-  // Everything below turns on the RuboCop pass. The first of these matters most:
-  // the option is opt-in precisely so that the bytes this package has always
-  // returned keep being returned, and a regression there breaks consumers who
-  // never asked for RuboCop at all.
-  it(
-    'leaves output untouched when rubocop is not asked for',
-    async () => {
-      const source = 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n'
-      const expected = await format(source)
-
-      expect(await format(source, { rubocop: false })).toBe(expected)
-      expect(expected).toBe(source)
-    },
-    RUBOCOP_TIMEOUT_MS,
-  )
 
   // Layout/EmptyLinesAroundAttributeAccessor and Layout/EmptyLineBetweenDefs.
   // syntax_tree does not insert blank lines at all, so these are corrections it
-  // could never make on its own.
-  it(
-    'adds the blank lines rubocop wants around accessors and defs',
-    async () => {
-      const source = 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n'
+  // could never make on its own - which makes this input a clean probe for
+  // whether the RuboCop pass ran.
+  const NEEDS_RUBOCOP = 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n'
+  const AFTER_RUBOCOP = 'class Client\n  attr_reader :base_url\n\n  def to_s\n    @base_url\n  end\nend\n'
 
-      expect(await format(source, { rubocop: true })).toBe(
-        'class Client\n  attr_reader :base_url\n\n  def to_s\n    @base_url\n  end\nend\n',
-      )
-    },
-    RUBOCOP_TIMEOUT_MS,
-  )
+  // The default, and the reason the default is what it is: syntax_tree alone
+  // returns this input unchanged, and RuboCop would reject it.
+  it('runs the rubocop pass when no option is given', async () => {
+    expect(await format(NEEDS_RUBOCOP)).toBe(AFTER_RUBOCOP)
+  })
+
+  it('runs it when asked for explicitly', async () => {
+    expect(await format(NEEDS_RUBOCOP, { rubocop: true })).toBe(AFTER_RUBOCOP)
+  })
+
+  // The escape hatch, for callers who want syntax_tree on its own and none of
+  // what RuboCop costs.
+  it('skips the pass when opted out, leaving syntax_tree alone', async () => {
+    expect(await format(NEEDS_RUBOCOP, { rubocop: false })).toBe(NEEDS_RUBOCOP)
+  })
 
   // Layout/EmptyLineAfterGuardClause.
-  it(
-    'adds a blank line after a guard clause',
-    async () => {
-      const source = 'def call(user)\n  return unless user\n  user.name\nend\n'
+  it('adds a blank line after a guard clause', async () => {
+    const source = 'def call(user)\n  return unless user\n  user.name\nend\n'
 
-      expect(await format(source, { rubocop: true })).toBe('def call(user)\n  return unless user\n\n  user.name\nend\n')
-    },
-    RUBOCOP_TIMEOUT_MS,
-  )
+    expect(await format(source)).toBe('def call(user)\n  return unless user\n\n  user.name\nend\n')
+  })
 
   // Layout/MultilineMethodCallIndentation - the disagreement that accounts for
   // most of what syntax_tree alone leaves behind. syntax_tree indents the
   // continuation of a broken chain; RuboCop's default aligns it.
-  it(
-    're-indents a wrapped method chain the way rubocop wants it',
-    async () => {
-      const source =
-        'result = some_object.method_one.method_two(argument_one, argument_two).method_three(argument_four)\n'
+  it('re-indents a wrapped method chain the way rubocop wants it', async () => {
+    const source =
+      'result = some_object.method_one.method_two(argument_one, argument_two).method_three(argument_four)\n'
 
-      expect(await format(source, { rubocop: true })).toBe(
-        'result =\n  some_object\n  .method_one\n  .method_two(argument_one, argument_two)\n  .method_three(argument_four)\n',
-      )
-    },
-    RUBOCOP_TIMEOUT_MS,
-  )
+    expect(await format(source)).toBe(
+      'result =\n  some_object\n  .method_one\n  .method_two(argument_one, argument_two)\n  .method_three(argument_four)\n',
+    )
+  })
 
   // The pipeline has to reach a fixed point, or a consumer formatting on save
   // would see the file change on every keystroke.
-  it(
-    'is idempotent with the rubocop pass on',
-    async () => {
-      const once = await format('class A\n  attr_reader :b\n  def c\n@b\n  end\nend', { rubocop: true })
+  it('is idempotent', async () => {
+    const once = await format('class A\n  attr_reader :b\n  def c\n@b\n  end\nend')
 
-      expect(await format(once, { rubocop: true })).toBe(once)
-    },
-    RUBOCOP_TIMEOUT_MS,
-  )
+    expect(await format(once)).toBe(once)
+  })
 
-  // The RuboCop pass is loaded into the VM on first use and stays there. A
-  // plain format afterwards has to be unaffected by that.
-  it(
-    'leaves plain formatting alone after a rubocop pass has run',
-    async () => {
-      await format('def a\n  1\nend\n', { rubocop: true })
+  // The RuboCop pass is loaded into the VM once and stays there. Opting out
+  // afterwards has to be unaffected by that.
+  it('honours an opt-out after a rubocop pass has run', async () => {
+    await format(NEEDS_RUBOCOP)
 
-      expect(await format('x=1')).toBe('x = 1\n')
-    },
-    RUBOCOP_TIMEOUT_MS,
-  )
+    expect(await format(NEEDS_RUBOCOP, { rubocop: false })).toBe(NEEDS_RUBOCOP)
+  })
 })
 
 describe('formatSync', () => {
@@ -221,17 +202,12 @@ describe('formatSync', () => {
     expect(result).not.toHaveProperty('then')
   })
 
-  // Requiring RuboCop is synchronous Ruby, so formatSync can ask for it too -
-  // its first such call is simply a slow one, and the bytes are the same.
-  it(
-    'runs the rubocop pass and produces the same bytes as format',
-    async () => {
-      await init()
-      const source = 'class A\n  attr_reader :b\n  def c\n@b\n  end\nend'
-      const expected = await format(source, { rubocop: true })
+  // `init` loads RuboCop, so the synchronous path gets the default pass without
+  // a first-call stall - and the same bytes as the asynchronous one.
+  it('runs the rubocop pass and produces the same bytes as format', async () => {
+    await init()
+    const source = 'class A\n  attr_reader :b\n  def c\n@b\n  end\nend'
 
-      expect(formatSync(source, { rubocop: true })).toBe(expected)
-    },
-    RUBOCOP_TIMEOUT_MS,
-  )
+    expect(formatSync(source)).toBe(await format(source))
+  })
 })
