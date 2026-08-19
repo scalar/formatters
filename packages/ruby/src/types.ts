@@ -35,6 +35,22 @@ export type FormatOptions = {
    * breaking, RuboCop alone mapped none of them to a common result.
    */
   rubocop?: boolean
+  /**
+   * Extra `.rubocop.yml` entries, merged over the ones this package sets.
+   *
+   * The escape hatch, for the parts of RuboCop's configuration this type does
+   * not name - `{ 'Layout/IndentationWidth': { Width: 4 } }`. It is written
+   * into the guest as the config file RuboCop loads, so anything a
+   * `.rubocop.yml` can say belongs here, spelled exactly as that file spells
+   * it. Merging is one level deep, so naming a cop replaces this package's
+   * entry for it rather than adding to it - which is how you would put
+   * `Layout/LineLength` back, should you want RuboCop rather than syntax_tree
+   * deciding line width.
+   *
+   * Ignored when `rubocop` is `false`, because then there is no RuboCop to
+   * configure.
+   */
+  rubocopConfig?: Record<string, unknown>
 }
 
 /**
@@ -89,7 +105,25 @@ export type FormatSyncFunction = (source: string, options?: FormatOptions) => st
  * outgrown what a synchronous caller can clear, and awaiting this again replaces
  * it.
  */
-export type InitFunction = () => Promise<void>
+export type InitFunction = (options?: InitFormatOptions) => Promise<void>
+
+/**
+ * What `init` can be told, beyond "get ready".
+ *
+ * Only one thing, and only because `formatSync` cannot decide it later: `init`
+ * loads RuboCop, and a synchronous caller that never wants it has no other way
+ * to say so - `formatSync` requires `init`, so skipping the call is not an
+ * option the way it is for `format`.
+ */
+export type InitFormatOptions = {
+  /**
+   * Load RuboCop, so that the default pass is ready. Defaults to `true`.
+   *
+   * `false` skips the four seconds it costs, for a caller that will only ever
+   * pass `rubocop: false` to `format` and `formatSync`.
+   */
+  rubocop?: boolean
+}
 
 /** What `createFormat` returns: the package's public functions over one VM. */
 export type Formatters = {
@@ -103,7 +137,7 @@ export type Formatters = {
  * package where its artifact lives. Every field is optional; the defaults
  * resolve `ruby_fmt.wasm.br` relative to the module and expand it here.
  */
-export type InitOptions = {
+export type InitOptions = InitFormatOptions & {
   /** Where to fetch the artifact from. Defaults to the `.br` beside this package. */
   url?: string | URL
   /** The artifact itself, already in hand. Skips the fetch entirely. */

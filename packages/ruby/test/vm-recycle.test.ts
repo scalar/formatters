@@ -18,6 +18,13 @@
 // bounded no matter how much goes through. That fails on the same regression,
 // fails sooner, and reaching a bound costs a fraction of what reaching a wall
 // does.
+//
+// Every format here passes `rubocop: false`. The recycling being guarded is the
+// VM's, and it is identical either way - but the RuboCop pass costs two to three
+// times as much per format, which took this file from ~15s to ~150s against a
+// 300s hang guard. That is a hang guard with almost no headroom left, on a
+// slower runner it is a red build, and none of the cost buys any more coverage
+// of the thing under test.
 
 import { format } from '../src/index'
 import { nodeVm } from '../src/node-vm'
@@ -71,11 +78,11 @@ const BUDGET_MS = 300_000
 describe('vm-recycle', () => {
   it('keeps linear memory bounded while formatting past the ceiling', async () => {
     const startedAt = performance.now()
-    const expected = await format(SAMPLE)
+    const expected = await format(SAMPLE, { rubocop: false })
     let peak = 0
 
     for (let pass = 1; pass <= PASSES; pass++) {
-      expect(await format(SAMPLE), `diverged on pass ${pass}`).toBe(expected)
+      expect(await format(SAMPLE, { rubocop: false }), `diverged on pass ${pass}`).toBe(expected)
 
       // Read through nodeVm rather than a return value: this is the same cached
       // VM format() just used, so its buffer is the live one being asserted on.
@@ -100,7 +107,7 @@ describe('vm-recycle', () => {
 
     // ...and that it stayed correct across every one of them, which is the
     // failure a bounds check on its own would miss.
-    expect(await format(SAMPLE)).toBe(expected)
+    expect(await format(SAMPLE, { rubocop: false })).toBe(expected)
     // Above the budget on purpose, so the budget is what fails and says why.
   }, 420_000)
 })

@@ -184,7 +184,17 @@ RuboCop in 116 of 397 files.
 `rubocop: false` opts out, and then RuboCop is never required into the VM at all
 - worth about four seconds on the first call. `init` does load it, because it is
 the default pass and `formatSync` would otherwise stall for those seconds in a
-caller that chose the synchronous entry point precisely because it cannot wait.
+caller that chose the synchronous entry point precisely because it cannot wait;
+`init({ rubocop: false })` is how such a caller declines, and the only way,
+since `formatSync` cannot run without `init`.
+
+**syntax_tree owns line width.** `Layout/LineLength` is disabled in the config
+written into the guest, because it is the one Layout cop that contradicts
+`printWidth` - with it on at RuboCop's default `Max: 120`, `printWidth: 200`
+came back rewrapped at 124. Disabling it changes none of 397 corpus files at the
+default width. `rubocopConfig` merges over that config one level deep, which is
+both the escape hatch for the rest of RuboCop's settings and the way to put that
+cop back.
 
 The gem pins in `build/ruby_fmt/Gemfile` are load-bearing beyond
 reproducibility. `rubocop-ast` is held at 1.42.0 because 1.43.0 requires prism

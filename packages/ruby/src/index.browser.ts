@@ -10,6 +10,7 @@ export type {
   FormatOptions,
   FormatSyncFunction,
   Formatters,
+  InitFormatOptions,
   InitFunction,
   InitOptions,
   RubyFormatterVm,
@@ -32,7 +33,7 @@ const { format, formatSync, init: bootVm } = createFormat(createBootVm(loader.co
  */
 const init = async (options?: InitOptions): Promise<void> => {
   await loader.init(options)
-  await bootVm()
+  await bootVm(options)
 }
 
 /**

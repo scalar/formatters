@@ -1,37 +1,61 @@
 /**
- * The Ruby version RuboCop is told to target, and the only thing this package's
- * `.rubocop.yml` says.
+ * The Ruby version RuboCop is told to target.
  *
  * It has to be stated rather than left to RuboCop, because RuboCop works it out
  * from its surroundings - a gemspec's `required_ruby_version`, a `.ruby-version`
  * file, the `TargetRubyVersion` key - and inside the VM there are no
  * surroundings, so it would fall back to its floor (2.7) and format for a Ruby
  * nobody is writing. Pinning it also makes the conformance test meaningful: the
- * native RuboCop it compares against reads this same file.
+ * native RuboCop it compares against reads this same config.
  */
-const TARGET_RUBY_VERSION = '3.4'
+const TARGET_RUBY_VERSION = 3.4
 
 /**
- * The configuration written into the guest before RuboCop is set up.
+ * The configuration this package gives RuboCop, before anything the caller adds.
  *
- * Deliberately almost empty. Everything about which cops run and how they
- * behave comes from RuboCop's own `config/default.yml`, so what this package
- * produces is what stock RuboCop produces - the one thing stated here is the
- * one thing RuboCop cannot discover for itself.
+ * Deliberately tiny. Everything about which cops run and how they behave comes
+ * from RuboCop's own `config/default.yml`, so what this produces is what stock
+ * RuboCop produces. Only two things are stated, and both are here because the
+ * default would be wrong rather than because we prefer something else:
+ *
+ * - `TargetRubyVersion`, which RuboCop cannot discover inside a VM.
+ * - `Layout/LineLength`, which is **off**, because line width belongs to
+ *   syntax_tree. syntax_tree reprints, so it is the tool that can actually
+ *   honour `printWidth`; RuboCop only rebreaks what it is handed. With the cop
+ *   on, the two disagreed whenever `printWidth` went above RuboCop's `Max: 120`
+ *   default - `{ printWidth: 200 }` came back rewrapped at 124, which is
+ *   neither width. Turning it off costs nothing measurable: over 397 files of
+ *   real Ruby at the default width it changes none of them, and the 9 files
+ *   with a line over 120 have one either way, because the cop's autocorrect
+ *   could not fix them regardless.
  */
-export const RUBOCOP_CONFIG_YAML = `AllCops:
-  TargetRubyVersion: ${TARGET_RUBY_VERSION}
-`
+const BASE_CONFIG: Record<string, unknown> = {
+  AllCops: { TargetRubyVersion: TARGET_RUBY_VERSION },
+  'Layout/LineLength': { Enabled: false },
+}
 
-/** Where {@link RUBOCOP_CONFIG_YAML} is written in the guest filesystem. */
-export const RUBOCOP_CONFIG_PATH = '.rubocop.yml'
+/**
+ * Builds the `.rubocop.yml` written into the guest, with a caller's overrides
+ * merged over {@link BASE_CONFIG}.
+ *
+ * Emitted as JSON, which is valid YAML and which RuboCop's own loader reads
+ * happily. That is not a shortcut: it is what makes an arbitrary caller-supplied
+ * object safe to serialise, because JSON escaping is exact where hand-rolled
+ * YAML quoting is a guess.
+ *
+ * Merging is one level deep, matching how a `.rubocop.yml` is read: a caller
+ * naming `Layout/LineLength` replaces that whole entry rather than having its
+ * keys folded into ours, which is what makes the cop above re-enablable.
+ */
+export const buildRuboCopConfig = (overrides: Record<string, unknown> = {}): string =>
+  `${JSON.stringify({ ...BASE_CONFIG, ...overrides }, null, 2)}\n`
 
 /**
  * Loads RuboCop into the VM and defines the Layout pass over it.
  *
- * Evaluated lazily - on the first `format` that asks for RuboCop, not at boot -
- * because requiring RuboCop costs about four seconds against syntax_tree's one,
- * and a caller who never passes `rubocop: true` should never pay it.
+ * Evaluated on the first call that needs RuboCop rather than at boot, because
+ * requiring RuboCop costs about four seconds against syntax_tree's one, and a
+ * caller who only ever passes `rubocop: false` should never pay it.
  *
  * ## What this is, and what it is not
  *
@@ -81,10 +105,9 @@ module ScalarRubyFmt
   MAX_ITERATIONS = 200
 
   class << self
-    # Builds the config and the cop set once, so that every later correction
-    # pays for neither. Parsing default.yml and instantiating the Layout
-    # department is the bulk of the per-call cost otherwise.
-    def setup(config_path)
+    # Builds the cop set once, so that every later correction pays for it once.
+    # Instantiating the Layout department is most of the per-call cost otherwise.
+    def setup(work_dir)
       # RuboCop reads its config inside \`Dir.chdir(File.dirname(path)) { ... }\`,
       # so that ERB in a .rubocop.yml resolves relative paths the way a user
       # would expect. The block form chdirs *back* afterwards, and the VM starts
@@ -92,14 +115,25 @@ module ScalarRubyFmt
       # as far as WASI is concerned - so the restore raises ENOENT and config
       # loading dies before it has read a line. Standing in a real directory
       # first is the whole fix.
-      Dir.chdir(File.dirname(config_path))
+      Dir.chdir(work_dir)
 
-      @config = RuboCop::ConfigLoader.configuration_from_file(config_path)
+      @configs = {}
       @registry = RuboCop::Cop::Registry.new(
         RuboCop::Cop::Registry.all.select { |cop| cop.match?(BASE_OPTIONS[:only]) },
         BASE_OPTIONS
       )
       nil
+    end
+
+    # The parsed config for one config file, built at most once per path.
+    #
+    # Cached because merging a config over RuboCop's default.yml costs about
+    # half a second, and a caller formatting many files with the same options
+    # should pay that once. Keyed by path, and the JavaScript side keeps one
+    # path per distinct config, so a hit can never be a stale answer for
+    # different settings.
+    def config_for(config_path)
+      @configs[config_path] ||= RuboCop::ConfigLoader.configuration_from_file(config_path)
     end
 
     # Corrects every Layout offense in \`source\` and returns the result.
@@ -108,18 +142,19 @@ module ScalarRubyFmt
     # \`# rubocop:disable\` directive is resolved relative to. Nothing is read
     # from or written to it - the source travels in and out through the
     # options hash.
-    def correct(source, path)
+    def correct(source, path, config_path)
+      config = config_for(config_path)
       options = BASE_OPTIONS.merge(stdin: source)
       checksums = []
       iterations = 0
 
       loop do
-        processed_source = process(options[:stdin], path)
+        processed_source = process(options[:stdin], path, config)
 
         checksum = processed_source.checksum
         if checksums.include?(checksum)
           raise CorrectionLoop, "two Layout cops are undoing each other's corrections, so the " \\
-                                "source would never settle - it was left unchanged by the RuboCop pass"
+                                "source would never settle - nothing was returned for it"
         end
         checksums << checksum
 
@@ -129,7 +164,7 @@ module ScalarRubyFmt
                                 "#{MAX_ITERATIONS} rounds, so it was stopped"
         end
 
-        team = RuboCop::Cop::Team.mobilize(@registry, @config, options)
+        team = RuboCop::Cop::Team.mobilize(@registry, config, options)
         team.investigate(processed_source)
 
         # Team writes the corrected source back into options[:stdin] and sets
@@ -146,11 +181,11 @@ module ScalarRubyFmt
     # Mirrors \`Runner#get_processed_source\`, including the two assignments
     # after construction: cops reach for both, and leaving them unset changes
     # what \`# rubocop:disable\` comments do.
-    def process(source, path)
+    def process(source, path, config)
       processed_source = RuboCop::ProcessedSource.new(
-        source, @config.target_ruby_version, path, parser_engine: @config.parser_engine
+        source, config.target_ruby_version, path, parser_engine: config.parser_engine
       )
-      processed_source.config = @config
+      processed_source.config = config
       processed_source.registry = @registry
       processed_source
     end

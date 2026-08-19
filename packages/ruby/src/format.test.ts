@@ -1,5 +1,8 @@
 // Imports the wired entry point rather than `createFormat`, because `format`
 // bound to the on-disk artifact is what a Node consumer actually gets.
+import { createBootVm } from './boot-vm'
+import { compileArtifact } from './compile-artifact'
+import { createFormat } from './format'
 import { format, formatSync, init } from './index'
 import type { FormatOptions } from './types'
 import { beforeAll, describe, expect, it } from 'bun:test'
@@ -168,6 +171,38 @@ describe('format', () => {
 
     expect(await format(NEEDS_RUBOCOP, { rubocop: false })).toBe(NEEDS_RUBOCOP)
   })
+
+  // printWidth belongs to syntax_tree, and RuboCop's Layout/LineLength is off so
+  // that it cannot contradict it. With the cop on at its default Max of 120,
+  // this came back rewrapped at 124 - neither the width asked for nor the cop's.
+  it('honours a printWidth above RuboCop default line length', async () => {
+    const source =
+      'result = some_object.method_one(argument_one_here, argument_two_here, argument_five).method_two(argument_three, argument_four, argument_six)\n'
+
+    expect(await format(source, { printWidth: 200 })).toBe(await format(source, { printWidth: 200, rubocop: false }))
+  })
+
+  // The escape hatch, and the way to put Layout/LineLength back.
+  it('merges rubocopConfig over the config this package sets', async () => {
+    const source = 'class A\n  def b\n    c = 1\n    c\n  end\nend\n'
+
+    expect(await format(source, { rubocopConfig: { 'Layout/IndentationWidth': { Width: 4 } } })).toBe(
+      'class A\n    def b\n        c = 1\n        c\n    end\nend\n',
+    )
+  })
+
+  // A caller-supplied config carries strings, and Ruby evaluates #{...} inside
+  // double quotes - so it goes through the guest filesystem like the source
+  // does, never through interpolation.
+  it('does not evaluate #{} interpolation in a rubocopConfig value', async () => {
+    const source = 'x=1\n'
+
+    expect(
+      await format(source, {
+        rubocopConfig: { 'Layout/IndentationWidth': { Width: 2, Description: '#{`echo pwned`}' } },
+      }),
+    ).toBe('x = 1\n')
+  })
 })
 
 describe('formatSync', () => {
@@ -210,4 +245,29 @@ describe('formatSync', () => {
 
     expect(formatSync(source)).toBe(await format(source))
   })
+})
+
+describe('init', () => {
+  // `formatSync` requires `init`, so without an argument here a synchronous
+  // caller could skip the RuboCop pass per call but never avoid loading it.
+  // Built on its own VM because the shared one has RuboCop loaded already, and
+  // the claim is precisely that this one does not.
+  it('leaves RuboCop unloaded when asked not to', async () => {
+    const vm = createBootVm(compileArtifact)
+    const own = createFormat(vm)
+
+    await own.init({ rubocop: false })
+
+    expect(vm.peek()?.rubocopLoaded).toBe(false)
+    expect(own.formatSync('x=1', { rubocop: false })).toBe('x = 1\n')
+  }, 120_000)
+
+  it('loads RuboCop by default, so the first formatSync does not stall', async () => {
+    const vm = createBootVm(compileArtifact)
+    const own = createFormat(vm)
+
+    await own.init()
+
+    expect(vm.peek()?.rubocopLoaded).toBe(true)
+  }, 120_000)
 })

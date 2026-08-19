@@ -81,6 +81,30 @@ rewrite code rather than lay it out, and `-A` will happily delete an unused
 assignment or turn an `if` into a ternary, which is not something a function
 called `format` should do.
 
+### Who owns what
+
+syntax_tree owns line width, so `printWidth` means what it says. RuboCop's
+`Layout/LineLength` is **off** in the config this package writes — it has to be,
+because the two would otherwise disagree: with the cop at its default `Max: 120`,
+`{ printWidth: 200 }` came back rewrapped at 124, which is neither width.
+Turning it off costs nothing measurable. Over 397 files at the default width it
+changes none of them, and the 9 files with a line over 120 have one either way,
+because that cop's autocorrect could not fix them regardless.
+
+RuboCop owns the rest of layout — indentation, alignment, blank lines, spacing.
+
+### Configuring RuboCop
+
+```js
+await format(source, { rubocopConfig: { 'Layout/IndentationWidth': { Width: 4 } } })
+```
+
+Merged over the two entries this package sets, one level deep, and written into
+the guest as the `.rubocop.yml` RuboCop loads. Anything a `.rubocop.yml` can say
+belongs here, spelled exactly as that file spells it — including
+`{ 'Layout/LineLength': { Max: 100 } }` to put that cop back and let RuboCop
+have line width after all.
+
 ### Turning RuboCop off
 
 ```js
@@ -90,6 +114,10 @@ await format(source, { rubocop: false })
 syntax_tree on its own, and none of what RuboCop costs — it is never even
 loaded. Worth it if the output is not going anywhere near a RuboCop, or if the
 [costs below](#what-it-costs) are not worth paying.
+
+For `formatSync`, say it at `init` as well — `await init({ rubocop: false })`.
+`formatSync` requires `init`, so that is the only way a synchronous caller can
+leave RuboCop unloaded rather than merely unused.
 
 The order is fixed, and it is the only order that works. The two tools disagree,
 so whichever runs last decides. Running syntax_tree second would undo RuboCop's
@@ -116,7 +144,8 @@ measured in the same run as the syntax_tree ones beside them.
 
 `init` loads RuboCop as well as booting the VM, so `formatSync` gets the default
 pass without a first-call stall. That is the one reason to prefer `init` over
-letting `format` boot on its own.
+letting `format` boot on its own — and `init({ rubocop: false })` is how a
+synchronous caller declines it.
 
 The artifact carries both tools whichever way you call it — syntax_tree and
 prettier_print are 141 KB of the 5.1 MB, so there was never a lighter build to
@@ -213,6 +242,7 @@ const formatted: string = await format('foo(aaaaaaaaaa, bbbbbbbbbb, cccccccccc, 
 | `source` | `string` | — | Ruby source. Invalid syntax rejects the promise. |
 | `options.printWidth` | `number` | `80` | Maximum line width — syntax_tree's own default. Must be a positive integer. |
 | `options.rubocop` | `boolean` | `true` | Run `rubocop --autocorrect --only Layout` over the result. `false` for syntax_tree alone. [See above](#two-tools-and-why-both). |
+| `options.rubocopConfig` | `Record<string, unknown>` | `{}` | Extra `.rubocop.yml` entries, merged over the ones this package sets — `{ 'Layout/IndentationWidth': { Width: 4 } }`. Ignored when `rubocop` is `false`. |
 
 `printWidth` is validated rather than trusted, because it is interpolated into
 the Ruby expression that drives the format. TypeScript stops nothing there: the

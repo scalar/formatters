@@ -8,6 +8,7 @@ export type {
   FormatOptions,
   FormatSyncFunction,
   Formatters,
+  InitFormatOptions,
   InitFunction,
   RubyFormatterVm,
 } from './types'

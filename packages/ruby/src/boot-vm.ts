@@ -1,7 +1,6 @@
 import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/browser_wasi_shim'
 import { RubyVM } from '@ruby/wasm-wasi'
 
-import { RUBOCOP_CONFIG_PATH, RUBOCOP_CONFIG_YAML } from './rubocop'
 import { IN_PATTERN_THEN_PATCH } from './stree-patch'
 import type { ArtifactSource, BootVm, RubyFormatterVm } from './types'
 import { SHIM_MOUNT_PATH, createShimDirectory } from './wasi-shims'
@@ -42,12 +41,6 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
 
     vmPromise = (async () => {
       const workFiles = new Map<string, File>()
-
-      // RuboCop's config lives beside the input rather than being handed over
-      // in the call, because RuboCop loads configuration from a file and
-      // nothing else. Written here so it is in place before the RuboCop pass
-      // is ever set up - see `rubocop.ts` for why it says so little.
-      workFiles.set(RUBOCOP_CONFIG_PATH, new File(new TextEncoder().encode(RUBOCOP_CONFIG_YAML)))
 
       // fds 0/1/2 are stdin/stdout/stderr; preopened dirs start at fd 3. Passing
       // a directory in one of the first three slots silently makes it stdio.

@@ -26,16 +26,33 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { format } from '../src/index'
-import { RUBOCOP_CONFIG_YAML } from '../src/rubocop'
+import { buildRuboCopConfig } from '../src/rubocop'
 import { afterAll, describe, expect, it } from 'bun:test'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const GEMFILE = path.join(here, '..', '..', '..', 'build', 'ruby_fmt', 'Gemfile')
+const LOCKFILE = `${GEMFILE}.lock`
 
 /** A gem's pin as the Gemfile states it, which is the only version this package matches. */
 const pinnedVersion = (gem: string): string => {
   const match = fs.readFileSync(GEMFILE, 'utf8').match(new RegExp(`^gem "${gem}", "([^"]+)"$`, 'm'))
   if (!match?.[1]) throw new Error(`could not read the ${gem} pin from ${GEMFILE}`)
+  return match[1]
+}
+
+/**
+ * A gem's version as the lockfile resolved it, for gems the Gemfile does not
+ * name directly.
+ *
+ * `parser` is the one that matters: it arrives as a dependency rather than a
+ * Gemfile entry, but it produces the token stream the Layout cops see, so a
+ * different one on the native side changes the output being compared. The
+ * artifact is frozen at whatever the lockfile resolved, so that is the version
+ * the native side has to be held to.
+ */
+const lockedVersion = (gem: string): string => {
+  const match = fs.readFileSync(LOCKFILE, 'utf8').match(new RegExp(`^ {4}${gem} \\(([^)]+)\\)$`, 'm'))
+  if (!match?.[1]) throw new Error(`could not read the ${gem} version from ${LOCKFILE}`)
   return match[1]
 }
 
@@ -63,18 +80,21 @@ const activates = (gem: string, version: string): boolean => {
 const pinnedRuboCop = pinnedVersion('rubocop')
 const pinnedRuboCopAst = pinnedVersion('rubocop-ast')
 const pinnedSyntaxTree = pinnedVersion('syntax_tree')
+const pinnedParser = lockedVersion('parser')
 
 const hasRuboCop = activates('rubocop', pinnedRuboCop)
 const hasRuboCopAst = activates('rubocop-ast', pinnedRuboCopAst)
 const hasSyntaxTree = activates('syntax_tree', pinnedSyntaxTree)
-const matchesPins = hasRuboCop && hasRuboCopAst && hasSyntaxTree
+const hasParser = activates('parser', pinnedParser)
+const matchesPins = hasRuboCop && hasRuboCopAst && hasSyntaxTree && hasParser
 
 /** Why this file ran or did not, reported in the test name so a skip is not silent. */
 const describeGems = (): string => {
   if (!hasRuboCop) return `rubocop ${pinnedRuboCop} is not installed`
   if (!hasRuboCopAst) return `rubocop-ast ${pinnedRuboCopAst} is not installed`
   if (!hasSyntaxTree) return `syntax_tree ${pinnedSyntaxTree} is not installed`
-  return `rubocop ${pinnedRuboCop} with rubocop-ast ${pinnedRuboCopAst}`
+  if (!hasParser) return `parser ${pinnedParser} is not installed`
+  return `rubocop ${pinnedRuboCop} with rubocop-ast ${pinnedRuboCopAst} and parser ${pinnedParser}`
 }
 
 const reason = describeGems()
@@ -114,12 +134,13 @@ afterAll(() => {
  * RuboCop costs far more than correcting does, and RuboCop corrects each file
  * independently, so batching changes nothing but the wall clock.
  *
- * The config written here is the very string the package writes into the guest,
- * imported rather than retyped - if the two ever disagree about the target Ruby
- * version, that is exactly the divergence this test should catch.
+ * The config written here is built by the very function the package uses for
+ * the guest, called rather than retyped - if the two ever disagree about the
+ * target Ruby version or which cops are off, that is exactly the divergence
+ * this test should catch.
  */
 const nativeRuboCopLayout = (sources: string[]): string[] => {
-  fs.writeFileSync(path.join(workspace, '.rubocop.yml'), RUBOCOP_CONFIG_YAML)
+  fs.writeFileSync(path.join(workspace, '.rubocop.yml'), buildRuboCopConfig())
 
   const files = sources.map((source, index) => {
     const file = path.join(workspace, `sample_${String(index).padStart(3, '0')}.rb`)
@@ -145,6 +166,7 @@ const nativeRuboCopLayout = (sources: string[]): string[] => {
       '-e',
       `gem "rubocop", "${pinnedRuboCop}"
        gem "rubocop-ast", "${pinnedRuboCopAst}"
+       gem "parser", "${pinnedParser}"
        require "rubocop"
        RuboCop::CLI.new.run(ARGV)`,
       '--',
