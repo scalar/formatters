@@ -10,6 +10,10 @@
 // pass that had succeeded. See silenceThreadsThisRuntimeCannotRun in
 // build/java_fmt_teavm/kotlin-probe/src/ktfmt/java/kfmt/KtFmt.java.
 //
+// The handler there matches the refusal's message, not just its type, so this
+// test is also what catches a reworded refusal: the noise would come back and
+// fail here rather than the silence quietly widening to cover real failures.
+//
 // It runs in a child process for two reasons. The report fired once per process,
 // so a test sharing this one with the rest of the suite would find it already
 // spent and pass for the wrong reason. And a child lets this read the real

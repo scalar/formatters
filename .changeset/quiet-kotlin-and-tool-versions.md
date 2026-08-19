@@ -27,9 +27,10 @@ the one thing a single-threaded wasm runtime cannot do, so each worker died with
 an `UnsupportedOperationException` that TeaVM's default handler printed. On a
 JVM those same workers park and idle forever; either way the formatting is
 finished. The module now installs a handler that drops exactly that — an
-`UnsupportedOperationException` reaching the top of a background thread — and
-prints anything else. Output is unchanged: 589 Kotlin files in all three styles
-are still byte-identical to ktfmt 0.64 on a JVM.
+`UnsupportedOperationException` whose message is one of the single-threaded
+stand-ins refusing — and prints everything else, so a genuine failure on one of
+those coroutines is still reported. Output is unchanged: 589 Kotlin files in all
+three styles are still byte-identical to ktfmt 0.64 on a JVM.
 
 Both packages also export the version of the tool they carry:
 

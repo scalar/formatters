@@ -199,10 +199,13 @@ coroutines and so starts kotlinx-coroutines' scheduler; its workers park waiting
 for work, the stand-in throws, and TeaVM's default handler wrote the resulting
 stack trace to `console.error` — once per process, on the timer turns after the
 first `format` had already resolved. Formatting was correct throughout. The
-module now installs a handler that drops exactly that, an
-`UnsupportedOperationException` reaching the top of a background thread, and
-prints anything else; `packages/kotlin/test/quiet.test.ts` formats in a child
-process and asserts its stderr is empty.
+module now installs a handler that drops exactly that — an
+`UnsupportedOperationException` whose message is one of the stand-ins refusing,
+"would block the only thread" or "cannot be satisfied with one thread" — and
+prints everything else, because those coroutines are real and a genuine failure
+on one is the only way it would ever be seen. `packages/kotlin/test/quiet.test.ts`
+formats in a child process and asserts its stderr is empty, so if TeaVM rewords a
+refusal the noise comes back rather than the silence spreading.
 
 ## Building it
 
