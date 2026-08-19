@@ -24,13 +24,13 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { format } from '../src/index'
+import { format, googleJavaFormatVersion } from '../src/index'
 import { describe, expect, it } from 'bun:test'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
-/** Kept in step with GJF_VERSION in the build scripts. */
-const GJF_VERSION = '1.36.1'
+/** The version the artifact carries, which src/version.test.ts holds to the build script's pin. */
+const GJF_VERSION = googleJavaFormatVersion
 
 const JAVAC_EXPORTS = ['api', 'code', 'file', 'main', 'parser', 'tree', 'util'].map(
   (pkg) => `--add-exports=jdk.compiler/com.sun.tools.javac.${pkg}=ALL-UNNAMED`,
@@ -133,6 +133,11 @@ public final class Thing implements Runnable {
     return names.stream().filter(n->!n.isEmpty()).map(String::trim).map(String::toLowerCase).sorted().distinct().collect(Collectors.joining(", "));
   }
 }`,
+  'a string literal reflowed past the margin': `class Reflow {
+  void run(){
+    x(B.builder().n(B.builder().n(B.builder().m("Example Business Solutions for a much longer trailing phrase").build()).build()).build());
+  }
+}`,
   'comments in awkward places': `class Sparse {
   int a; // trailing
   /* leading */ int b;
@@ -160,5 +165,41 @@ describe('native-conformance', () => {
     for (const [index, [name, source]] of samples.entries()) {
       expect(await format(source, { style: 'aosp' }), `diverged on: ${name}`).toBe(expected[index] ?? '')
     }
+  })
+
+  // google-java-format 1.36.1 is not idempotent in aosp style on a reflowed
+  // string literal: `StringWrapper` writes the `+` continuation at a hardcoded
+  // four columns, and the next run re-indents it to the eight aosp actually
+  // uses. So the tool's first output is not a fixed point of the tool.
+  //
+  // That is upstream's behaviour, not a gap in this build, and the two are easy
+  // to confuse - formatting here and then verifying with the jar compares pass
+  // one against pass two and reports a divergence that is really the jar
+  // disagreeing with itself. This walks both through the same three passes and
+  // asserts they agree at each one, then pins the quirk itself so a future
+  // upstream fix shows up here as a failing expectation rather than a surprise.
+  it.skipIf(!native)('tracks native google-java-format through its aosp reflow passes', async () => {
+    const source = SAMPLES['a string literal reflowed past the margin']
+    const passes: string[] = []
+    let wasm = source
+    let jvm = source
+
+    for (const pass of [1, 2, 3]) {
+      wasm = await format(wasm, { style: 'aosp' })
+      jvm = nativeFormatAll([jvm], ['--aosp'])[0] ?? ''
+      expect(wasm, `diverged on aosp pass ${pass}`).toBe(jvm)
+      passes.push(wasm)
+    }
+
+    expect(passes[0], 'upstream became idempotent; drop the workaround note in the README').not.toBe(passes[1])
+    expect(passes[1], 'upstream stopped settling after two passes').toBe(passes[2])
+  })
+
+  it.skipIf(!native)('is idempotent in google style where the tool is', async () => {
+    const source = SAMPLES['a string literal reflowed past the margin']
+    const once = await format(source)
+
+    expect(await format(once)).toBe(once)
+    expect(nativeFormatAll([once])[0] ?? '').toBe(once)
   })
 })

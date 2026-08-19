@@ -64,6 +64,23 @@ raw `CompileError`. The second check compiles a 28-byte probe module instead of
 reading a version number, so bun — which reports a Node version of its own,
 below this floor — is judged on what its engine actually does.
 
+## The version it carries
+
+```js
+import { googleJavaFormatVersion } from '@scalar/java-fmt'
+
+googleJavaFormatVersion // '1.36.1'
+```
+
+"Exact against google-java-format" is a claim about a named release, so the
+release is readable rather than something you look up. It is what a consumer
+needs to install the matching jar — to verify its own committed bytes in CI, or
+to pin a container image — and having it here means that number is not
+maintained twice, once in your repository and once in ours.
+
+`src/version.test.ts` reads `GJF_VERSION` out of the build script and fails if
+the two ever disagree, so the export cannot go stale across a bump.
+
 ## Formatting without awaiting
 
 `formatSync` is for callers with no `await` to give — a code generator that
@@ -231,6 +248,21 @@ CLI itself.
 into a form V8 rejects — `type error in branch[0] (expected (ref exn), got
 exnref)` — at every optimisation level, so the artifact is TeaVM's `ADVANCED`
 output as emitted. It is a quarter the size of the Web Image build anyway.
+
+**google-java-format is not idempotent in `aosp` style.** Reflowing a long
+string literal writes the `+` continuation at a hardcoded four columns, and a
+second run re-indents it to the eight `aosp` uses everywhere else — so the
+tool's own first output is not a fixed point of the tool. It settles on the
+second pass. This build reproduces that exactly, at every pass, because it *is*
+that build; `test/native-conformance.test.ts` walks both through three passes
+and asserts they agree at each one.
+
+It is worth knowing because of how it shows up. Format here, commit the result,
+and then verify in CI with the native jar, and the jar reports a change — which
+reads like a wasm-versus-jar divergence and is really pass one against pass two.
+Two ways out: format in `google` style, where the hardcoded four is the right
+number and the tool is idempotent, or format twice in `aosp` and commit the
+second result, which the jar then leaves alone.
 
 **Errors cross the boundary as data.** A Java exception reaching JavaScript
 arrives as a proxy object, not an `Error`: it has no message property. So results

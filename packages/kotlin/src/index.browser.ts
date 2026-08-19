@@ -1,6 +1,7 @@
 import { createArtifactLoader } from './fetch-artifact'
 import { createFormat } from './format'
 import type { InitOptions } from './types'
+import { ktfmtVersion } from './version'
 
 export type {
   BootModule,
@@ -46,6 +47,6 @@ const init = async (options?: InitOptions): Promise<void> => {
  * wasm exception-handling opcodes, which means Chrome 137, Firefox 131 or
  * Safari 18.4 at the earliest.
  */
-export { format, formatSync, init }
+export { format, formatSync, init, ktfmtVersion }
 
 export default format

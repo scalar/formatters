@@ -20,6 +20,43 @@ import org.teavm.jso.JSExport;
  * from here against one from FormatAll.java on a JVM.
  */
 public final class KtFmt {
+  static {
+    silenceThreadsThisRuntimeCannotRun();
+  }
+
+  /**
+   * Stops the runtime reporting the death of a thread it was never going to run.
+   *
+   * <p>{@code Parser}'s initializer builds a {@code CoreProjectEnvironment}, whose
+   * constructor registers IntelliJ's {@code CodeInsightContextManagerImpl}, which
+   * launches two coroutines on the project scope - {@code Dispatchers.Default},
+   * since the scope carries no dispatcher of its own. That starts
+   * kotlinx.coroutines' scheduler, whose workers park waiting for work. Parking
+   * is what a single-threaded runtime cannot do, so the classlib throws
+   * {@code UnsupportedOperationException} - "LockSupport.park would block the
+   * only thread" - the worker dies with it, and TeaVM's default handler prints
+   * the stack trace to stderr. It happens once per process, on the timer turns
+   * after the first format call resolves rather than during it, which is what
+   * makes it look like a diagnostic about the file being formatted. It is not:
+   * on a JVM those workers park and idle forever, and the formatting is finished
+   * either way.
+   *
+   * <p>So the handler drops exactly that: an {@code UnsupportedOperationException}
+   * reaching the top of a background thread, which is the single-threaded
+   * stand-ins ({@code LockSupport.park}, {@code BlockingQueue.take},
+   * {@code Condition.await}) saying what they always say here. Anything else still
+   * prints, and the main thread never reaches this handler at all - a failure
+   * inside {@code format} is caught below and returned as a status.
+   */
+  private static void silenceThreadsThisRuntimeCannotRun() {
+    Thread.setDefaultUncaughtExceptionHandler(
+        (thread, error) -> {
+          if (!(error instanceof UnsupportedOperationException)) {
+            error.printStackTrace();
+          }
+        });
+  }
+
   @JSExport
   public static String format(String source, String options) {
     try {
