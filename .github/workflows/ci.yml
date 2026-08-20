@@ -168,7 +168,7 @@ jobs:
   browser-smoke:
     name: Browser Smoke Test
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -177,8 +177,20 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
+      # `--with-deps` is deliberately absent. It re-runs `apt-get update && apt-get install` as
+      # root before it downloads anything, and that apt call is where this job's time goes: 30
+      # seconds on a good day, four minutes on a normal one, and on run 50 it sat against an
+      # unreachable azure.archive.ubuntu.com for twenty minutes until `timeout-minutes` cancelled
+      # the job - for a test that takes twenty seconds. The ubuntu-24.04 image ships Chrome,
+      # Chromium and Edge already, so every shared library Playwright's chromium links against is
+      # on the runner before the job starts, and the apt call had nothing left to install.
+      #
+      # If that ever stops being true this does not go quiet: chromium fails to launch in
+      # scripts/test-browser.ts and names the library it could not find. The step timeout is here
+      # so the download cannot repeat the stall either - the whole job now fits inside it.
       - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+        timeout-minutes: 5
+        run: bunx playwright install chromium
 
       - name: Load the built packages in a browser
         run: bun run test:browser
