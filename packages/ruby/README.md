@@ -129,7 +129,7 @@ corrections — over those same 397 files, in 116 of them.
 |:---|:---|:---|
 | first call into a VM | ~1.1 s, to boot the VM | plus ~4 s, to load RuboCop |
 | every call after | ~4 ms | 2–3× that |
-| artifact | 5.1 MB either way | |
+| artifact | 5.2 MB either way | |
 
 The four seconds are RuboCop's 698 cop files being read and evaluated by a Ruby
 that is itself running on WebAssembly. Nothing here can make that cheaper, so it
@@ -148,7 +148,7 @@ letting `format` boot on its own — and `init({ rubocop: false })` is how a
 synchronous caller declines it.
 
 The artifact carries both tools whichever way you call it — syntax_tree and
-prettier_print are 141 KB of the 5.1 MB, so there was never a lighter build to
+prettier_print are 141 KB of the 5.2 MB, so there was never a lighter build to
 be had by dropping one.
 
 ### When it gives up
@@ -212,7 +212,7 @@ Formatting grows the VM's linear memory until it is recycled at 400 MB — a
 ceiling picked for a Node process. A tab has less room to absorb that, so keep
 large files off the main thread.
 
-The browser reads the same brotli artifact as Node (5.1 MB over the wire) and
+The browser reads the same brotli artifact as Node (5.2 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -263,7 +263,7 @@ const artifact = import.meta.resolve('@scalar/ruby-fmt/wasm')
 ## These are the real gems, and the output is exact
 
 There is no approximation here. This runs **actual
-CRuby 3.4.1 compiled to WebAssembly** ([ruby.wasm](https://github.com/ruby/ruby.wasm))
+CRuby 4.0.0 compiled to WebAssembly** ([ruby.wasm](https://github.com/ruby/ruby.wasm))
 with the **actual [syntax_tree](https://github.com/ruby-syntax-tree/syntax_tree)
 gem** — and, for the RuboCop pass, the **actual
 [RuboCop](https://github.com/rubocop/rubocop) gem** — baked into it. Neither is
@@ -282,7 +282,7 @@ bug, not a known stylistic gap.
 
 It works because all of it is pure Ruby with no native extensions of its own.
 syntax_tree and prettier_print need Ripper, RuboCop's parser needs racc, and
-both are part of CRuby.
+`rubocop-ast` needs prism — all three are part of CRuby.
 
 The versions are pinned in `build/ruby_fmt/Gemfile`, which is also where the
 conformance tests read them from, so the native side and the wasm side cannot
@@ -290,15 +290,33 @@ drift apart. `rubocop-ast` is pinned alongside `rubocop` rather than left to
 resolve: it decides which parser produces the token stream the Layout cops see,
 so a newer one changes the output without RuboCop itself changing at all.
 
+The Ruby is pinned by the same chain. RuboCop 1.75 and later need
+`rubocop-ast` 1.43+, which subclasses prism's parser translation while it is
+being required — so prism has to be there before the first cop is registered.
+That translation needs prism 1.4, and `rubocop-ast` 1.49 raised the floor again
+to 1.7. Ruby 3.4.1 carries prism 1.2.0 and Ruby 4.0.0 carries 1.7.0, which is
+why the RuboCop this ships and the CRuby it runs on move together.
+
 ---
 
-## The one thing that is not stock: `case`/`in` with an endless range
+## What is not stock: three fixes for `case`/`in`
+
+syntax_tree 6.3.0 has a family of bugs in pattern matching, and they all end the
+same way — source that parsed on the way in comes back out as source Ruby cannot
+read, or, in one case, as Ruby that parses and means something else. `format()`
+re-parses everything it returns and raises rather than handing back a broken
+file, so what these cost a consumer today is a formatter that refuses whole
+files. `src/stree-patch.ts` carries the fixes, applied by reopening the classes
+at boot: the artifact stays stock syntax_tree 6.3.0, and retiring a fix once it
+lands upstream is deleting a constant.
+
+### 1. A pattern that *ends* in an endless range
 
 `then` is mandatory in a `case`/`in` clause whose pattern ends in an endless
 range. Leave it out and Ruby reads the newline as the range's continuation and
-swallows the following line into the pattern. syntax_tree 6.3.0 knows this, but
-asks whether the pattern *is* an endless range rather than whether it *ends*
-with one — so it keeps `then` for `in 400..` and drops it everywhere else:
+swallows the following line into the pattern. syntax_tree knows this, but asks
+whether the pattern *is* an endless range rather than whether it *ends* with one
+— so it keeps `then` for `in 400..` and drops it everywhere else:
 
 ```ruby
 # in, and valid
@@ -315,27 +333,133 @@ end
 ```
 
 `in { status: 400.. } then` breaks the same way, because syntax_tree unwraps it
-to `in status: 400..` and exposes the trailing `..`. Both come out of source
-that parsed on the way in, and nothing raises — the first thing you learn is
-that a generated file no longer compiles.
+to `in status: 400..` and exposes the trailing `..`.
 
-`src/stree-patch.ts` fixes it by deciding on the *rendered* pattern rather than
-on its node types: format the pattern on its own, and add `then` when what comes
-out ends in `..`. That cannot be fooled by `in { m: "ends.." }`, and it does not
-need a list of node types kept in step with the language. The patch is applied
-by reopening the class at boot, so the artifact stays stock syntax_tree 6.3.0
-and retiring the patch is deleting one file.
+The fix decides on the *rendered* pattern rather than on its node types: format
+the pattern on its own, and add `then` when what comes out ends in `..`. That
+cannot be fooled by `in { m: "ends.." }`, and it does not need a list of node
+types kept in step with the language.
 
-The divergence is deliberately narrow, and measured: formatting the rubocop,
-rubocop-ast and syntax_tree gems both ways — 1,033 files — it changes the output
-of none of them. `test/native-conformance.test.ts` pins it in both directions:
-byte-identity with native syntax_tree everywhere else, plus one test asserting
-that native output for this shape still fails to parse while ours does not. When
-syntax_tree releases the fix, that test fails and the patch comes out.
+### 2. A guarded clause loses the parentheses that make it legal
+
+A guard sits exactly where `then` would go, so the fix above cannot help —
+`in 400.. then if g` is not Ruby. The parentheses the author wrote are the only
+legal spelling, and syntax_tree drops them: the clause reaches the formatter as
+an `IfNode` wrapping the pattern, with nothing recording that they were ever
+there.
+
+```ruby
+# in, and valid
+case status
+in (400..) if retryable
+  retry_request
+end
+
+# out of stock syntax_tree 6.3.0 — "unexpected 'if', expecting 'then'"
+case status
+in 400 ..  if retryable
+  retry_request
+end
+```
+
+Writing `then` defensively in the input does not survive either, because that
+`then` is not in the tree. So a guarded clause whose pattern does not terminate
+itself gets the pattern wrapped back in a `Paren` node before it is formatted.
+Going through a real node rather than printing brackets is what makes the
+awkward cases come out right: `in {x: (500..)} if g` becomes
+`in ({ x: 500.. }) if g`, because a hash pattern inside parentheses has to keep
+its braces — `in (x: 500..)` does not parse.
+
+### 3. A stray `**` claimed by a hash pattern
+
+Two independent defects that compound, both around the nameless `**` in a hash
+pattern.
+
+Ripper does not report that `**`, so syntax_tree recovers it from the token
+stream — with an unbounded reverse search that never checks whether the token it
+found is anywhere near the pattern. An exponent is an `Op` named `:**` that
+nothing else consumes, so `retry_count**2` on line 350 is still sitting in the
+list when line 510 is parsed, and the hash pattern there adopts it:
+
+```ruby
+x = n**2        # anywhere earlier in the file
+
+# out of stock syntax_tree 6.3.0 — a ** that was never written
+case response
+in { status: 200, body: String, ** then }
+  handle
+end
+```
+
+And when a `**` really is there, the ` then` after it is printed by
+`format_contents`, which runs *inside* the braces — `in { a: 1, ** then }`,
+which Ruby rejects with "unexpected 'then', expecting '}'".
+
+The search now has a floor: a `**` that belongs to this pattern is the last
+thing in it, so it has to start after everything else the pattern is known to
+contain — its constant, its keywords, and its opening brace. That also refuses a
+pin expression's exponent (`in { a: ^(n**2), b: 2 }`), where the stray `**` is
+inside the pattern rather than before it. And the ` then` is printed only in the
+one rendering with no braces to close it, which is the unwrapped `in ** then`.
+
+Worth knowing if you hit this in the wild: spacing the exponent as `n ** 2`
+avoids the bug, but syntax_tree normalises that straight back to `n**2`, so it
+returns on the next run. And `in {}` after an exponent is the quiet one — it
+becomes `in **`, which parses, but `in {}` matches only an empty hash while
+`in **` matches any hash at all.
+
+### How narrow the divergence is
+
+Measured rather than asserted: formatting the rubocop (1.74 and 1.81),
+rubocop-ast, syntax_tree, parser and regexp_parser gems both ways — 2,076 files
+— the patches change the output of none of them, and none of them starts
+failing to format. They fire only where stock syntax_tree emits a syntax
+error.
+
+`test/native-conformance.test.ts` pins that in both directions: byte-identity
+with native syntax_tree everywhere else, plus a test asserting that native
+output for each of these shapes still fails to parse while ours does not. When
+syntax_tree releases a fix, that test fails and the patch behind it comes out.
 
 Separately, `format()` parses everything it returns and raises instead of
 handing back source Ruby cannot read. It costs about 2.7ms on a 28ms format,
 which is a good trade for never writing a broken file again.
+
+---
+
+## Careful with `rubocop -a` afterwards: `Style/MultilineInPatternThen`
+
+This is not a bug in this package, but it can undo what this package does.
+
+RuboCop's `Style/MultilineInPatternThen` removes the `then` from a multiline
+`case`/`in` clause. For a pattern ending in an endless range that `then` is
+mandatory, so the cop's autocorrect produces Ruby that does not parse:
+
+```ruby
+# in — valid, and what this package emits
+case status
+in 500.. then
+  retry_request
+end
+
+# out of `rubocop -a` — the next line is swallowed into the range
+case status
+in 500..
+  retry_request
+end
+```
+
+The Layout pass this package runs never touches it: `Style` is a different
+department, and the pass is `--only Layout`. But since 0.4.0 bundles RuboCop,
+the two tools now ship together, and a consumer who runs a full `rubocop -a`
+over the output afterwards can silently break their own code. If that is your
+pipeline, exclude the cop:
+
+```yaml
+# .rubocop.yml
+Style/MultilineInPatternThen:
+  Enabled: false
+```
 
 ---
 
@@ -348,7 +472,7 @@ is a cached module-level value rather than an object you have to construct.
 |:---|:---|:---|
 | `src/format.ts` | `format` | The public entry point: recycle if needed, validate options, write input, format. |
 | `src/boot-vm.ts` | `bootVm`, `recycleVm` | Boots CRuby with syntax_tree required and patched, and caches the result. |
-| `src/stree-patch.ts` | `IN_PATTERN_THEN_PATCH` | The one fix applied on top of the gem, and why it is safe. |
+| `src/stree-patch.ts` | `STREE_PATCHES` | The fixes applied on top of the gem, and why each is safe. |
 | `src/rubocop.ts` | `RUBOCOP_SETUP`, `RUBOCOP_CONFIG_YAML` | The Layout pass: how RuboCop is driven, and which of its parts are used. |
 | `src/wasi-shims.ts` | `createShimDirectory` | Stand-ins for the two stdlib extensions wasip1 cannot provide. |
 | `src/compile-artifact.ts` | `compileArtifact` | Locates, decompresses and compiles `ruby_fmt.wasm.br`, at most once per process. |
@@ -372,12 +496,13 @@ and packs down about 7×. Decompression happens once per process (~100 ms via
 reuses it.
 
 Two things keep it small. Everything the formatter never loads is stripped
-before packaging: `rdoc`, `bundler`, `prism`, `irb`, `reline`, and the bundled
-gem tree (`rake`, `minitest`, `rexml`, `net-imap`, `typeprof`…). That list is not
+before packaging: `rdoc`, `bundler`, `irb`, `reline`, and the bundled gem tree
+(`rake`, `minitest`, `rexml`, `net-imap`, `typeprof`…). That list is not
 guesswork — it is the complement of `$LOADED_FEATURES` after a real format, which
 touches just 72 files. `rubygems` stays, because Ruby loads it during startup,
-and so does `specifications/`, which backs the default gems that do load. Then
-`wasm-opt -Os` runs over what remains.
+and so does `specifications/`, which backs the default gems that do load. `prism`
+stays too, because `rubocop-ast` requires it. Then `wasm-opt -Os` runs over what
+remains.
 
 Note that `rbwasm --without-stdlib` cannot do any of this: it accepts only `enc`,
 and that is a no-op for a static build, which compiles the encodings in.

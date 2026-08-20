@@ -114,6 +114,115 @@ describe('format', () => {
     expect(format(out, { rubocop: false })).resolves.toBe(out)
   })
 
+  // A guard cannot be fixed with `then` - the guard already sits where `then`
+  // would go, and `in 400.. then if g` is not Ruby. The parentheses the author
+  // wrote are the only legal spelling, and syntax_tree drops them: the clause
+  // reaches the formatter as an `IfNode` with no record that they were there.
+  //
+  // Each of these arrives at a trailing `..` by a different route, and the last
+  // two are the ones plain parentheses would not have fixed on their own - a
+  // bare hash pattern has to keep its braces inside them.
+  const GUARDED: Record<string, [source: string, expected: string]> = {
+    'a bare endless range': ['case s\nin (400..) if g\n  a\nend\n', 'case s\nin (400..) if g\n  a\nend\n'],
+    'an unless guard': ['case s\nin (400..) unless g\n  a\nend\n', 'case s\nin (400..) unless g\n  a\nend\n'],
+    'an alternative': ['case s\nin Foo | (500..) if g\n  a\nend\n', 'case s\nin (Foo | 500..) if g\n  a\nend\n'],
+    'a hash pattern': ['case s\nin {x: (500..)} if g\n  a\nend\n', 'case s\nin ({ x: 500.. }) if g\n  a\nend\n'],
+    'a bare double splat': ['case s\nin {**} if g\n  a\nend\n', 'case s\nin ({ ** }) if g\n  a\nend\n'],
+  }
+
+  for (const [shape, [source, expected]] of Object.entries(GUARDED)) {
+    it(`keeps the parentheses a guarded clause needs around ${shape}`, async () => {
+      const out = await format(source, { rubocop: false })
+
+      expect(out).toBe(expected)
+      // Re-formatting is the real assertion: the VM re-parses before it returns,
+      // so a second pass that comes back unchanged is the output parsing.
+      expect(await format(out, { rubocop: false })).toBe(out)
+    })
+  }
+
+  // Writing `then` defensively does not survive stock syntax_tree either, since
+  // that `then` is not in the tree - so this has to come back parenthesised too.
+  it('handles a guarded clause that already carries a redundant then', async () => {
+    const out = await format('case s\nin (400..) if g then\n  a\nend\n', { rubocop: false })
+
+    expect(out).toBe('case s\nin (400..) if g\n  a\nend\n')
+    expect(await format(out, { rubocop: false })).toBe(out)
+  })
+
+  // A guarded clause whose pattern closes itself needs nothing added, and adding
+  // parentheses anyway would be churn on every file that has one.
+  it('leaves a guarded clause alone when the pattern terminates itself', async () => {
+    const out = await format('case s\nin [1, (500..)] if g\n  a\nend\n', { rubocop: false })
+
+    expect(out).toBe('case s\nin [1, 500..] if g\n  a\nend\n')
+  })
+
+  // stock syntax_tree prints this ` then` inside the braces - `in { a: 1, ** then }`
+  // - which Ruby rejects with "unexpected 'then', expecting '}'". The braces
+  // already do the job the `then` was there for, so it is dropped rather than
+  // moved outside them.
+  it('does not print then inside a hash pattern that has braces', async () => {
+    const out = await format('case r\nin {a: 1, **}\n  x\nend\n', { rubocop: false })
+
+    expect(out).toBe('case r\nin { a: 1, ** }\n  x\nend\n')
+    expect(await format(out, { rubocop: false })).toBe(out)
+  })
+
+  // The one rendering with no braces to close it. Without `then`, `x` on the
+  // next line is read as the splat's name and the clause body silently empties.
+  it('keeps then after a bare double splat that prints without braces', async () => {
+    const out = await format('case r\nin {**}\n  x\nend\n', { rubocop: false })
+
+    expect(out).toBe('case r\nin ** then\n  x\nend\n')
+  })
+
+  // An exponent is an `Op` named `:**` that nothing else consumes, so it sits in
+  // syntax_tree's token list until a later hash pattern's unbounded reverse
+  // search adopts it as a double splat that was never written. `n ** 2` avoids
+  // it, but syntax_tree normalises that back to `n**2`, so it returns next run.
+  const STRAY_SPLAT: Record<string, [source: string, expected: string]> = {
+    'a two-key pattern': [
+      'x = n**2\ncase r\nin {a: 1, b: 2}\n  y\nend\n',
+      'x = n**2\ncase r\nin { a: 1, b: 2 }\n  y\nend\n',
+    ],
+    'a single-key pattern': ['x = n**2\ncase r\nin {a: 1}\n  y\nend\n', 'x = n**2\ncase r\nin a: 1\n  y\nend\n'],
+    'a constant pattern': ['x = n**2\ncase r\nin Foo[a: 1]\n  y\nend\n', 'x = n**2\ncase r\nin Foo[a: 1]\n  y\nend\n'],
+    // `in {}` matches only an empty hash and `in **` matches any hash at all, so
+    // this one parsed fine and meant something else - the worst of the family.
+    'an empty pattern': ['x = n**2\ncase r\nin {}\n  y\nend\n', 'x = n**2\ncase r\nin {}\n  y\nend\n'],
+  }
+
+  for (const [shape, [source, expected]] of Object.entries(STRAY_SPLAT)) {
+    it(`does not adopt an earlier exponent as the double splat of ${shape}`, async () => {
+      expect(await format(source, { rubocop: false })).toBe(expected)
+    })
+  }
+
+  // The same search, from the other direction: here the stray `**` is inside the
+  // pattern rather than before it, and it is refused for the same reason - it
+  // starts before the pattern's last keyword ends.
+  it('does not adopt a pin expression exponent as the double splat', async () => {
+    const out = await format('case r\nin {a: ^(n**2), b: 2}\n  y\nend\n', { rubocop: false })
+
+    expect(out).toBe('case r\nin { a: ^(n**2), b: 2 }\n  y\nend\n')
+    expect(await format(out, { rubocop: false })).toBe(out)
+  })
+
+  // The bound has to leave the genuine article alone, whichever spelling it is
+  // in and whether or not there is an exponent in the file to confuse it with.
+  it('still finds the double splat a pattern really has', async () => {
+    expect(await format('x = n**2\ncase r\nin {a: 1, **}\n  y\nend\n', { rubocop: false })).toBe(
+      'x = n**2\ncase r\nin { a: 1, ** }\n  y\nend\n',
+    )
+    expect(await format('case r\nin {a: 1, **rest}\n  y\nend\n', { rubocop: false })).toBe(
+      'case r\nin { a: 1, **rest }\n  y\nend\n',
+    )
+    expect(await format('case r\nin {a: 1, **nil}\n  y\nend\n', { rubocop: false })).toBe(
+      'case r\nin { a: 1, **nil }\n  y\nend\n',
+    )
+  })
+
   // Layout/EmptyLinesAroundAttributeAccessor and Layout/EmptyLineBetweenDefs.
   // syntax_tree does not insert blank lines at all, so these are corrections it
   // could never make on its own - which makes this input a clean probe for
@@ -135,6 +244,18 @@ describe('format', () => {
   // what RuboCop costs.
   it('skips the pass when opted out, leaving syntax_tree alone', async () => {
     expect(await format(NEEDS_RUBOCOP, { rubocop: false })).toBe(NEEDS_RUBOCOP)
+  })
+
+  // RuboCop's Style/MultilineInPatternThen removes the `then` a pattern ending in
+  // an endless range cannot do without, and the result does not parse - the next
+  // line is swallowed into the range. It is a Style cop and this pass is
+  // `--only Layout`, so it never runs, but the two tools now ship together and
+  // that is worth holding in place. See the README for the `.rubocop.yml` entry a
+  // consumer running a full `rubocop -a` afterwards wants.
+  it('leaves the mandatory then alone when the rubocop pass runs', async () => {
+    const source = 'case status\nin 500.. then\n  retry_request\nend\n'
+
+    expect(await format(source)).toBe(source)
   })
 
   // Layout/EmptyLineAfterGuardClause.
@@ -180,6 +301,37 @@ describe('format', () => {
       'result = some_object.method_one(argument_one_here, argument_two_here, argument_five).method_two(argument_three, argument_four, argument_six)\n'
 
     expect(await format(source, { printWidth: 200 })).toBe(await format(source, { printWidth: 200, rubocop: false }))
+  })
+
+  // Two Layout offenses that syntax_tree's own output introduces, so the pass is
+  // the thing that should be clearing them. RuboCop 1.74.0 corrected neither:
+  // its Layout/SpaceInsideHashLiteralBraces did not look at hash *patterns*, and
+  // its Layout/SpaceAroundKeyword did not flag the `return(` wrapping syntax_tree
+  // emits when a `return <call>` exceeds printWidth. Both are why the bundled
+  // RuboCop moved to 1.81.6.
+  it('corrects space inside a hash pattern, not only a hash literal', async () => {
+    const config = { rubocopConfig: { 'Layout/SpaceInsideHashLiteralBraces': { EnforcedStyle: 'no_space' } } }
+
+    expect(await format('x = {a: 1, b: 2}', config)).toBe('x = {a: 1, b: 2}\n')
+    expect(await format('case r\nin {event: "error", data: String => data}\n  y\nend\n', config)).toBe(
+      'case r\nin {event: "error", data: String => data}\n  y\nend\n',
+    )
+  })
+
+  // Long enough, and deep enough, that syntax_tree has to break the call - which
+  // is what produces the `return(` this is about.
+  it('corrects the space after return in syntax_tree own wrapping', async () => {
+    const source =
+      'module M\n  class C\n    class D\n      private def f(y, val:, closing:, content_type: nil)\n' +
+      '        case val\n        in FilePart\n' +
+      '          return write_multipart_content(y, val: val.content, closing: closing, content_type: val.content_type)\n' +
+      '        end\n      end\n    end\n  end\nend\n'
+
+    const out = await format(source, { printWidth: 110 })
+
+    expect(out).toContain('return (')
+    expect(out).not.toContain('return(')
+    expect(await format(out, { printWidth: 110 })).toBe(out)
   })
 
   // The escape hatch, and the way to put Layout/LineLength back.

@@ -1,7 +1,7 @@
 import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/browser_wasi_shim'
 import { RubyVM } from '@ruby/wasm-wasi'
 
-import { IN_PATTERN_THEN_PATCH } from './stree-patch'
+import { STREE_PATCHES } from './stree-patch'
 import type { ArtifactSource, BootVm, RubyFormatterVm } from './types'
 import { SHIM_MOUNT_PATH, createShimDirectory } from './wasi-shims'
 
@@ -66,18 +66,27 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
 
       const { vm } = await RubyVM.instantiateModule({ module: await compileArtifact(), wasip1: wasi })
 
+      // RubyGems is required explicitly because Ruby 4.0 stopped loading it during
+      // startup. `Gem` is still defined - as a stub - so nothing fails until
+      // something touches a real constant, which syntax_tree does on the second
+      // line of `formatter.rb`: `Gem::Version.new(RUBY_VERSION)`. The error that
+      // came back was `uninitialized constant Gem::Version`, which reads like a
+      // broken artifact rather than a missing require.
+      //
       // /bundle/setup puts the baked-in gems on the load path. rbwasm writes it
       // when it packages the Gemfile, and nothing else sets $LOAD_PATH up for us.
       //
       // The shims go on the end, never the front: the real stdlib is searched
       // first, so they answer only for the two extensions this build genuinely
       // does not have. See `wasi-shims.ts`.
-      vm.eval(`require "/bundle/setup"; $LOAD_PATH.push("${SHIM_MOUNT_PATH}"); require "syntax_tree"`)
+      vm.eval(
+        `require "rubygems"; require "/bundle/setup"; $LOAD_PATH.push("${SHIM_MOUNT_PATH}"); require "syntax_tree"`,
+      )
 
-      // One correctness fix on top of the stock gem, applied here rather than in
-      // the artifact so it stays reviewable. See stree-patch.ts for what it fixes
-      // and the evidence that it changes nothing else.
-      vm.eval(IN_PATTERN_THEN_PATCH)
+      // A handful of correctness fixes on top of the stock gem, applied here
+      // rather than in the artifact so they stay reviewable. See stree-patch.ts
+      // for what each one fixes and the evidence that it changes nothing else.
+      for (const patch of STREE_PATCHES) vm.eval(patch)
 
       // RuboCop is not required here. It costs about four seconds against
       // syntax_tree's one, and a caller who never asks for it should never wait

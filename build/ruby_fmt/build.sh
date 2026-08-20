@@ -17,9 +17,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-RUBY_VERSION="${RUBY_VERSION:-3.4}"
+RUBY_VERSION="${RUBY_VERSION:-4.0}"
 OUT="../../packages/ruby/ruby_fmt.wasm.br"
 BUILD_ID="ruby-${RUBY_VERSION}-wasm32-unknown-wasip1-full"
+
+# The stdlib directory CRuby installs into, which is the x.y.0 of the release
+# rather than the release itself - 4.0.6 would still be 4.0.0 here. Derived from
+# RUBY_VERSION so that a bump has one place to change rather than three.
+RUBY_LIB_VERSION="${RUBY_VERSION}.0"
 
 bundle install
 
@@ -60,15 +65,18 @@ bundle exec rbwasm build \
 # list. `racc` is in the bundled-gem tree and RuboCop's parser does need it,
 # which is why the Gemfile pulls it from rubygems instead: as a bundle gem it
 # lands in /bundle and survives this. And a load-path-only bundle has no
-# gemspecs, so any `gem "name", ">= x"` in gem code raises - which is one of the
-# reasons the Gemfile pins RuboCop where it does. See the comments there.
+# gemspecs, so any `gem "name", ">= x"` in gem code raises - which prism's
+# parser translation does, so the VM writes a spec per packaged gem before it
+# loads RuboCop. See `src/rubocop.ts`.
 #
-# `prism` is still stripped because rubocop-ast is held at 1.42.0, the last
-# release that does not need it. Raising that pin means keeping prism here.
+# `prism` is *not* stripped, though it used to be. rubocop-ast requires it and
+# subclasses its parser translation at load time, so `require "prism"` has to
+# find the default gem's Ruby files here - the C extension is compiled in
+# either way. See prism_placeholder/prism.gemspec.
 RUBY_LIB="build/wasm32-unknown-wasip1/${BUILD_ID}-"*/install/usr/local/lib/ruby
 for dir in $RUBY_LIB; do
-  rm -rf "$dir"/3.4.0/{rdoc,bundler,prism,irb,reline} \
-    "$dir"/gems/3.4.0/{gems,cache}
+  rm -rf "$dir"/"$RUBY_LIB_VERSION"/{rdoc,bundler,irb,reline} \
+    "$dir"/gems/"$RUBY_LIB_VERSION"/{gems,cache}
 done
 
 # The tarball under rubies/ is a cache keyed by build id, not by tree contents,

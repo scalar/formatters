@@ -88,6 +88,47 @@ export const buildRuboCopConfig = (overrides: Record<string, unknown> = {}): str
  * same comparison over 397 files of real Ruby found no divergence.
  */
 export const RUBOCOP_SETUP = `
+# RubyGems has no idea the bundle exists. rbwasm packages /bundle as a set of
+# $LOAD_PATH entries and no specifications at all, so \`Gem::Specification\` sees
+# only CRuby's default gems. That is invisible until a gem asserts a version of
+# one of its dependencies - which prism's parser translation does the moment
+# rubocop-ast requires it:
+#
+#     gem "parser", ">= 3.3.7.2"   # prism/translation/parser.rb
+#
+# With no spec to find that raises \`Gem::MissingSpecError\`, the rescue around it
+# takes that for a LoadError, and it answers with \`exit(1)\` - which arrives here
+# as a SystemExit thrown out of \`require "rubocop"\`, naming neither RubyGems nor
+# the parser gem that is sitting right there on the load path.
+#
+# So give RubyGems a spec per packaged gem first. The list is read from
+# /bundle/gems rather than written down on the JavaScript side, so it cannot
+# drift from what the artifact actually carries, and it goes in Gem.user_dir,
+# which is already on Gem.path (HOME is /work - see boot-vm.ts). The specs say
+# nothing but name and version: they exist to answer a version assertion, and
+# the code itself keeps loading from /bundle the way it already did.
+require "fileutils"
+
+bundle_specs = File.join(Gem.user_dir, "specifications")
+FileUtils.mkdir_p(bundle_specs)
+
+Dir.children("/bundle/gems").each do |entry|
+  name, version = entry.match(/\\A(.+)-([^-]+)\\z/)&.captures
+  next unless version && Gem::Version.correct?(version)
+
+  File.write(File.join(bundle_specs, "#{entry}.gemspec"), <<~SPEC)
+    Gem::Specification.new do |spec|
+      spec.name = #{name.inspect}
+      spec.version = #{version.inspect}
+      spec.require_paths = ["lib"]
+      spec.authors = ["-"]
+      spec.summary = "-"
+    end
+  SPEC
+end
+
+Gem::Specification.reset
+
 require "rubocop"
 
 module ScalarRubyFmt
