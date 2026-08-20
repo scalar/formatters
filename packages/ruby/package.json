@@ -1,6 +1,6 @@
 {
   "name": "@scalar/ruby-fmt",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Ruby formatter (syntax_tree on CRuby/wasm) - runs on plain Node, no Ruby install",
   "keywords": [
     "ruby",
