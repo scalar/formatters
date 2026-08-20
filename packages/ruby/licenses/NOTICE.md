@@ -9,11 +9,11 @@ Built by `build/ruby_fmt/build.sh`; the gem versions are pinned in
 
 | Component | Version | License | Text |
 |---|---|---|---|
-| CRuby | 3.4.1 | Ruby License / BSD-2-Clause | `cruby-COPYING`, `cruby-BSDL`, `cruby-LEGAL` |
+| CRuby | 4.0.0 | Ruby License / BSD-2-Clause | `cruby-COPYING`, `cruby-BSDL`, `cruby-LEGAL` |
 | syntax_tree | 6.3.0 | MIT | `syntax_tree-LICENSE` |
 | prettier_print | 1.2.1 | MIT | `prettier_print-LICENSE` |
-| rubocop | 1.74.0 | MIT | `rubocop-LICENSE.txt` |
-| rubocop-ast | 1.42.0 | MIT | `rubocop-ast-LICENSE.txt` |
+| rubocop | 1.81.6 | MIT | `rubocop-LICENSE.txt` |
+| rubocop-ast | 1.50.0 | MIT | `rubocop-ast-LICENSE.txt` |
 | parser | 3.3.12.0 | MIT | `parser-LICENSE.txt` |
 | ast | 2.4.3 | MIT | `ast-LICENSE.MIT` |
 | racc | 1.8.1 | Ruby License / BSD-2-Clause | `racc-COPYING` |
@@ -25,7 +25,8 @@ Built by `build/ruby_fmt/build.sh`; the gem versions are pinned in
 | lint_roller | 1.1.0 | MIT | `lint_roller-LICENSE.txt` |
 | ruby-progressbar | 1.13.0 | MIT | `ruby-progressbar-LICENSE.txt` |
 | language_server-protocol | 3.17.0.6 | MIT | `language_server-protocol-LICENSE.txt` |
-| json | 2.9.1 | Ruby License / BSD-2-Clause | `json-COPYING` |
+| json | 2.18.0 | Ruby License / BSD-2-Clause | `json-COPYING` |
+| prism | 1.7.0 | Ruby License / BSD-2-Clause | `cruby-COPYING`, `cruby-BSDL` |
 | logger | 1.7.0 | Ruby License / BSD-2-Clause | `logger-COPYING` |
 | js (ruby.wasm) | 2.10.1 | MIT | see below |
 
@@ -38,6 +39,12 @@ The `js` gem ships no license file of its own; its gemspec declares **MIT**, and
 it is part of [ruby/ruby.wasm](https://github.com/ruby/ruby.wasm), whose MIT
 license covers it.
 
+`json` and `prism` are CRuby default gems rather than bundle entries - the
+Gemfile's placeholder gemspecs keep the real ones out so that the guest loads
+what is already compiled in. They are listed because they are inside the
+artifact all the same. prism carries no separate license in the CRuby tree; it
+is covered by `cruby-COPYING` and `cruby-BSDL` along with the rest of CRuby.
+
 CRuby itself embeds third-party code under its own terms - Onigmo (the regex
 engine), `dtoa.c`, `st.c`, and parts of `addr2line.c` among them. Ruby tracks
 those in its `LEGAL` file, reproduced verbatim here as `cruby-LEGAL`, because
@@ -48,7 +55,7 @@ part of it is embedded, so it is not listed above.
 
 ## Known gap
 
-The artifact statically links **wasi-libc** from wasi-sdk 22.0, whose license
+The artifact statically links **wasi-libc** from wasi-sdk 24.0, whose license
 text is not reproduced here - the wasi-sdk tarball this build downloads does not
 carry one, so it has to be sourced from upstream
 ([WebAssembly/wasi-libc](https://github.com/WebAssembly/wasi-libc)) rather than

@@ -16,7 +16,7 @@
 # That is not specific to a version - every json release carries those shims -
 # so there is no pin that fixes it.
 #
-# There is also nothing to fix. json 2.9.1 is a *default gem* of Ruby 3.4.1, so
+# There is also nothing to fix. json 2.18.0 is a *default gem* of Ruby 4.0.0, so
 # it is already compiled into the artifact, Ruby files and C extension both.
 # This gemspec tells Bundler that requirement is met and ships nothing: it
 # declares no files, so the bundle gets no json directory at all: rbwasm skips a
@@ -30,7 +30,7 @@
 #   ruby -e 'require "json"; puts JSON::VERSION'   # inside the artifact
 Gem::Specification.new do |spec|
   spec.name = "json"
-  spec.version = "2.9.1"
+  spec.version = "2.18.0"
   spec.summary = "Placeholder for the json default gem already inside CRuby"
   spec.authors = ["Scalar"]
   spec.license = "Ruby"

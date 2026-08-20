@@ -66,13 +66,22 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
 
       const { vm } = await RubyVM.instantiateModule({ module: await compileArtifact(), wasip1: wasi })
 
+      // RubyGems is required explicitly because Ruby 4.0 stopped loading it during
+      // startup. `Gem` is still defined - as a stub - so nothing fails until
+      // something touches a real constant, which syntax_tree does on the second
+      // line of `formatter.rb`: `Gem::Version.new(RUBY_VERSION)`. The error that
+      // came back was `uninitialized constant Gem::Version`, which reads like a
+      // broken artifact rather than a missing require.
+      //
       // /bundle/setup puts the baked-in gems on the load path. rbwasm writes it
       // when it packages the Gemfile, and nothing else sets $LOAD_PATH up for us.
       //
       // The shims go on the end, never the front: the real stdlib is searched
       // first, so they answer only for the two extensions this build genuinely
       // does not have. See `wasi-shims.ts`.
-      vm.eval(`require "/bundle/setup"; $LOAD_PATH.push("${SHIM_MOUNT_PATH}"); require "syntax_tree"`)
+      vm.eval(
+        `require "rubygems"; require "/bundle/setup"; $LOAD_PATH.push("${SHIM_MOUNT_PATH}"); require "syntax_tree"`,
+      )
 
       // A handful of correctness fixes on top of the stock gem, applied here
       // rather than in the artifact so they stay reviewable. See stree-patch.ts

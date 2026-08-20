@@ -197,11 +197,14 @@ both the escape hatch for the rest of RuboCop's settings and the way to put that
 cop back.
 
 The gem pins in `build/ruby_fmt/Gemfile` are load-bearing beyond
-reproducibility. `rubocop-ast` is held at 1.42.0 because 1.43.0 requires prism
-~> 1.4 at load time and the prism CRuby compiles in is 1.2.0 - a prism *gem*
-cannot override it, because a static wasm build resolves `require "prism/prism"`
-from the built-in extension table before `$LOAD_PATH`. `rubocop` is then held at
-1.74.0, the newest release that accepts a rubocop-ast that old.
+reproducibility, and they are what fixes the CRuby the artifact is built on.
+`rubocop-ast` subclasses prism's parser translation while it is being required,
+so prism has to be loadable before any cop is registered - 1.43.0 needs prism
+~> 1.4 and 1.49.0 needs ~> 1.7. A prism *gem* cannot supply that, because a
+static wasm build resolves `require "prism/prism"` from the built-in extension
+table before `$LOAD_PATH`, so whatever CRuby compiles in is what runs. Ruby
+3.4.1 compiles in 1.2.0 and Ruby 4.0.0 compiles in 1.7.0, which is why the
+RuboCop pin and the `RUBY_VERSION` in `build.sh` move together.
 
 **WASI comes from `@bjorn3/browser_wasi_shim`, not `node:wasi`,** even though the
 package only ever runs on Node. The interfaces are compatible —

@@ -129,7 +129,7 @@ corrections — over those same 397 files, in 116 of them.
 |:---|:---|:---|
 | first call into a VM | ~1.1 s, to boot the VM | plus ~4 s, to load RuboCop |
 | every call after | ~4 ms | 2–3× that |
-| artifact | 5.1 MB either way | |
+| artifact | 5.2 MB either way | |
 
 The four seconds are RuboCop's 698 cop files being read and evaluated by a Ruby
 that is itself running on WebAssembly. Nothing here can make that cheaper, so it
@@ -148,7 +148,7 @@ letting `format` boot on its own — and `init({ rubocop: false })` is how a
 synchronous caller declines it.
 
 The artifact carries both tools whichever way you call it — syntax_tree and
-prettier_print are 141 KB of the 5.1 MB, so there was never a lighter build to
+prettier_print are 141 KB of the 5.2 MB, so there was never a lighter build to
 be had by dropping one.
 
 ### When it gives up
@@ -212,7 +212,7 @@ Formatting grows the VM's linear memory until it is recycled at 400 MB — a
 ceiling picked for a Node process. A tab has less room to absorb that, so keep
 large files off the main thread.
 
-The browser reads the same brotli artifact as Node (5.1 MB over the wire) and
+The browser reads the same brotli artifact as Node (5.2 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -263,7 +263,7 @@ const artifact = import.meta.resolve('@scalar/ruby-fmt/wasm')
 ## These are the real gems, and the output is exact
 
 There is no approximation here. This runs **actual
-CRuby 3.4.1 compiled to WebAssembly** ([ruby.wasm](https://github.com/ruby/ruby.wasm))
+CRuby 4.0.0 compiled to WebAssembly** ([ruby.wasm](https://github.com/ruby/ruby.wasm))
 with the **actual [syntax_tree](https://github.com/ruby-syntax-tree/syntax_tree)
 gem** — and, for the RuboCop pass, the **actual
 [RuboCop](https://github.com/rubocop/rubocop) gem** — baked into it. Neither is
@@ -282,13 +282,20 @@ bug, not a known stylistic gap.
 
 It works because all of it is pure Ruby with no native extensions of its own.
 syntax_tree and prettier_print need Ripper, RuboCop's parser needs racc, and
-both are part of CRuby.
+`rubocop-ast` needs prism — all three are part of CRuby.
 
 The versions are pinned in `build/ruby_fmt/Gemfile`, which is also where the
 conformance tests read them from, so the native side and the wasm side cannot
 drift apart. `rubocop-ast` is pinned alongside `rubocop` rather than left to
 resolve: it decides which parser produces the token stream the Layout cops see,
 so a newer one changes the output without RuboCop itself changing at all.
+
+The Ruby is pinned by the same chain. RuboCop 1.75 and later need
+`rubocop-ast` 1.43+, which subclasses prism's parser translation while it is
+being required — so prism has to be there before the first cop is registered.
+That translation needs prism 1.4, and `rubocop-ast` 1.49 raised the floor again
+to 1.7. Ruby 3.4.1 carries prism 1.2.0 and Ruby 4.0.0 carries 1.7.0, which is
+why the RuboCop this ships and the CRuby it runs on move together.
 
 ---
 
@@ -454,7 +461,6 @@ Style/MultilineInPatternThen:
   Enabled: false
 ```
 
-
 ---
 
 ## Source layout
@@ -490,12 +496,13 @@ and packs down about 7×. Decompression happens once per process (~100 ms via
 reuses it.
 
 Two things keep it small. Everything the formatter never loads is stripped
-before packaging: `rdoc`, `bundler`, `prism`, `irb`, `reline`, and the bundled
-gem tree (`rake`, `minitest`, `rexml`, `net-imap`, `typeprof`…). That list is not
+before packaging: `rdoc`, `bundler`, `irb`, `reline`, and the bundled gem tree
+(`rake`, `minitest`, `rexml`, `net-imap`, `typeprof`…). That list is not
 guesswork — it is the complement of `$LOADED_FEATURES` after a real format, which
 touches just 72 files. `rubygems` stays, because Ruby loads it during startup,
-and so does `specifications/`, which backs the default gems that do load. Then
-`wasm-opt -Os` runs over what remains.
+and so does `specifications/`, which backs the default gems that do load. `prism`
+stays too, because `rubocop-ast` requires it. Then `wasm-opt -Os` runs over what
+remains.
 
 Note that `rbwasm --without-stdlib` cannot do any of this: it accepts only `enc`,
 and that is a no-op for a static build, which compiles the encodings in.

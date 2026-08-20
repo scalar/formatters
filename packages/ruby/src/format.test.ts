@@ -303,6 +303,37 @@ describe('format', () => {
     expect(await format(source, { printWidth: 200 })).toBe(await format(source, { printWidth: 200, rubocop: false }))
   })
 
+  // Two Layout offenses that syntax_tree's own output introduces, so the pass is
+  // the thing that should be clearing them. RuboCop 1.74.0 corrected neither:
+  // its Layout/SpaceInsideHashLiteralBraces did not look at hash *patterns*, and
+  // its Layout/SpaceAroundKeyword did not flag the `return(` wrapping syntax_tree
+  // emits when a `return <call>` exceeds printWidth. Both are why the bundled
+  // RuboCop moved to 1.81.6.
+  it('corrects space inside a hash pattern, not only a hash literal', async () => {
+    const config = { rubocopConfig: { 'Layout/SpaceInsideHashLiteralBraces': { EnforcedStyle: 'no_space' } } }
+
+    expect(await format('x = {a: 1, b: 2}', config)).toBe('x = {a: 1, b: 2}\n')
+    expect(await format('case r\nin {event: "error", data: String => data}\n  y\nend\n', config)).toBe(
+      'case r\nin {event: "error", data: String => data}\n  y\nend\n',
+    )
+  })
+
+  // Long enough, and deep enough, that syntax_tree has to break the call - which
+  // is what produces the `return(` this is about.
+  it('corrects the space after return in syntax_tree own wrapping', async () => {
+    const source =
+      'module M\n  class C\n    class D\n      private def f(y, val:, closing:, content_type: nil)\n' +
+      '        case val\n        in FilePart\n' +
+      '          return write_multipart_content(y, val: val.content, closing: closing, content_type: val.content_type)\n' +
+      '        end\n      end\n    end\n  end\nend\n'
+
+    const out = await format(source, { printWidth: 110 })
+
+    expect(out).toContain('return (')
+    expect(out).not.toContain('return(')
+    expect(await format(out, { printWidth: 110 })).toBe(out)
+  })
+
   // The escape hatch, and the way to put Layout/LineLength back.
   it('merges rubocopConfig over the config this package sets', async () => {
     const source = 'class A\n  def b\n    c = 1\n    c\n  end\nend\n'

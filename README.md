@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 5.1 MB | ✅ exact +3 fixes | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 5.2 MB | ✅ exact +3 fixes | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -217,7 +217,7 @@ on the first call. See
 [`packages/ruby`](packages/ruby#two-tools-and-why-both) for the rest of what it
 costs.
 
-It ships as one 5.1 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
+It ships as one 5.2 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
 formatter never loads is stripped, then `wasm-opt -Os` and brotli. It is
 committed, so a fresh clone needs nothing extra; `bun run ruby:build` rebuilds it

@@ -90,13 +90,14 @@ jobs:
       # which makes Ruby the one reference tool cheap enough for CI to carry; the others need a
       # .NET SDK, a Rust nightly or a JDK and still skip.
       #
-      # Ruby 3.4 because that is what build/ruby_fmt/build.sh bakes into the artifact. Ripper is
+      # Ruby 4.0 because that is what build/ruby_fmt/build.sh bakes into the artifact. Ripper is
       # part of CRuby rather than the gem, so a different Ruby here could diverge for reasons that
-      # are nothing to do with this package.
+      # are nothing to do with this package. It is also what makes the pinned rubocop installable:
+      # rubocop-ast needs prism >= 1.7, which arrived as a default gem in Ruby 4.0.
       - name: Setup Ruby to match the artifact
         uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
         with:
-          ruby-version: '3.4'
+          ruby-version: '4.0'
 
       # The version comes from the Gemfile the artifact is built from rather than being written
       # out again here, so the native side and the wasm side cannot drift apart. The test reads
