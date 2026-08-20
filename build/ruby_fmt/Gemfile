@@ -4,6 +4,31 @@ source "https://rubygems.org"
 # and the version it was built from has to be recoverable from the source tree.
 gem "syntax_tree", "6.3.0"
 
+# The linter whose Layout department runs as a second pass, so that the output
+# is not merely canonical but also clean under `rubocop --only Layout`. See
+# packages/ruby/src/rubocop.ts for what is and is not enabled.
+#
+# 1.74.0 rather than the newest, and rubocop-ast held at 1.42.0, for one
+# reason: rubocop-ast 1.43.0 took a hard dependency on prism ~> 1.4 (1.50 wants
+# ~> 1.7) and requires its parser translation at load time. The prism CRuby
+# compiles into this build is 1.2.0 - too old - and a prism *gem* cannot
+# override it, because a static wasm build resolves `require "prism/prism"`
+# from the built-in extension table before $LOAD_PATH, so the gem's Ruby files
+# would run against the built-in 1.2.0 C extension. rubocop-ast 1.42.0 is the
+# last release with no prism dependency at all; it parses with whitequark
+# `parser`, which is pure Ruby and needs nothing this build lacks.
+#
+# 1.74.0 is the newest rubocop that accepts it (`rubocop-ast >= 1.38.0`);
+# 1.75.0 raised the floor to 1.43.0.
+gem "rubocop", "1.74.0"
+gem "rubocop-ast", "1.42.0"
+
+# rubocop depends on json, which CRuby already carries as a default gem and
+# whose C extension cannot be cross-compiled here. json_placeholder/json.gemspec
+# explains both halves of that and ships nothing. (Not under vendor/, which is
+# gitignored as rbwasm build scratch - this has to be committed.)
+gem "json", path: "json_placeholder"
+
 # Links the JS ABI into the wasm build (rb-eval-string-protect and friends).
 # Without it rbwasm emits a standalone WASI command exporting only _start, which
 # @ruby/wasm-wasi cannot bind to - so every format would cost a fresh VM boot.

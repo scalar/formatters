@@ -3,6 +3,7 @@ import { RubyVM } from '@ruby/wasm-wasi'
 
 import { IN_PATTERN_THEN_PATCH } from './stree-patch'
 import type { ArtifactSource, BootVm, RubyFormatterVm } from './types'
+import { SHIM_MOUNT_PATH, createShimDirectory } from './wasi-shims'
 
 /**
  * Builds the boot/recycle pair for one artifact source.
@@ -43,14 +44,20 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
 
       // fds 0/1/2 are stdin/stdout/stderr; preopened dirs start at fd 3. Passing
       // a directory in one of the first three slots silently makes it stdio.
+      //
+      // HOME is set because RuboCop asks for it: `Dir.home` backs its cache
+      // root, and with no HOME in the environment that raises rather than
+      // falling back. It points at /work because that is the one directory
+      // here that exists and can be written to.
       const wasi = new WASI(
         ['ruby'],
-        [],
+        ['HOME=/work'],
         [
           new OpenFile(new File([])),
           ConsoleStdout.lineBuffered(() => {}),
           ConsoleStdout.lineBuffered(() => {}),
           new PreopenDirectory('/work', workFiles),
+          createShimDirectory(),
         ],
         // Required: the shim's debug.enable(undefined) resolves to `true`, so
         // omitting this floods stdout with "wasi:" tracing on every syscall.
@@ -61,14 +68,21 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
 
       // /bundle/setup puts the baked-in gems on the load path. rbwasm writes it
       // when it packages the Gemfile, and nothing else sets $LOAD_PATH up for us.
-      vm.eval('require "/bundle/setup"; require "syntax_tree"')
+      //
+      // The shims go on the end, never the front: the real stdlib is searched
+      // first, so they answer only for the two extensions this build genuinely
+      // does not have. See `wasi-shims.ts`.
+      vm.eval(`require "/bundle/setup"; $LOAD_PATH.push("${SHIM_MOUNT_PATH}"); require "syntax_tree"`)
 
       // One correctness fix on top of the stock gem, applied here rather than in
       // the artifact so it stays reviewable. See stree-patch.ts for what it fixes
       // and the evidence that it changes nothing else.
       vm.eval(IN_PATTERN_THEN_PATCH)
 
-      current = { vm, workFiles, memory: wasi.inst.exports.memory }
+      // RuboCop is not required here. It costs about four seconds against
+      // syntax_tree's one, and a caller who never asks for it should never wait
+      // for it, so `format.ts` loads it on first use and flips this.
+      current = { vm, workFiles, memory: wasi.inst.exports.memory, rubocopLoaded: false }
       return current
     })().catch((error: unknown) => {
       // The rejection is not cached, so a boot that failed on a transient

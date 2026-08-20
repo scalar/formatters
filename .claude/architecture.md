@@ -158,7 +158,7 @@ toolchain-free checkout still passes.
 
 ### `@scalar/ruby-fmt` (`packages/ruby`)
 
-Reference: **syntax_tree**. Status: exact.
+Reference: **syntax_tree + RuboCop**. Status: exact.
 
 Runs actual CRuby compiled to WebAssembly with the actual syntax_tree gem loaded
 into it. It works because syntax_tree and prettier_print are pure Ruby whose only
@@ -166,6 +166,42 @@ C dependency is Ripper, which is already inside CRuby's stdlib.
 
 `format()` is async because the first call boots a Ruby VM; the VM is cached, so
 later calls are milliseconds.
+
+**Two tools, one artifact, both by default.** `format` runs syntax_tree and then
+the real `rubocop --autocorrect --only Layout`. Neither subsumes the other:
+syntax_tree reprints (it discards the input's line breaking and decides it
+again) but about 30% of its output still trips stock `rubocop --only Layout`,
+while RuboCop corrects offenses without ever reprinting - measured on 116 files
+whose formatting differed only in line breaking, RuboCop alone mapped 0 of them
+to a common result and syntax_tree mapped 91. They share one artifact so that a
+process does not carry two copies of CRuby, and `src/rubocop.ts` documents which
+of RuboCop's own parts drive the correction and which are deliberately left out.
+
+Order decides the result, because the two disagree about multiline indentation:
+syntax_tree first, RuboCop second. Running syntax_tree afterwards would revert
+RuboCop in 116 of 397 files.
+
+`rubocop: false` opts out, and then RuboCop is never required into the VM at all
+- worth about four seconds on the first call. `init` does load it, because it is
+the default pass and `formatSync` would otherwise stall for those seconds in a
+caller that chose the synchronous entry point precisely because it cannot wait;
+`init({ rubocop: false })` is how such a caller declines, and the only way,
+since `formatSync` cannot run without `init`.
+
+**syntax_tree owns line width.** `Layout/LineLength` is disabled in the config
+written into the guest, because it is the one Layout cop that contradicts
+`printWidth` - with it on at RuboCop's default `Max: 120`, `printWidth: 200`
+came back rewrapped at 124. Disabling it changes none of 397 corpus files at the
+default width. `rubocopConfig` merges over that config one level deep, which is
+both the escape hatch for the rest of RuboCop's settings and the way to put that
+cop back.
+
+The gem pins in `build/ruby_fmt/Gemfile` are load-bearing beyond
+reproducibility. `rubocop-ast` is held at 1.42.0 because 1.43.0 requires prism
+~> 1.4 at load time and the prism CRuby compiles in is 1.2.0 - a prism *gem*
+cannot override it, because a static wasm build resolves `require "prism/prism"`
+from the built-in extension table before `$LOAD_PATH`. `rubocop` is then held at
+1.74.0, the newest release that accepts a rubocop-ast that old.
 
 **WASI comes from `@bjorn3/browser_wasi_shim`, not `node:wasi`,** even though the
 package only ever runs on Node. The interfaces are compatible —

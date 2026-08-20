@@ -15,8 +15,17 @@ import { test } from 'node:test'
 
 import { format, formatSync, init } from '../dist/index.js'
 
+// The default pipeline is syntax_tree *and* RuboCop, which means two tools in
+// one VM - and the whole premise of this file is that it all works with nothing
+// installed but Node. The blank line after the guard clause is the tell: only
+// RuboCop adds it.
 test('formats Ruby under plain Node', async () => {
-  const out = await format('class A\n  def initialize(b)\n@b=b\n  end\nend')
+  const out = await format('def call(user)\n  return unless user\n  user.name\nend\n')
+  assert.equal(out, 'def call(user)\n  return unless user\n\n  user.name\nend\n')
+})
+
+test('formats with syntax_tree alone when opted out, under plain Node', async () => {
+  const out = await format('class A\n  def initialize(b)\n@b=b\n  end\nend', { rubocop: false })
   assert.equal(out, 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n')
 })
 
@@ -25,7 +34,7 @@ test('formats Ruby under plain Node', async () => {
 test('formats Ruby synchronously under plain Node, after init', async () => {
   await init()
   assert.equal(
-    formatSync('class A\n  def initialize(b)\n@b=b\n  end\nend'),
-    'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
+    formatSync('def call(user)\n  return unless user\n  user.name\nend\n'),
+    'def call(user)\n  return unless user\n\n  user.name\nend\n',
   )
 })

@@ -1,9 +1,19 @@
 import { File } from '@bjorn3/browser_wasi_shim'
 
-import type { BootVm, FormatOptions, Formatters, RubyFormatterVm } from './types'
+import { RUBOCOP_SETUP, buildRuboCopConfig } from './rubocop'
+import type { BootVm, FormatOptions, Formatters, InitFormatOptions, RubyFormatterVm } from './types'
 
 /** syntax_tree's own default line width. */
 const DEFAULT_PRINT_WIDTH = 80
+
+/**
+ * Whether the RuboCop pass runs when the caller says nothing.
+ *
+ * On, because syntax_tree alone leaves Layout offenses in about 30% of real
+ * files and output a linter rejects is not finished output. `rubocop: false`
+ * turns it off and skips loading RuboCop entirely.
+ */
+const DEFAULT_RUBOCOP = true
 
 /**
  * Recycle the VM once its linear memory passes this. The hard wall is the
@@ -32,6 +42,64 @@ const MEMORY_LIMIT_BYTES = 400_000_000
  */
 const SYNC_MEMORY_LIMIT_BYTES = 1_200_000_000
 
+/** The preopened directory the guest reads its input and its config from. */
+const WORK_DIR = '/work'
+
+/**
+ * Where the source being formatted lives in the guest filesystem.
+ *
+ * `WORK_DIR` is the preopened directory that `workFiles` backs, so the entry
+ * written into that map is this path without the prefix. RuboCop wants the
+ * full path: it is what offenses are reported against and what a
+ * `# rubocop:disable` directive resolves relative to.
+ */
+const INPUT_PATH = `${WORK_DIR}/input.rb`
+
+/**
+ * One guest filename per distinct RuboCop config, so that the guest can cache a
+ * parsed config by path and never reparse for options it has already seen.
+ *
+ * Module level rather than per VM because it only allocates names; the file
+ * itself is written into the VM's own filesystem on every format, so a recycled
+ * VM gets it back without this having to know that the VM changed.
+ */
+const configFileNames = new Map<string, string>()
+
+/**
+ * Writes a RuboCop config into the guest and returns the path to it.
+ *
+ * Written through the filesystem rather than interpolated into Ruby for the
+ * same reason the source is: a config carries caller-supplied strings, and Ruby
+ * evaluates `#{...}` inside double quotes. Only the generated filename ever
+ * reaches the Ruby snippet, and this is the only thing that generates one.
+ */
+const writeConfig = (booted: RubyFormatterVm, yaml: string): string => {
+  const existing = configFileNames.get(yaml)
+  const name = existing ?? `rubocop-${configFileNames.size}.yml`
+  if (!existing) configFileNames.set(yaml, name)
+
+  booted.workFiles.set(name, new File(new TextEncoder().encode(yaml)))
+
+  return `${WORK_DIR}/${name}`
+}
+
+/**
+ * Requires RuboCop into a VM that has not had it yet, and builds the Layout
+ * pass over it.
+ *
+ * Lazy rather than part of the boot because it costs about four seconds, which
+ * is not a bill to hand a caller who only ever wanted syntax_tree. Synchronous
+ * because `vm.eval` is, which is what lets `formatSync` ask for RuboCop too -
+ * its first such call is simply a slow one.
+ */
+const ensureRuboCop = (booted: RubyFormatterVm): void => {
+  if (booted.rubocopLoaded) return
+
+  booted.vm.eval(RUBOCOP_SETUP)
+  booted.vm.eval(`ScalarRubyFmt.setup(${JSON.stringify(WORK_DIR)})`)
+  booted.rubocopLoaded = true
+}
+
 /**
  * Formats one source through an already-booted VM.
  *
@@ -41,6 +109,7 @@ const SYNC_MEMORY_LIMIT_BYTES = 1_200_000_000
  */
 const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatOptions): string => {
   const { vm, workFiles } = booted
+  const rubocop = options.rubocop ?? DEFAULT_RUBOCOP
 
   // printWidth ends up interpolated into Ruby source, so it is coerced and
   // checked rather than trusted. TypeScript stops nothing here: the types are
@@ -57,6 +126,22 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // does not escape '#', so any Ruby snippet containing #{} would be evaluated.
   workFiles.set('input.rb', new File(new TextEncoder().encode(source)))
 
+  if (rubocop) ensureRuboCop(booted)
+
+  // The config travels the same way the source does - written into the guest
+  // filesystem, referenced by a path this side generated.
+  const configPath = rubocop ? writeConfig(booted, buildRuboCopConfig(options.rubocopConfig)) : ''
+
+  // RuboCop runs on syntax_tree's output, never on the raw input, and the order
+  // is not arbitrary: the two disagree about multiline indentation, so whichever
+  // runs last decides. syntax_tree reprints the whole file and RuboCop only
+  // corrects offenses in what it is given, so syntax_tree first and RuboCop
+  // second is the pairing that both reprints canonically *and* comes out clean
+  // under `rubocop --only Layout`. The other order does neither.
+  const rubocopPass = rubocop
+    ? `out = ScalarRubyFmt.correct(out, ${JSON.stringify(INPUT_PATH)}, ${JSON.stringify(configPath)})\n`
+    : ''
+
   // The result is parsed before it is returned. A formatter that emits source
   // its own language cannot read is the one failure that has to be loud, and
   // syntax_tree 6.3.0 does exactly that on some `case/in` patterns - see
@@ -66,8 +151,8 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // into an exception raised before anything is written.
   return vm
     .eval(
-      `out = SyntaxTree.format(File.read("/work/input.rb"), ${printWidth})
-       raise "syntax_tree produced source that Ruby cannot parse, so it was discarded rather than returned - please report this" if Ripper.sexp(out).nil?
+      `out = SyntaxTree.format(File.read(${JSON.stringify(INPUT_PATH)}), ${printWidth})
+       ${rubocopPass}raise "the formatter produced source that Ruby cannot parse, so it was discarded rather than returned - please report this" if Ripper.sexp(out).nil?
        out`,
     )
     .toString()
@@ -105,9 +190,9 @@ export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
   /**
    * Formats Ruby source without awaiting, for callers that cannot.
    *
-   * Same syntax_tree, same options, same bytes out as `format`. Two things it
-   * cannot do, both following from the same fact - recycling the VM is
-   * asynchronous, because `RubyVM.instantiateModule` is:
+   * Same tools, same options, same bytes out as `format`. Two things it cannot
+   * do, both following from the same fact - recycling the VM is asynchronous,
+   * because `RubyVM.instantiateModule` is:
    *
    * 1. It throws until `init` has resolved, like every `formatSync` here.
    * 2. It throws once the VM's memory passes {@link SYNC_MEMORY_LIMIT_BYTES},
@@ -141,16 +226,27 @@ export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
   }
 
   /**
-   * Boots the VM, replacing one that has grown too large, so that `formatSync`
-   * can be called afterwards.
+   * Boots the VM and loads RuboCop into it, so that `formatSync` can be called
+   * afterwards.
    *
-   * Optional for `format`, which boots and recycles on demand, and required
-   * before the first `formatSync` - and again whenever `formatSync` reports that
-   * the VM needs replacing.
+   * Optional for `format`, which boots and loads on demand, and required before
+   * the first `formatSync` - and again whenever `formatSync` reports that the VM
+   * needs replacing.
    */
-  const init = async (): Promise<void> => {
+  const init = async (options: InitFormatOptions = {}): Promise<void> => {
     const booted = await boot()
-    if (booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES) await recycle()
+    const ready = booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES ? await recycle() : booted
+
+    // RuboCop is loaded here, not left to the first format, because it is the
+    // default pass and `init` exists precisely so that the first `formatSync`
+    // is not a surprise. Requiring RuboCop is synchronous Ruby, so without this
+    // that first call would stall for four seconds in a caller that chose the
+    // synchronous entry point because it cannot wait at all.
+    //
+    // `init({ rubocop: false })` is how a synchronous caller opts out of that.
+    // It is the only way: `formatSync` needs `init`, so without this argument
+    // the pass could be skipped per call but never actually left unloaded.
+    if (options.rubocop ?? DEFAULT_RUBOCOP) ensureRuboCop(ready)
   }
 
   return { format, formatSync, init }

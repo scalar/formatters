@@ -23,7 +23,7 @@ import { brotliDecompressSync } from 'node:zlib'
 
 import { chromium } from 'playwright'
 
-/** One assertion per package: format this, expect exactly that. */
+/** One assertion: format this, expect exactly that. Usually one per package. */
 type BrowserCase = {
   /** Package directory under `packages/`. */
   directory: string
@@ -33,6 +33,16 @@ type BrowserCase = {
   source: string
   /** The output the Node build produces for that source, byte for byte. */
   expected: string
+  /**
+   * Options handed to `format` and `formatSync` alongside the source.
+   *
+   * Only needed where a package's behaviour depends on them, which is why most
+   * cases leave it out. A package may appear more than once when it has a mode
+   * worth holding to this standard separately - Ruby's RuboCop pass is one.
+   */
+  options?: Record<string, unknown>
+  /** Shown in the heading, when the directory alone would not say which case this is. */
+  label?: string
 }
 
 const CASES: BrowserCase[] = [
@@ -51,8 +61,19 @@ const CASES: BrowserCase[] = [
   {
     directory: 'ruby',
     artifact: 'ruby_fmt.wasm.br',
+    source: 'def call(user)\n  return unless user\n  user.name\nend\n',
+    // The default pipeline is syntax_tree *and* RuboCop. The blank line comes
+    // from Layout/EmptyLineAfterGuardClause, which syntax_tree cannot produce on
+    // its own - so this fails loudly if the RuboCop pass silently did nothing.
+    expected: 'def call(user)\n  return unless user\n\n  user.name\nend\n',
+  },
+  {
+    directory: 'ruby',
+    label: 'ruby (syntax_tree only)',
+    artifact: 'ruby_fmt.wasm.br',
     source: 'class A\n  def initialize(b)\n@b=b\n  end\nend',
     expected: 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
+    options: { rubocop: false },
   },
   {
     directory: 'java',
@@ -176,11 +197,11 @@ const browser = await chromium.launch({
 
 const failed = new Set<string>()
 
-for (const { directory, source, expected } of CASES) {
+for (const { directory, source, expected, options = {}, label } of CASES) {
   const packageDirectory = path.join(ROOT, 'packages', directory)
   const entry = path.join(packageDirectory, 'dist', 'index.browser.js')
 
-  console.log(`\n=== ${directory} ===`)
+  console.log(`\n=== ${label ?? directory} ===`)
 
   if (!existsSync(entry)) {
     console.error(`  dist/index.browser.js is missing - run \`bun run build\` first`)
@@ -206,13 +227,13 @@ for (const { directory, source, expected } of CASES) {
     // Every assertion runs in the page. Anything that reaches for a Node
     // built-in throws here rather than resolving to a shim.
     const result = await page.evaluate(
-      async ([entryUrl, source]) => {
+      async ([entryUrl, source, options]) => {
         const started = performance.now()
         const module = await import(/* webpackIgnore: true */ entryUrl as string)
-        const output = await module.format(source)
+        const output = await module.format(source, options)
         return { output, ms: Math.round(performance.now() - started), hasInit: typeof module.init === 'function' }
       },
-      [entryUrl, source] as const,
+      [entryUrl, source, options] as const,
     )
 
     if (result.output !== expected) {
@@ -233,14 +254,14 @@ for (const { directory, source, expected } of CASES) {
     // the synchronous builder that emits it - so the test takes it too.
     const syncPage = await openPage()
     const sync = await syncPage.evaluate(
-      async ([entryUrl, source]) => {
+      async ([entryUrl, source, options]) => {
         const module = await import(/* webpackIgnore: true */ entryUrl as string)
 
         // Before init, the synchronous path has nothing to run on and must say so
         // rather than hand back a promise a synchronous caller cannot use.
         let refusedBeforeInit = false
         try {
-          module.formatSync(source)
+          module.formatSync(source, options)
         } catch {
           refusedBeforeInit = true
         }
@@ -249,10 +270,14 @@ for (const { directory, source, expected } of CASES) {
 
         // Deliberately not async: if `formatSync` returned a promise this would
         // return "[object Promise]" and the comparison below would fail.
-        const build = () => `${module.formatSync(source)}`
-        return { refusedBeforeInit, output: build(), isString: typeof module.formatSync(source) === 'string' }
+        const build = () => `${module.formatSync(source, options)}`
+        return {
+          refusedBeforeInit,
+          output: build(),
+          isString: typeof module.formatSync(source, options) === 'string',
+        }
       },
-      [entryUrl, source] as const,
+      [entryUrl, source, options] as const,
     )
     await syncPage.close()
 
@@ -271,12 +296,12 @@ for (const { directory, source, expected } of CASES) {
     // the first one has already compiled. Same output, different route in.
     const rawPage = await openPage()
     const viaInit = await rawPage.evaluate(
-      async ([entryUrl, source, rawUrl]) => {
+      async ([entryUrl, source, rawUrl, options]) => {
         const module = await import(/* webpackIgnore: true */ entryUrl as string)
-        await module.init({ url: rawUrl, encoding: 'none' })
-        return module.format(source)
+        await module.init({ url: rawUrl as string, encoding: 'none' })
+        return module.format(source, options)
       },
-      [entryUrl, source, `${origin}/__raw__/${directory}`] as const,
+      [entryUrl, source, `${origin}/__raw__/${directory}`, options] as const,
     )
     await rawPage.close()
 
@@ -307,4 +332,6 @@ if (failed.size > 0) {
   process.exit(1)
 }
 
-console.log(`\nAll ${CASES.length} browser build(s) passed.`)
+console.log(
+  `\nAll ${CASES.length} browser case(s) passed, across ${new Set(CASES.map((one) => one.directory)).size} package(s).`,
+)

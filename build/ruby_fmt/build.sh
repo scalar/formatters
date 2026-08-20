@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Bakes CRuby + syntax_tree into the single compressed wasm artifact shipped by
-# @scalar/ruby-fmt.
+# Bakes CRuby + syntax_tree + RuboCop into the single compressed wasm artifact
+# shipped by @scalar/ruby-fmt.
+#
+# One artifact rather than two: both tools are Ruby, and a second artifact would
+# mean a second copy of CRuby (~20MB expanded) and a second VM in any process
+# that used both.
 #
 # Requires Ruby and bundler (build time only) - consumers of the package need
 # nothing but Node. The artifact is committed, so this only needs rerunning when
@@ -42,14 +46,25 @@ bundle exec rbwasm build \
 # `rubies/` - stripping the latter changes nothing and the artifact comes out
 # byte-identical, which is a confusing way to lose an hour.
 #
-# The list came from dumping $LOADED_FEATURES after a real format: 72 files, none
-# of them in these directories. `rubygems` stays because Ruby loads it during
+# The list came from dumping $LOADED_FEATURES after a real format - 72 files for
+# syntax_tree alone, 618 once RuboCop is loaded - none of them in these
+# directories. `rubygems` stays because Ruby loads it during
 # startup; `specifications/` stays because the default-gem specs under it back
 # did_you_mean, error_highlight and syntax_suggest, which do load. The bundled
 # gems (rake, minitest, rexml, net-imap, typeprof...) are unreachable from a
 # formatting call - our own gems come from /bundle via $LOAD_PATH, and the
 # generated /bundle/setup.rb is nothing but `$:.unshift` lines, so it needs
 # neither bundler nor an installed-gem tree.
+#
+# Two consequences of that last point are worth knowing before editing this
+# list. `racc` is in the bundled-gem tree and RuboCop's parser does need it,
+# which is why the Gemfile pulls it from rubygems instead: as a bundle gem it
+# lands in /bundle and survives this. And a load-path-only bundle has no
+# gemspecs, so any `gem "name", ">= x"` in gem code raises - which is one of the
+# reasons the Gemfile pins RuboCop where it does. See the comments there.
+#
+# `prism` is still stripped because rubocop-ast is held at 1.42.0, the last
+# release that does not need it. Raising that pin means keeping prism here.
 RUBY_LIB="build/wasm32-unknown-wasip1/${BUILD_ID}-"*/install/usr/local/lib/ruby
 for dir in $RUBY_LIB; do
   rm -rf "$dir"/3.4.0/{rdoc,bundler,prism,irb,reline} \
@@ -71,7 +86,7 @@ WASM_OPT="build/toolchain/binaryen/bin/wasm-opt"
 "$WASM_OPT" -Os --strip-debug --strip-producers ruby_fmt.raw.wasm -o ruby_fmt.opt.wasm
 
 # Ship it brotli-compressed. The artifact is mostly Ruby source text and packs
-# down about 5x, which is the difference between a ~24MB and a ~5MB install.
+# down about 7x, which is the difference between a ~36MB and a ~5MB install.
 # Quality 11 takes a minute or so here and costs the consumer nothing - the
 # runtime decompresses once per process, in ~100ms.
 node -e '

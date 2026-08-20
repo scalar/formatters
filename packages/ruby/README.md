@@ -37,8 +37,126 @@ await format('class A\n  def initialize(b)\n@b=b\n  end\nend')
 // end
 ```
 
-Async because the first call decompresses the artifact, compiles it and boots a
-Ruby VM — about 1.1s. That work is cached, so every later call is ~4ms.
+Async because the first call decompresses the artifact, compiles it, boots a
+Ruby VM and loads RuboCop — about 5s all in. That work is cached, so every later
+call is milliseconds. `format(source, { rubocop: false })` skips the RuboCop
+half of it entirely: ~1.1s to boot, ~4ms a call.
+
+---
+
+## Two tools, and why both
+
+`format` runs syntax_tree and then the real
+[RuboCop](https://github.com/rubocop/rubocop), and neither is optional-by-accident:
+they do different jobs and neither subsumes the other.
+
+**syntax_tree reprints.** It throws away the input's line breaking and decides
+it again from the syntax tree, which is what makes formatting idempotent and
+input-independent.
+
+**RuboCop does not.** It corrects offenses inside whatever line structure it is
+handed. Measured on 116 files whose formatting differed only in line breaking —
+the same code rendered two ways — RuboCop alone mapped **0 of them** to a common
+result. syntax_tree mapped 91. On generator output it leaves this:
+
+```ruby
+class Client
+  def initialize(base_url:, token: nil); @base_url = base_url; @token = token; end
+end
+```
+
+Zero Layout offenses, by RuboCop's own reckoning. "One statement per line" is
+not a Layout rule; it is a consequence of reprinting.
+
+**But syntax_tree's output is not clean.** Over 397 files of real Ruby, about
+30% of it still trips stock `rubocop --only Layout` — overwhelmingly
+`Layout/MultilineOperationIndentation`, `Layout/MultilineMethodCallIndentation`
+and `Layout/FirstArgumentIndentation`, where the two tools genuinely disagree
+about how a wrapped expression should be indented. Formatted output that a
+consumer's CI then rejects is not finished output.
+
+So both run, in that order. The RuboCop half is exactly
+`rubocop --autocorrect --only Layout`. Layout only — RuboCop's other departments
+rewrite code rather than lay it out, and `-A` will happily delete an unused
+assignment or turn an `if` into a ternary, which is not something a function
+called `format` should do.
+
+### Who owns what
+
+syntax_tree owns line width, so `printWidth` means what it says. RuboCop's
+`Layout/LineLength` is **off** in the config this package writes — it has to be,
+because the two would otherwise disagree: with the cop at its default `Max: 120`,
+`{ printWidth: 200 }` came back rewrapped at 124, which is neither width.
+Turning it off costs nothing measurable. Over 397 files at the default width it
+changes none of them, and the 9 files with a line over 120 have one either way,
+because that cop's autocorrect could not fix them regardless.
+
+RuboCop owns the rest of layout — indentation, alignment, blank lines, spacing.
+
+### Configuring RuboCop
+
+```js
+await format(source, { rubocopConfig: { 'Layout/IndentationWidth': { Width: 4 } } })
+```
+
+Merged over the two entries this package sets, one level deep, and written into
+the guest as the `.rubocop.yml` RuboCop loads. Anything a `.rubocop.yml` can say
+belongs here, spelled exactly as that file spells it — including
+`{ 'Layout/LineLength': { Max: 100 } }` to put that cop back and let RuboCop
+have line width after all.
+
+### Turning RuboCop off
+
+```js
+await format(source, { rubocop: false })
+```
+
+syntax_tree on its own, and none of what RuboCop costs — it is never even
+loaded. Worth it if the output is not going anywhere near a RuboCop, or if the
+[costs below](#what-it-costs) are not worth paying.
+
+For `formatSync`, say it at `init` as well — `await init({ rubocop: false })`.
+`formatSync` requires `init`, so that is the only way a synchronous caller can
+leave RuboCop unloaded rather than merely unused.
+
+The order is fixed, and it is the only order that works. The two tools disagree,
+so whichever runs last decides. Running syntax_tree second would undo RuboCop's
+corrections — over those same 397 files, in 116 of them.
+
+### What it costs
+
+| | `rubocop: false` | default |
+|:---|:---|:---|
+| first call into a VM | ~1.1 s, to boot the VM | plus ~4 s, to load RuboCop |
+| every call after | ~4 ms | 2–3× that |
+| artifact | 5.1 MB either way | |
+
+The four seconds are RuboCop's 698 cop files being read and evaluated by a Ruby
+that is itself running on WebAssembly. Nothing here can make that cheaper, so it
+is spent only when it will be used: a caller who passes `rubocop: false`
+everywhere and never calls `init` never loads RuboCop at all.
+
+Both costs are per VM, so they are paid again after a
+[recycle](#known-bug-the-vm-leaks-and-recycles-itself-to-survive-it) — worth
+knowing if you are formatting a whole codebase in one process. The multipliers
+are the part worth trusting; the absolute figures come from one machine,
+measured in the same run as the syntax_tree ones beside them.
+
+`init` loads RuboCop as well as booting the VM, so `formatSync` gets the default
+pass without a first-call stall. That is the one reason to prefer `init` over
+letting `format` boot on its own — and `init({ rubocop: false })` is how a
+synchronous caller declines it.
+
+The artifact carries both tools whichever way you call it — syntax_tree and
+prettier_print are 141 KB of the 5.1 MB, so there was never a lighter build to
+be had by dropping one.
+
+### When it gives up
+
+Corrections can introduce offenses, so RuboCop corrects in a loop until the
+source stops changing. Two cops can also undo one another forever. When that
+happens — a repeated checksum, or 200 rounds without settling, both RuboCop's
+own conditions — `format` rejects rather than returning half-corrected source.
 
 ---
 
@@ -56,7 +174,7 @@ const formatted = formatSync(source)
 ```
 
 Booting is the one thing that cannot be made synchronous, so `init` covers it
-once and `formatSync` throws until it has. Everything after that already was
+once — the VM *and* RuboCop — and `formatSync` throws until it has. Everything after that already was
 synchronous — `format` was only ever awaiting the boot, and both produce the
 same bytes.
 
@@ -86,14 +204,15 @@ await init({ url: '/assets/ruby_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 20.3 MB of wasm, which is a visibly frozen
-tab if it happens on the main thread.
+Run it in a worker. Booting compiles 35.7 MB of wasm, which is a visibly frozen
+tab if it happens on the main thread — and `rubocop: true` adds several seconds
+of Ruby on top of that the first time it is asked for.
 
 Formatting grows the VM's linear memory until it is recycled at 400 MB — a
 ceiling picked for a Node process. A tab has less room to absorb that, so keep
 large files off the main thread.
 
-The browser reads the same brotli artifact as Node (3.8 MB over the wire) and
+The browser reads the same brotli artifact as Node (5.1 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -122,6 +241,8 @@ const formatted: string = await format('foo(aaaaaaaaaa, bbbbbbbbbb, cccccccccc, 
 |:---|:---|:---|:---|
 | `source` | `string` | — | Ruby source. Invalid syntax rejects the promise. |
 | `options.printWidth` | `number` | `80` | Maximum line width — syntax_tree's own default. Must be a positive integer. |
+| `options.rubocop` | `boolean` | `true` | Run `rubocop --autocorrect --only Layout` over the result. `false` for syntax_tree alone. [See above](#two-tools-and-why-both). |
+| `options.rubocopConfig` | `Record<string, unknown>` | `{}` | Extra `.rubocop.yml` entries, merged over the ones this package sets — `{ 'Layout/IndentationWidth': { Width: 4 } }`. Ignored when `rubocop` is `false`. |
 
 `printWidth` is validated rather than trusted, because it is interpolated into
 the Ruby expression that drives the format. TypeScript stops nothing there: the
@@ -139,19 +260,35 @@ const artifact = import.meta.resolve('@scalar/ruby-fmt/wasm')
 
 ---
 
-## This is the real syntax_tree, and the output is exact
+## These are the real gems, and the output is exact
 
 There is no approximation here. This runs **actual
 CRuby 3.4.1 compiled to WebAssembly** ([ruby.wasm](https://github.com/ruby/ruby.wasm))
 with the **actual [syntax_tree](https://github.com/ruby-syntax-tree/syntax_tree)
-gem** baked into it. It is not a reimplementation, so it does not drift.
+gem** — and, for the RuboCop pass, the **actual
+[RuboCop](https://github.com/rubocop/rubocop) gem** — baked into it. Neither is
+a reimplementation, so neither drifts.
 
-`test/native-conformance.test.ts` asserts byte-identical output against the
-same gem running on a native Ruby. That test *asserts* rather than reports: any
-divergence is a real bug, not a known stylistic gap.
+Two conformance tests assert byte-identical output against the same gems running
+on a native Ruby, and both *assert* rather than report: any divergence is a real
+bug, not a known stylistic gap.
 
-It works because syntax_tree and prettier_print are pure Ruby with no native
-extensions. Their only C dependency is Ripper, which is built into CRuby.
+- `test/native-conformance.test.ts` compares syntax_tree.
+- `test/rubocop-conformance.test.ts` compares the Layout pass against
+  `RuboCop::CLI` — the real command-line entry point, with both gem versions
+  pinned at activation, because RuboCop's Layout output is not stable across
+  releases and a machine with several installed resolves the bare `rubocop`
+  binstub to the newest one.
+
+It works because all of it is pure Ruby with no native extensions of its own.
+syntax_tree and prettier_print need Ripper, RuboCop's parser needs racc, and
+both are part of CRuby.
+
+The versions are pinned in `build/ruby_fmt/Gemfile`, which is also where the
+conformance tests read them from, so the native side and the wasm side cannot
+drift apart. `rubocop-ast` is pinned alongside `rubocop` rather than left to
+resolve: it decides which parser produces the token stream the Layout cops see,
+so a newer one changes the output without RuboCop itself changing at all.
 
 ---
 
@@ -212,6 +349,8 @@ is a cached module-level value rather than an object you have to construct.
 | `src/format.ts` | `format` | The public entry point: recycle if needed, validate options, write input, format. |
 | `src/boot-vm.ts` | `bootVm`, `recycleVm` | Boots CRuby with syntax_tree required and patched, and caches the result. |
 | `src/stree-patch.ts` | `IN_PATTERN_THEN_PATCH` | The one fix applied on top of the gem, and why it is safe. |
+| `src/rubocop.ts` | `RUBOCOP_SETUP`, `RUBOCOP_CONFIG_YAML` | The Layout pass: how RuboCop is driven, and which of its parts are used. |
+| `src/wasi-shims.ts` | `createShimDirectory` | Stand-ins for the two stdlib extensions wasip1 cannot provide. |
 | `src/compile-artifact.ts` | `compileArtifact` | Locates, decompresses and compiles `ruby_fmt.wasm.br`, at most once per process. |
 | `src/types.ts` | `FormatOptions`, `RubyFormatterVm` | The two types the other files share. |
 
@@ -227,7 +366,7 @@ The package ships a single `ruby_fmt.wasm.br` containing CRuby and the gems.
 There is no directory to mount at boot and nothing to resolve at runtime.
 
 It is stored brotli-compressed, because the artifact is mostly Ruby source text
-and packs down about 5×. Decompression happens once per process (~100 ms via
+and packs down about 7×. Decompression happens once per process (~100 ms via
 `node:zlib`, no dependency added), not once per format — the compiled
 `WebAssembly.Module` is cached, so even recycling the VM after the memory leak
 reuses it.

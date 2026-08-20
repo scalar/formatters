@@ -104,6 +104,21 @@ jobs:
       - name: Install the pinned syntax_tree
         run: gem install syntax_tree --no-document -v "$(sed -n 's/^gem "syntax_tree", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
 
+      # Same story for the RuboCop pass, and rubocop-ast has to be pinned alongside rubocop rather
+      # than left to resolve: it decides which parser produces the token stream the Layout cops
+      # see, so a newer one can change the output without rubocop itself changing at all. That is
+      # also why the Gemfile pins it - see the comment there.
+      - name: Install the pinned rubocop
+        run: |
+          gem install rubocop --no-document -v "$(sed -n 's/^gem "rubocop", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
+          gem install rubocop-ast --no-document -v "$(sed -n 's/^gem "rubocop-ast", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
+          # parser is not named in the Gemfile - it arrives as a dependency - so its version comes
+          # from the lockfile instead. It has to be pinned all the same: it produces the token
+          # stream the Layout cops see, the artifact is frozen at whatever the lockfile resolved,
+          # and a newer parser on the native side would fail the byte-identity assertion (or worse,
+          # quietly mask a real divergence) with nothing in this repo having changed.
+          gem install parser --no-document -v "$(sed -n 's/^    parser (\(.*\))$/\1/p' build/ruby_fmt/Gemfile.lock)"
+
       - name: Run unit tests
         run: bun run test
 

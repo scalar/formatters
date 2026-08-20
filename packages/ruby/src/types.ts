@@ -2,12 +2,55 @@ import type { File } from '@bjorn3/browser_wasi_shim'
 import type { RubyVM } from '@ruby/wasm-wasi'
 
 /**
- * Options accepted by `format`. Everything here mirrors a syntax_tree option,
- * so the defaults are syntax_tree's defaults rather than ones we picked.
+ * Options accepted by `format`.
+ *
+ * `printWidth` mirrors a syntax_tree option, so its default is syntax_tree's
+ * rather than one we picked. `rubocop` turns on a second pass and is ours.
  */
 export type FormatOptions = {
   /** Maximum line width. syntax_tree's default is 80. */
   printWidth?: number
+  /**
+   * Run `rubocop --autocorrect --only Layout` over syntax_tree's output.
+   *
+   * **On by default.** syntax_tree alone leaves Layout offenses in about 30% of
+   * real files - mostly multiline operation and method-call indentation, where
+   * the two tools genuinely disagree - so without this pass, formatted output
+   * can still fail a consumer's own `rubocop` run. Formatting that a linter
+   * rejects is not finished, so clearing it is the default rather than an
+   * opt-in.
+   *
+   * Set it to `false` for syntax_tree on its own. That is worth doing when
+   * neither cost below is worth paying: the first call into a VM requires
+   * RuboCop, which takes roughly four seconds - 698 cop files, read and
+   * evaluated by a Ruby that is itself running on WebAssembly - and each format
+   * afterwards costs two to three times what syntax_tree alone does. Both are
+   * per VM, so they are paid again after a recycle. Opting out skips all of it:
+   * RuboCop is never loaded at all.
+   *
+   * The order is fixed and matters. The two tools disagree, so whichever runs
+   * last decides; RuboCop goes second, so RuboCop wins. It cannot go first,
+   * because RuboCop corrects offenses within the line structure it is handed
+   * and never reprints - on 116 files whose formatting differed only in line
+   * breaking, RuboCop alone mapped none of them to a common result.
+   */
+  rubocop?: boolean
+  /**
+   * Extra `.rubocop.yml` entries, merged over the ones this package sets.
+   *
+   * The escape hatch, for the parts of RuboCop's configuration this type does
+   * not name - `{ 'Layout/IndentationWidth': { Width: 4 } }`. It is written
+   * into the guest as the config file RuboCop loads, so anything a
+   * `.rubocop.yml` can say belongs here, spelled exactly as that file spells
+   * it. Merging is one level deep, so naming a cop replaces this package's
+   * entry for it rather than adding to it - which is how you would put
+   * `Layout/LineLength` back, should you want RuboCop rather than syntax_tree
+   * deciding line width.
+   *
+   * Ignored when `rubocop` is `false`, because then there is no RuboCop to
+   * configure.
+   */
+  rubocopConfig?: Record<string, unknown>
 }
 
 /**
@@ -45,7 +88,14 @@ export type FormatFunction = (source: string, options?: FormatOptions) => Promis
 export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
 
 /**
- * Boots the VM, so that `formatSync` can be called afterwards.
+ * Boots the VM and loads RuboCop into it, so that `formatSync` can be called
+ * afterwards.
+ *
+ * RuboCop is loaded here rather than on first use because it is the default
+ * pass and requiring it is synchronous - left to `formatSync`, that first call
+ * would stall for four seconds in a caller that cannot wait at all. A caller
+ * who only ever passes `rubocop: false` should skip this and let `format` boot
+ * on its own, which never loads RuboCop.
  *
  * Optional for `format`, which boots on demand, and required exactly once before
  * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
@@ -55,7 +105,25 @@ export type FormatSyncFunction = (source: string, options?: FormatOptions) => st
  * outgrown what a synchronous caller can clear, and awaiting this again replaces
  * it.
  */
-export type InitFunction = () => Promise<void>
+export type InitFunction = (options?: InitFormatOptions) => Promise<void>
+
+/**
+ * What `init` can be told, beyond "get ready".
+ *
+ * Only one thing, and only because `formatSync` cannot decide it later: `init`
+ * loads RuboCop, and a synchronous caller that never wants it has no other way
+ * to say so - `formatSync` requires `init`, so skipping the call is not an
+ * option the way it is for `format`.
+ */
+export type InitFormatOptions = {
+  /**
+   * Load RuboCop, so that the default pass is ready. Defaults to `true`.
+   *
+   * `false` skips the four seconds it costs, for a caller that will only ever
+   * pass `rubocop: false` to `format` and `formatSync`.
+   */
+  rubocop?: boolean
+}
 
 /** What `createFormat` returns: the package's public functions over one VM. */
 export type Formatters = {
@@ -69,7 +137,7 @@ export type Formatters = {
  * package where its artifact lives. Every field is optional; the defaults
  * resolve `ruby_fmt.wasm.br` relative to the module and expand it here.
  */
-export type InitOptions = {
+export type InitOptions = InitFormatOptions & {
   /** Where to fetch the artifact from. Defaults to the `.br` beside this package. */
   url?: string | URL
   /** The artifact itself, already in hand. Skips the fetch entirely. */
@@ -101,4 +169,13 @@ export type RubyFormatterVm = {
   workFiles: Map<string, File>
   /** The VM's wasm linear memory, watched so the VM can be recycled before it dies. */
   memory: WebAssembly.Memory
+  /**
+   * Whether RuboCop has been required into this VM yet.
+   *
+   * Mutable, and deliberately per VM rather than per module: requiring RuboCop
+   * is expensive enough to want caching, and a recycled VM has not done it,
+   * so a module-level flag would leave `format` calling into a constant that
+   * the new VM has never heard of.
+   */
+  rubocopLoaded: boolean
 }
