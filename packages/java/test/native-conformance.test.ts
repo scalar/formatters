@@ -147,6 +147,20 @@ public final class Thing implements Runnable {
 }`,
 }
 
+/**
+ * The over-long literal `SAMPLES` reflows, wrapped in `depth` builder layers.
+ *
+ * Every layer pushes the literal further right, which is what makes the aosp
+ * quirk below read as a layout bug rather than an idempotence one: sweeping the
+ * depth reports a narrow band of "wrong" depths with agreement on either side,
+ * rather than a constant offset.
+ */
+const nestedReflow = (depth: number): string => {
+  let call = 'B.builder().m("Example Business Solutions for a much longer trailing phrase").build()'
+  for (let i = 0; i < depth; i++) call = `B.builder().n(${call}).build()`
+  return `class Nested {\n  void run(){\n    x(${call});\n  }\n}\n`
+}
+
 describe('native-conformance', () => {
   const samples = Object.entries(SAMPLES)
   const sources = samples.map(([, source]) => source)
@@ -193,6 +207,36 @@ describe('native-conformance', () => {
 
     expect(passes[0], 'upstream became idempotent; drop the workaround note in the README').not.toBe(passes[1])
     expect(passes[1], 'upstream stopped settling after two passes').toBe(passes[2])
+  })
+
+  // The same quirk as reported from downstream, where it arrives as a nesting
+  // sweep rather than one file: format here, re-run the jar over that output,
+  // and the diff is empty at most depths and four to six lines at a couple of
+  // them. A band like that reads like this build capping a continuation indent
+  // the jar does not cap, so it is worth having the refutation in CI rather
+  // than in a reply.
+  //
+  // There is no band. Pass one agrees with the jar at every depth; the band is
+  // the *jar* disagreeing with itself, and it is narrow because the eight-column
+  // continuation only survives while it still fits - deeper in, the second pass
+  // overflows the margin, `StringWrapper` wraps it again, and four comes back.
+  it.skipIf(!native)('matches native google-java-format in aosp at every nesting depth', async () => {
+    const depths = [0, 1, 2, 3, 4]
+    const probes = depths.map(nestedReflow)
+    const firstPass = nativeFormatAll(probes, ['--aosp'])
+
+    for (const [index, depth] of depths.entries()) {
+      expect(await format(probes[index] ?? '', { style: 'aosp' }), `diverged from the jar at depth ${depth}`).toBe(
+        firstPass[index] ?? '',
+      )
+    }
+
+    // And the band itself, so that upstream fixing this shows up here rather
+    // than as a second round of the same report.
+    const secondPass = nativeFormatAll(firstPass, ['--aosp'])
+    const unstable = depths.filter((_, index) => firstPass[index] !== secondPass[index])
+
+    expect(unstable, 'the jar re-indents a different set of depths than it used to').toEqual([1, 2])
   })
 
   it.skipIf(!native)('is idempotent in google style where the tool is', async () => {

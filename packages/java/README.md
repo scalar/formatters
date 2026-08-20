@@ -249,17 +249,45 @@ into a form V8 rejects — `type error in branch[0] (expected (ref exn), got
 exnref)` — at every optimisation level, so the artifact is TeaVM's `ADVANCED`
 output as emitted. It is a quarter the size of the Web Image build anyway.
 
-**google-java-format is not idempotent in `aosp` style.** Reflowing a long
-string literal writes the `+` continuation at a hardcoded four columns, and a
-second run re-indents it to the eight `aosp` uses everywhere else — so the
+**google-java-format is not idempotent in `aosp` style.** `StringWrapper`
+reflows a long string literal and writes the `+` continuation at a hardcoded
+four columns, whatever the style. In `google` that is the continuation indent
+anyway; in `aosp` it is not, so a second run re-indents it to eight — and the
 tool's own first output is not a fixed point of the tool. It settles on the
 second pass. This build reproduces that exactly, at every pass, because it *is*
 that build; `test/native-conformance.test.ts` walks both through three passes
 and asserts they agree at each one.
 
+Nothing here is needed to see it. One file, one tool:
+
+```java
+class Probe {
+  void run() {
+    x(B.builder().n(B.builder().m("Example Business Solutions for a much longer trailing phrase").build()).build());
+  }
+}
+```
+
+```sh
+java -jar google-java-format-1.36.1-all-deps.jar --aosp -i Probe.java
+cp Probe.java pass2.java
+java -jar google-java-format-1.36.1-all-deps.jar --aosp -i pass2.java
+diff -u Probe.java pass2.java   # the jar moved its own `+` from +4 to +8
+```
+
 It is worth knowing because of how it shows up. Format here, commit the result,
 and then verify in CI with the native jar, and the jar reports a change — which
 reads like a wasm-versus-jar divergence and is really pass one against pass two.
+A nesting sweep makes that look worse rather than clearer: the eight-column
+continuation only survives while it still fits, so a few depths differ and the
+ones on either side agree, which reads like this build capping an indent the jar
+does not cap. It is not a band in what this build emits. Pass one is the jar's
+pass one at every depth, and `test/native-conformance.test.ts` asserts that
+across the whole sweep.
+
+How often it bites: 27 of the 658 corpus files are not `aosp` fixed points after
+one pass, and all 27 settle on the second. In `google` style none of the 658 do.
+
 Two ways out: format in `google` style, where the hardcoded four is the right
 number and the tool is idempotent, or format twice in `aosp` and commit the
 second result, which the jar then leaves alone.

@@ -259,10 +259,12 @@ CI, say - reads the release off the package rather than pinning the number a
 second time in its own repository.
 
 One upstream quirk worth knowing: google-java-format is not idempotent in `aosp`
-style on a reflowed string literal, and settles on the second pass. This build
-reproduces that at every pass, which means formatting here and then verifying
-with the jar compares pass one against pass two and looks like a divergence that
-is not one. `packages/java/README.md` has the detail and the two ways out.
+style on a reflowed string literal, and settles on the second pass - 27 of the
+658 corpus files above, none of them in `google` style. This build reproduces
+that at every pass, which means formatting here and then verifying with the jar
+compares pass one against pass two and looks like a divergence that is not one.
+`packages/java/README.md` has the detail, a two-command reproduction that uses
+only the jar, and the two ways out.
 
 It ships as a 0.83 MB `java_fmt.wasm.br` plus TeaVM's generated runtime, which
 supplies the module's imports. Both are committed, so a fresh clone needs
