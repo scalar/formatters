@@ -119,15 +119,29 @@ end`,
 }
 
 /**
- * The one input where this package deliberately differs from the gem it ships:
- * stock syntax_tree 6.3.0 drops the mandatory `then` and returns source Ruby
- * cannot parse, and we keep it (see src/stree-patch.ts).
+ * The inputs where this package deliberately differs from the gem it ships.
+ * Stock syntax_tree 6.3.0 returns source Ruby cannot parse for every one of
+ * them, and we do not (see src/stree-patch.ts).
  *
  * Asserting that the native side is still broken is the point of the test.
- * Whenever syntax_tree releases the fix, native output starts parsing, this
- * fails, and the patch has done its job and can go.
+ * Whenever syntax_tree releases a fix, that native output starts parsing, this
+ * fails, and the patch behind it has done its job and can go.
  */
-const ENDLESS_RANGE_PATTERN = 'case s\nin 300.. | 400.. then\n  a\nend\n'
+const DIVERGENCES: Record<string, string> = {
+  'a pattern ending in an endless range': 'case s\nin 300.. | 400.. then\n  a\nend\n',
+  'a guarded endless range': 'case s\nin (400..) if g\n  a\nend\n',
+  'a guarded hash pattern ending in an endless range': 'case s\nin {x: (500..)} if g\n  a\nend\n',
+  'a hash pattern with a bare double splat': 'case r\nin {a: 1, **}\n  x\nend\n',
+  'a hash pattern after an exponent': 'x = n**2\ncase r\nin {a: 1, b: 2}\n  y\nend\n',
+}
+
+/**
+ * The one divergence native syntax_tree does *not* announce with a syntax
+ * error. `in {}` matches only an empty hash; the `in **` the gem turns it into
+ * matches any hash at all, so the file it writes parses and means something
+ * else - which is why this is checked against the bytes rather than the parse.
+ */
+const SILENT_DIVERGENCE = 'x = n**2\ncase r\nin {}\n  y\nend\n'
 
 const RUBY_PARSES_SCRIPT = `
   require "ripper"
@@ -159,11 +173,26 @@ describe('native-conformance', () => {
   })
 
   it.skipIf(!matchesPin)('diverges from native only where native emits unparseable Ruby', async () => {
-    const [native] = nativeAll([ENDLESS_RANGE_PATTERN])
-    expect(nativeParses(native ?? '')).toBe(false)
+    const shapes = Object.entries(DIVERGENCES)
+    const native = nativeAll(shapes.map(([, source]) => source))
 
-    const ours = await format(ENDLESS_RANGE_PATTERN, { rubocop: false })
-    expect(ours).not.toBe(native)
-    expect(nativeParses(ours)).toBe(true)
+    for (const [index, [name, source]] of shapes.entries()) {
+      const theirs = native[index] ?? ''
+      expect(nativeParses(theirs), `native syntax_tree now handles: ${name}`).toBe(false)
+
+      const ours = await format(source, { rubocop: false })
+      expect(ours, `did not diverge on: ${name}`).not.toBe(theirs)
+      expect(nativeParses(ours), `our output does not parse for: ${name}`).toBe(true)
+    }
+  })
+
+  // Same bargain, for the input where the gem's output parses. There is nothing
+  // to check with `ruby -c` here, so the assertion is that native still rewrites
+  // the pattern and that we hand it back as written.
+  it.skipIf(!matchesPin)('diverges from native where native silently changes what the pattern means', async () => {
+    const [native] = nativeAll([SILENT_DIVERGENCE])
+
+    expect(native).toContain('in **')
+    expect(await format(SILENT_DIVERGENCE, { rubocop: false })).toContain('in {}')
   })
 })

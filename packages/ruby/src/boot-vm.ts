@@ -1,7 +1,7 @@
 import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/browser_wasi_shim'
 import { RubyVM } from '@ruby/wasm-wasi'
 
-import { IN_PATTERN_THEN_PATCH } from './stree-patch'
+import { STREE_PATCHES } from './stree-patch'
 import type { ArtifactSource, BootVm, RubyFormatterVm } from './types'
 import { SHIM_MOUNT_PATH, createShimDirectory } from './wasi-shims'
 
@@ -74,10 +74,10 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       // does not have. See `wasi-shims.ts`.
       vm.eval(`require "/bundle/setup"; $LOAD_PATH.push("${SHIM_MOUNT_PATH}"); require "syntax_tree"`)
 
-      // One correctness fix on top of the stock gem, applied here rather than in
-      // the artifact so it stays reviewable. See stree-patch.ts for what it fixes
-      // and the evidence that it changes nothing else.
-      vm.eval(IN_PATTERN_THEN_PATCH)
+      // A handful of correctness fixes on top of the stock gem, applied here
+      // rather than in the artifact so they stay reviewable. See stree-patch.ts
+      // for what each one fixes and the evidence that it changes nothing else.
+      for (const patch of STREE_PATCHES) vm.eval(patch)
 
       // RuboCop is not required here. It costs about four seconds against
       // syntax_tree's one, and a caller who never asks for it should never wait
