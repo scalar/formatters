@@ -38,11 +38,14 @@
     "lint": "biome lint .",
     "ci": "bun run build && bun run check && bun run types:check && bun run test",
     "release:version": "changeset version && bun install --no-frozen-lockfile",
-    "release:publish": "bun run build && changeset publish"
+    "release:publish": "bun run build && changeset publish",
+    "ruby:snapshot": "bun build/ruby_fmt/write-snapshot.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
+    "@bjorn3/browser_wasi_shim": "^0.4.2",
     "@changesets/cli": "^2.30.0",
+    "@ruby/wasm-wasi": "^2.8.1",
     "@types/bun": "^1.3.5",
     "@types/node": "^26.2.0",
     "playwright": "^1.62.1",

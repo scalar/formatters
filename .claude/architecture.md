@@ -165,7 +165,8 @@ into it. It works because syntax_tree and prettier_print are pure Ruby whose onl
 C dependency is Ripper, which is already inside CRuby's stdlib.
 
 `format()` is async because the first call boots a Ruby VM; the VM is cached, so
-later calls are milliseconds.
+later calls are milliseconds. Booting means restoring a **boot snapshot** rather
+than performing the boot - see below.
 
 **Two tools, one artifact, both by default.** `format` runs syntax_tree and then
 the real `rubocop --autocorrect --only Layout`. Neither subsumes the other:
@@ -181,12 +182,11 @@ Order decides the result, because the two disagree about multiline indentation:
 syntax_tree first, RuboCop second. Running syntax_tree afterwards would revert
 RuboCop in 116 of 397 files.
 
-`rubocop: false` opts out, and then RuboCop is never required into the VM at all
-- worth about four seconds on the first call. `init` does load it, because it is
-the default pass and `formatSync` would otherwise stall for those seconds in a
-caller that chose the synchronous entry point precisely because it cannot wait;
-`init({ rubocop: false })` is how such a caller declines, and the only way,
-since `formatSync` cannot run without `init`.
+`rubocop: false` opts out of the pass. It no longer opts out of *loading*
+RuboCop, because the snapshot has it loaded already; it is now purely a
+per-format saving of two to three times the syntax_tree-only cost.
+`init({ rubocop: false })` is still the way a synchronous caller declines the
+pass, and is still the only way, since `formatSync` cannot run without `init`.
 
 **syntax_tree owns line width.** `Layout/LineLength` is disabled in the config
 written into the guest, because it is the one Layout cop that contradicts
@@ -216,13 +216,32 @@ with SIGSEGV rather than throwing. The shim is also pure JavaScript with an
 in-memory filesystem, so the source being formatted never touches disk. Do not
 "simplify" this dependency away.
 
-**Known bug — the cached VM leaks.** Each format grows the VM's wasm linear
-memory (roughly 74 MB per 23 KB of input) and never releases it. Ruby's own
-object heap stays flat, so this is not a Ruby-level leak. At 2 GB a guest
-pointer read as a signed i32 goes negative and the JS glue throws
-`RangeError: Start offset -… is outside the bounds of the buffer`. The practical
-ceiling is about 680 KB of cumulative input per process. Anything that formats a
-whole codebase in one process must recycle the VM.
+**Booting is a restored memory image, not a boot.** `require` is what booting
+this VM costs: instantiating CRuby is ~0.5s and `require "syntax_tree"` ~1s, but
+`require "rubocop"` is 8s or more - 1266 Ruby files read, parsed, compiled and
+run on a Ruby that is itself running on WebAssembly. None of it depends on the
+process it happens in, so `build/ruby_fmt/write-snapshot.ts` does it once at
+build time and writes the 625 pages of linear memory the boot changed into
+`packages/ruby/ruby_fmt.snapshot.br` (41 MB raw, 7.9 MB brotli). Booting is then
+instantiate, grow, blit: ~0.7s all in against ~9s.
+
+This is Wizer's technique applied from JavaScript rather than to the wasm, which
+is deliberate - the artifact stays exactly the CRuby ruby.wasm builds, and the
+snapshot is a layer over it that can be missing. It is keyed to a fingerprint of
+the artifact and the restored VM is asked a question before it is trusted, so a
+stale or absent image costs a slow boot and nothing else.
+`packages/ruby/test/snapshot-equivalence.test.ts` boots both ways and asserts
+identical bytes; `bun run ruby:build` rewrites the snapshot as its last step, and
+both files are committed together.
+
+**Linear memory grows and only a recycle reclaims it.** A booted VM holds ~380 MB
+- CRuby reserves most of that during startup - and formatting adds to it. At 2 GB
+a guest pointer read as a signed i32 goes negative and the JS glue throws
+`RangeError: Start offset -… is outside the bounds of the buffer`, so `format`
+recycles the VM before then. The threshold is 300 MB of *growth past the boot*
+rather than an absolute ceiling: it used to be an absolute 400 MB, which after the
+Ruby 4.0 bump took the boot to 378 MB left ~20 MB of headroom, and a single 38 KB
+file crosses that - after which every later format pays for a recycle.
 
 ### `@scalar/java-fmt` (`packages/java`)
 

@@ -17,7 +17,7 @@ export type {
 } from './types'
 
 const loader = createArtifactLoader()
-const { format, formatSync, init: bootVm } = createFormat(createBootVm(loader.compileArtifact))
+const { format, formatSync, init: bootVm } = createFormat(createBootVm(loader.compileArtifact, loader.loadSnapshot))
 
 /**
  * Points the package at its artifact and boots the VM.

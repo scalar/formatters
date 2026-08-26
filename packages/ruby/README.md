@@ -37,10 +37,12 @@ await format('class A\n  def initialize(b)\n@b=b\n  end\nend')
 // end
 ```
 
-Async because the first call decompresses the artifact, compiles it, boots a
-Ruby VM and loads RuboCop — about 5s all in. That work is cached, so every later
-call is milliseconds. `format(source, { rubocop: false })` skips the RuboCop
-half of it entirely: ~1.1s to boot, ~4ms a call.
+Async because the first call decompresses the artifact, compiles it and restores
+a Ruby VM that already has syntax_tree and RuboCop loaded — about 0.7s all in.
+That work is cached, so every later call is milliseconds. The VM comes from a
+[boot snapshot](#the-boot-snapshot) shipped beside the artifact; without one it
+would be about 9s, which is what loading RuboCop into a Ruby running on
+WebAssembly actually costs.
 
 ---
 
@@ -127,29 +129,32 @@ corrections — over those same 397 files, in 116 of them.
 
 | | `rubocop: false` | default |
 |:---|:---|:---|
-| first call into a VM | ~1.1 s, to boot the VM | plus ~4 s, to load RuboCop |
+| first call into a VM | ~0.7 s, to boot the VM | the same 0.7 s |
 | every call after | ~4 ms | 2–3× that |
 | artifact | 5.2 MB either way | |
+| snapshot | 7.9 MB either way | |
 
-The four seconds are RuboCop's 698 cop files being read and evaluated by a Ruby
-that is itself running on WebAssembly. Nothing here can make that cheaper, so it
-is spent only when it will be used: a caller who passes `rubocop: false`
-everywhere and never calls `init` never loads RuboCop at all.
+Booting used to be the asymmetric part: requiring RuboCop meant reading and
+evaluating its 698 cop files on a Ruby that is itself running on WebAssembly,
+which took eight seconds or more, so `rubocop: false` skipped it. The [boot
+snapshot](#the-boot-snapshot) removed that difference — the image it restores
+has RuboCop in it either way, so `rubocop: false` now buys nothing at boot and
+everything per call.
 
-Both costs are per VM, so they are paid again after a
-[recycle](#known-bug-the-vm-leaks-and-recycles-itself-to-survive-it) — worth
-knowing if you are formatting a whole codebase in one process. The multipliers
-are the part worth trusting; the absolute figures come from one machine,
-measured in the same run as the syntax_tree ones beside them.
+Per-call costs are still very different, and they are per VM, so they are paid
+again after a
+[recycle](#the-vm-recycles-itself-rather-than-growing-without-a-bound). The
+multipliers are the part worth trusting; the absolute figures come from one
+machine, measured in the same run as the syntax_tree ones beside them.
 
-`init` loads RuboCop as well as booting the VM, so `formatSync` gets the default
-pass without a first-call stall. That is the one reason to prefer `init` over
-letting `format` boot on its own — and `init({ rubocop: false })` is how a
-synchronous caller declines it.
+`init` boots the VM, so `formatSync` gets a formatter without a first-call
+stall. `init({ rubocop: false })` still exists, and still means "do not load
+RuboCop" — it just has nothing to skip when a snapshot is doing the booting.
 
 The artifact carries both tools whichever way you call it — syntax_tree and
 prettier_print are 141 KB of the 5.2 MB, so there was never a lighter build to
-be had by dropping one.
+be had by dropping one. The snapshot carries both too, for the same reason: one
+image that always works beats two that have to be chosen between.
 
 ### When it gives up
 
@@ -205,12 +210,16 @@ await format(source)
 ```
 
 Run it in a worker. Booting compiles 35.7 MB of wasm, which is a visibly frozen
-tab if it happens on the main thread — and `rubocop: true` adds several seconds
-of Ruby on top of that the first time it is asked for.
+tab if it happens on the main thread.
 
-Formatting grows the VM's linear memory until it is recycled at 400 MB — a
-ceiling picked for a Node process. A tab has less room to absorb that, so keep
-large files off the main thread.
+The browser fetches the [boot snapshot](#the-boot-snapshot) too — 7.9 MB on top
+of the artifact, in exchange for the eight seconds of Ruby that loading RuboCop
+would otherwise cost. `init({ snapshot: false })` declines it, and
+`init({ snapshotUrl })` names it where a bundler has moved it.
+
+A booted VM holds about 380 MB of linear memory and grows from there until it is
+recycled. A tab has less room to absorb that than a server does, so keep large
+files off the main thread.
 
 The browser reads the same brotli artifact as Node (5.2 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
@@ -476,6 +485,9 @@ is a cached module-level value rather than an object you have to construct.
 | `src/rubocop.ts` | `RUBOCOP_SETUP`, `RUBOCOP_CONFIG_YAML` | The Layout pass: how RuboCop is driven, and which of its parts are used. |
 | `src/wasi-shims.ts` | `createShimDirectory` | Stand-ins for the two stdlib extensions wasip1 cannot provide. |
 | `src/compile-artifact.ts` | `compileArtifact` | Locates, decompresses and compiles `ruby_fmt.wasm.br`, at most once per process. |
+| `src/snapshot.ts` | `decodeSnapshot`, `fingerprintArtifact` | The boot snapshot's file format, and why a memory image is enough. |
+| `src/apply-snapshot.ts` | `applySnapshot` | Restores an image into a freshly instantiated VM. |
+| `src/read-snapshot.ts` | `readSnapshot` | Reads `ruby_fmt.snapshot.br` from disk, or reports that there is none to use. |
 | `src/types.ts` | `FormatOptions`, `RubyFormatterVm` | The two types the other files share. |
 
 `bun run build` compiles `src/` to `dist/`, which is what the published package
@@ -492,8 +504,7 @@ There is no directory to mount at boot and nothing to resolve at runtime.
 It is stored brotli-compressed, because the artifact is mostly Ruby source text
 and packs down about 7×. Decompression happens once per process (~100 ms via
 `node:zlib`, no dependency added), not once per format — the compiled
-`WebAssembly.Module` is cached, so even recycling the VM after the memory leak
-reuses it.
+`WebAssembly.Module` is cached, so even recycling the VM reuses it.
 
 Two things keep it small. Everything the formatter never loads is stripped
 before packaging: `rdoc`, `bundler`, `irb`, `reline`, and the bundled gem tree
@@ -520,34 +531,67 @@ today.
 
 ---
 
-## Known bug: the VM leaks, and recycles itself to survive it
+## The boot snapshot
 
-Formatting grows the VM's wasm linear memory by roughly **74MB per 23KB of
-input**, and never releases it. It is not Ruby-level garbage — the object heap
-stays flat at ~65k live slots and `GC.start` does not help — so nothing inside
-the VM can reclaim it.
+`ruby_fmt.snapshot.br` ships beside the artifact and is an image of a VM that has
+already loaded syntax_tree and RuboCop. Restoring it is what makes booting cost
+0.7 s instead of nine.
 
-Left alone, the VM hits the wasm32 2GB signed-pointer boundary after about
-**680KB of cumulative input**, at which point a guest pointer read as a signed
-i32 goes negative and the glue throws `RangeError: Start offset -… is outside
-the bounds of the buffer`. Every individual file formats fine; only a process
-that formats *many* files dies — which is exactly what formatting a whole
-codebase does.
+Nearly all of that nine seconds was `require`. Instantiating CRuby costs about
+half a second and `require "syntax_tree"` another second, but `require "rubocop"`
+costs eight or more: 1266 Ruby files that CRuby has to read, parse, compile and
+run, on a virtual machine that is itself running on WebAssembly. None of that
+work depends on the input, the options, or anything else about the process it
+happens in — so it is done once, at build time, and shipped.
 
-`format()` therefore watches the VM's memory and rebuilds it before the wall.
-Recycling reuses the cached `WebAssembly.Module`, so it costs the VM boot alone —
-not another decompress and compile. `test/vm-recycle.test.ts` keeps that honest
-by asserting the bound rather than the crash: it formats past the ceiling
-repeatedly and fails if linear memory ever climbs beyond 800MB, which is what
-happens the moment recycling stops.
+The image is 625 changed 64 KB pages of linear memory, 41 MB raw and 7.9 MB
+brotli-compressed. Booting from it means instantiating the module, growing its
+memory and copying those pages back: about 250 ms to expand and 60 ms to apply.
+This is the technique Wizer uses to pre-initialize ruby.wasm at build time, done
+in JavaScript instead so that the artifact stays exactly the CRuby ruby.wasm
+builds.
 
-The rebuild threshold is **400MB**, far below the 2GB wall it is protecting
-against. That is deliberate: a recycle cannot release the outgoing VM's linear
-memory synchronously, so the process briefly holds the old buffer and the new
-one together. Recycling at 1.1GB made that pair peak at ~1.5GB resident;
-recycling at 400MB holds the peak near 1GB, for about one extra ~250ms boot per
-130KB of input. Peak memory is the scarcer resource for anything formatting a
-codebase in CI, so it is the one being spent down.
+It is an accelerator and never a requirement. The snapshot is keyed to a
+fingerprint of the artifact and the restored VM is asked a question before it is
+trusted, so a missing, stale or unusable image ends in a slower boot rather than
+an error — `src/boot-vm.ts` falls back to running the requires. That fallback is
+also what makes the whole thing testable:
+`test/snapshot-equivalence.test.ts` boots both ways and asserts the same bytes
+come out.
+
+Rebuild it whenever the artifact or the boot sequence changes — `bun run
+ruby:build` does it as its last step, and `bun run ruby:snapshot` does it alone.
+Commit both files together.
+
+---
+
+## The VM recycles itself rather than growing without a bound
+
+Formatting grows the VM's wasm linear memory and does not give it back. A booted
+VM starts at about 380 MB — CRuby reserves most of that during startup, before
+any of our Ruby runs — and a corpus of 200 real files adds about 30 MB before
+levelling off. The hard limit is the wasm32 2 GB signed-pointer boundary, past
+which a guest pointer read as a signed i32 goes negative and the glue throws
+`RangeError: Start offset -… is outside the bounds of the buffer`.
+
+`format()` therefore watches the VM's memory and rebuilds it before the wall,
+which reuses the cached `WebAssembly.Module` and the snapshot, so a recycle
+costs the boot alone — not another decompress and compile.
+`test/vm-recycle.test.ts` keeps that honest by asserting the bound rather than
+the crash: it formats past the ceiling repeatedly and fails if linear memory
+ever climbs beyond 800 MB.
+
+The threshold is **300 MB of growth past whatever booting left behind**, not an
+absolute ceiling. That distinction is load-bearing now that a boot costs 380 MB:
+the absolute 400 MB ceiling this used to use left about 20 MB of headroom, and a
+single 38 KB file crosses it — after which *every* later format triggers a
+recycle. Measuring growth instead keeps the intent (bound what formatting adds)
+without depending on what booting happens to cost.
+
+It is deliberately far below the 2 GB wall, because a recycle cannot release the
+outgoing VM's linear memory synchronously, so the process briefly holds the old
+buffer and the new one together. 300 MB of growth over a 380 MB boot holds that
+pair near 1 GB, which is what a 16 GB CI runner absorbs without thrashing.
 
 ---
 
