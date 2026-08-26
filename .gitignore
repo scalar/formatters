@@ -82,3 +82,7 @@ build/swift_fmt/*.wasm
 # and a directory pattern would not match one.
 build/rust_fmt/rust
 build/rust_fmt/*.wasm
+
+# benchmark corpora - large, gitignored, reproducible from scripts/bench/fetch-corpus.sh
+bench/corpus
+bench/.cache
