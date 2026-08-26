@@ -222,7 +222,7 @@ this VM costs: instantiating CRuby is ~0.5s and `require "syntax_tree"` ~1s, but
 run on a Ruby that is itself running on WebAssembly. None of it depends on the
 process it happens in, so `build/ruby_fmt/write-snapshot.ts` does it once at
 build time and writes the 625 pages of linear memory the boot changed into
-`packages/ruby/ruby_fmt.snapshot.br` (41 MB raw, 7.9 MB brotli). Booting is then
+`packages/ruby/ruby_fmt.snapshot.br` (41 MB raw, 7.6 MB brotli). Booting is then
 instantiate, grow, blit: ~0.7s all in against ~9s.
 
 This is Wizer's technique applied from JavaScript rather than to the wasm, which

@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 5.2 MB | ✅ exact +3 fixes | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 5.2 + 7.6 MB | ✅ exact +3 fixes | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -38,6 +38,15 @@ Artifact is the brotli-compressed module as committed and published — the whol
 tool, its parser and its language runtime in one file. The JavaScript that loads
 it is small by comparison: nothing for Ruby, Swift, PHP and Rust, a 16 KB
 generated runtime for Java and Kotlin, and 0.46 MB of .NET loader scripts for C#.
+
+Ruby is the one package with two numbers, because it publishes a second file. The
+5.2 MB is CRuby and the gems; the 7.6 MB beside it is a boot snapshot — an image
+of a VM that has already loaded both tools, which is what makes booting cost
+0.7 s instead of the nine seconds `require "rubocop"` takes on a Ruby running on
+WebAssembly. It is an accelerator rather than a requirement: delete it, or pass
+`init({ snapshot: false })`, and the package boots the long way and formats the
+same bytes. That is a deliberate trade of install size for start-up time, and it
+is the whole of the difference — nothing else in the package got bigger.
 
 Ruby names two tools because it runs two: syntax_tree reprints the file, then
 RuboCop's Layout department corrects what syntax_tree leaves behind, so the
@@ -219,7 +228,7 @@ costs.
 It ships as one 5.2 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
 formatter never loads is stripped, then `wasm-opt -Os` and brotli. Beside it sits
-a 7.9 MB `ruby_fmt.snapshot.br`: an image of a VM that has already loaded both
+a 7.6 MB `ruby_fmt.snapshot.br`: an image of a VM that has already loaded both
 tools, which is what makes booting cost 0.7 s rather than the nine seconds
 `require "rubocop"` takes on a Ruby running on WebAssembly. Both are committed,
 so a fresh clone needs nothing extra; `bun run ruby:build` rebuilds both when the

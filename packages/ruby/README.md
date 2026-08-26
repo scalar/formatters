@@ -132,7 +132,7 @@ corrections — over those same 397 files, in 116 of them.
 | first call into a VM | ~0.7 s, to boot the VM | the same 0.7 s |
 | every call after | ~4 ms | 2–3× that |
 | artifact | 5.2 MB either way | |
-| snapshot | 7.9 MB either way | |
+| snapshot | 7.6 MB either way | |
 
 Booting used to be the asymmetric part: requiring RuboCop meant reading and
 evaluating its 698 cop files on a Ruby that is itself running on WebAssembly,
@@ -212,7 +212,7 @@ await format(source)
 Run it in a worker. Booting compiles 35.7 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
-The browser fetches the [boot snapshot](#the-boot-snapshot) too — 7.9 MB on top
+The browser fetches the [boot snapshot](#the-boot-snapshot) too — 7.6 MB on top
 of the artifact, in exchange for the eight seconds of Ruby that loading RuboCop
 would otherwise cost. `init({ snapshot: false })` declines it, and
 `init({ snapshotUrl })` names it where a bundler has moved it.
@@ -544,7 +544,7 @@ run, on a virtual machine that is itself running on WebAssembly. None of that
 work depends on the input, the options, or anything else about the process it
 happens in — so it is done once, at build time, and shipped.
 
-The image is 625 changed 64 KB pages of linear memory, 41 MB raw and 7.9 MB
+The image is 625 changed 64 KB pages of linear memory, 41 MB raw and 7.6 MB
 brotli-compressed. Booting from it means instantiating the module, growing its
 memory and copying those pages back: about 250 ms to expand and 60 ms to apply.
 This is the technique Wizer uses to pre-initialize ruby.wasm at build time, done
