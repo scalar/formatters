@@ -20,13 +20,12 @@ export type FormatOptions = {
    * rejects is not finished, so clearing it is the default rather than an
    * opt-in.
    *
-   * Set it to `false` for syntax_tree on its own. That is worth doing when
-   * neither cost below is worth paying: the first call into a VM requires
-   * RuboCop, which takes roughly four seconds - 698 cop files, read and
-   * evaluated by a Ruby that is itself running on WebAssembly - and each format
-   * afterwards costs two to three times what syntax_tree alone does. Both are
-   * per VM, so they are paid again after a recycle. Opting out skips all of it:
-   * RuboCop is never loaded at all.
+   * Set it to `false` for syntax_tree on its own. What that saves is the pass:
+   * a format with RuboCop costs two to three times what syntax_tree alone does.
+   * It no longer saves any loading. RuboCop used to be required into the VM on
+   * the first call that asked for it, at about four seconds a VM and again
+   * after every recycle; it is now baked into the artifact, so it is there
+   * whether this is `true` or `false`.
    *
    * The order is fixed and matters. The two tools disagree, so whichever runs
    * last decides; RuboCop goes second, so RuboCop wins. It cannot go first,
@@ -88,14 +87,11 @@ export type FormatFunction = (source: string, options?: FormatOptions) => Promis
 export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
 
 /**
- * Boots the VM and loads RuboCop into it, so that `formatSync` can be called
- * afterwards.
+ * Boots the VM, so that `formatSync` can be called afterwards.
  *
- * RuboCop is loaded here rather than on first use because it is the default
- * pass and requiring it is synchronous - left to `formatSync`, that first call
- * would stall for four seconds in a caller that cannot wait at all. A caller
- * who only ever passes `rubocop: false` should skip this and let `format` boot
- * on its own, which never loads RuboCop.
+ * Booting is instantiating the artifact and two short evals - the artifact
+ * carries syntax_tree and RuboCop already loaded, so neither gem is required at
+ * runtime any more.
  *
  * Optional for `format`, which boots on demand, and required exactly once before
  * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
@@ -110,17 +106,22 @@ export type InitFunction = (options?: InitFormatOptions) => Promise<void>
 /**
  * What `init` can be told, beyond "get ready".
  *
- * Only one thing, and only because `formatSync` cannot decide it later: `init`
- * loads RuboCop, and a synchronous caller that never wants it has no other way
- * to say so - `formatSync` requires `init`, so skipping the call is not an
- * option the way it is for `format`.
+ * Nothing, now. The one option here existed because `init` used to require
+ * RuboCop into the VM and a synchronous caller had no later chance to decline
+ * it - `formatSync` needs `init`, so skipping the call is not the opt-out it is
+ * for `format`. The artifact carries RuboCop already, so there is no longer a
+ * cost to decline.
  */
 export type InitFormatOptions = {
   /**
-   * Load RuboCop, so that the default pass is ready. Defaults to `true`.
+   * Accepted and ignored.
    *
-   * `false` skips the four seconds it costs, for a caller that will only ever
-   * pass `rubocop: false` to `format` and `formatSync`.
+   * It used to decide whether `init` spent about four seconds requiring RuboCop
+   * into the VM. RuboCop is now baked into the wasm artifact, so it is loaded
+   * before `init` is called and no value here can change that. Kept so callers
+   * that pass it keep compiling and keep working; `format`'s and `formatSync`'s
+   * own `rubocop: false` still skips the pass, which is the part that was ever
+   * worth skipping per call.
    */
   rubocop?: boolean
 }
@@ -163,19 +164,10 @@ export type InitOptions = InitFormatOptions & {
  * state that a recycle could leave pointing at a dead VM.
  */
 export type RubyFormatterVm = {
-  /** CRuby (wasm) with syntax_tree already required. */
+  /** CRuby (wasm) with syntax_tree and RuboCop already loaded. */
   vm: RubyVM
   /** The mutable contents map behind /work, so input can be written from JS. */
   workFiles: Map<string, File>
   /** The VM's wasm linear memory, watched so the VM can be recycled before it dies. */
   memory: WebAssembly.Memory
-  /**
-   * Whether RuboCop has been required into this VM yet.
-   *
-   * Mutable, and deliberately per VM rather than per module: requiring RuboCop
-   * is expensive enough to want caching, and a recycled VM has not done it,
-   * so a module-level flag would leave `format` calling into a constant that
-   * the new VM has never heard of.
-   */
-  rubocopLoaded: boolean
 }

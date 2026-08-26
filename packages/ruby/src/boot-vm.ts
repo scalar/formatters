@@ -3,7 +3,20 @@ import { RubyVM } from '@ruby/wasm-wasi'
 
 import { STREE_PATCHES } from './stree-patch'
 import type { ArtifactSource, BootVm, RubyFormatterVm } from './types'
-import { SHIM_MOUNT_PATH, createShimDirectory } from './wasi-shims'
+import { createShimDirectory } from './wasi-shims'
+
+/**
+ * The preopened directory the guest reads its input and its config from, and
+ * the one `HOME` points at.
+ *
+ * Exported because three places have to agree on it, and only two of them are
+ * in this package: the preopen below, `format.ts`, which writes input into it,
+ * and `build/ruby_fmt/preinit.ts`, which maps a real directory here while wizer
+ * snapshots the VM. The guest's preopen table is part of that snapshot, so a
+ * mismatch does not read as a missing file - it is a VM that cannot see /work
+ * at all, and the first RuboCop call dies with `Errno::ENOENT @ dir_s_mkdir`.
+ */
+export const WORK_DIR = '/work'
 
 /**
  * Builds the boot/recycle pair for one artifact source.
@@ -24,9 +37,15 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
   let current: RubyFormatterVm | undefined
 
   /**
-   * Boots CRuby (wasm) and loads syntax_tree into it. Formats reuse the same VM:
-   * the first call costs ~1.1s all in and dominates everything else, after which
-   * formats are ~4ms.
+   * Instantiates the artifact, which arrives with syntax_tree and RuboCop
+   * already loaded into it.
+   *
+   * That is the whole shape of this function now. The artifact is a wizer
+   * snapshot of a VM that had already run `ruby-init` and required both gems -
+   * see `build/ruby_fmt/preinit.ts` - so booting is an instantiation and two
+   * short evals rather than the ~8s of Ruby it used to be. Formats then reuse
+   * the VM, and a recycle costs about what this does instead of paying for the
+   * requires again.
    *
    * `@bjorn3/browser_wasi_shim` rather than `node:wasi` on purpose. Node's built-in
    * WASI segfaults non-deterministically once ruby.wasm is given preopened
@@ -56,7 +75,7 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
           new OpenFile(new File([])),
           ConsoleStdout.lineBuffered(() => {}),
           ConsoleStdout.lineBuffered(() => {}),
-          new PreopenDirectory('/work', workFiles),
+          new PreopenDirectory(WORK_DIR, workFiles),
           createShimDirectory(),
         ],
         // Required: the shim's debug.enable(undefined) resolves to `true`, so
@@ -64,34 +83,43 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
         { debug: false },
       )
 
-      const { vm } = await RubyVM.instantiateModule({ module: await compileArtifact(), wasip1: wasi })
+      // Deliberately not `RubyVM.instantiateModule`, which is these four steps
+      // plus a fifth: `vm.initialize(args)`, which calls the artifact's
+      // `ruby-init` export and then requires /bundle/setup. The snapshot has
+      // already been through both, and running `ruby-init` again would
+      // reinitialise CRuby underneath the syntax_tree and RuboCop sitting in
+      // its heap. So the first four are done here and the fifth is not.
+      const vm = new RubyVM()
+      const imports = { wasi_snapshot_preview1: wasi.wasiImport }
+      vm.addToImports(imports)
+      const instance = await WebAssembly.instantiate(await compileArtifact(), imports)
+      await vm.setInstance(instance)
 
-      // RubyGems is required explicitly because Ruby 4.0 stopped loading it during
-      // startup. `Gem` is still defined - as a stub - so nothing fails until
-      // something touches a real constant, which syntax_tree does on the second
-      // line of `formatter.rb`: `Gem::Version.new(RUBY_VERSION)`. The error that
-      // came back was `uninitialized constant Gem::Version`, which reads like a
-      // broken artifact rather than a missing require.
+      // Hands the shim its instance, and nothing more: wizer runs `_initialize`
+      // itself before the snapshot and drops the export, so there is no reactor
+      // constructor left here to call twice. Left in rather than replaced with
+      // an assignment because it is what makes this work against an artifact
+      // that has *not* been snapshotted - useful when bisecting the build.
       //
-      // /bundle/setup puts the baked-in gems on the load path. rbwasm writes it
-      // when it packages the Gemfile, and nothing else sets $LOAD_PATH up for us.
-      //
-      // The shims go on the end, never the front: the real stdlib is searched
-      // first, so they answer only for the two extensions this build genuinely
-      // does not have. See `wasi-shims.ts`.
-      vm.eval(
-        `require "rubygems"; require "/bundle/setup"; $LOAD_PATH.push("${SHIM_MOUNT_PATH}"); require "syntax_tree"`,
-      )
+      // The shim types `initialize` against a narrower instance than
+      // `WebAssembly.Instance` - it wants `exports.memory` declared, which the
+      // standard type does not carry - so the instance is widened here rather
+      // than the shim's expectations being weakened.
+      wasi.initialize(instance as unknown as Parameters<typeof wasi.initialize>[0])
 
       // A handful of correctness fixes on top of the stock gem, applied here
       // rather than in the artifact so they stay reviewable. See stree-patch.ts
       // for what each one fixes and the evidence that it changes nothing else.
       for (const patch of STREE_PATCHES) vm.eval(patch)
 
-      // RuboCop is not required here. It costs about four seconds against
-      // syntax_tree's one, and a caller who never asks for it should never wait
-      // for it, so `format.ts` loads it on first use and flips this.
-      current = { vm, workFiles, memory: wasi.inst.exports.memory, rubocopLoaded: false }
+      // The one part of the RuboCop setup that cannot be baked in. `ScalarRubyFmt`
+      // itself is in the snapshot (see `RUBOCOP_SETUP` in rubocop.ts), but `setup`
+      // chdirs into /work and builds the Layout cop set, and both of those belong
+      // to a VM rather than to an artifact - a recycled VM starts over on each.
+      // It costs ~40ms against the ~7s requiring RuboCop used to.
+      vm.eval(`ScalarRubyFmt.setup(${JSON.stringify(WORK_DIR)})`)
+
+      current = { vm, workFiles, memory: wasi.inst.exports.memory }
       return current
     })().catch((error: unknown) => {
       // The rejection is not cached, so a boot that failed on a transient
@@ -108,9 +136,11 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
    * Drops the cached VM and boots a fresh one.
    *
    * This exists because formatting leaks (see `format.ts`); dropping the VM is
-   * the only lever we have. It is cheap relative to a cold start, because the
-   * artifact source still has the compiled module cached — a recycle pays for
-   * the boot alone, not another decompress and compile.
+   * the only lever we have. It is cheap: the artifact source still has the
+   * compiled module cached, so a recycle pays for neither the decompress nor
+   * the compile - and since the artifact is pre-initialized, it no longer pays
+   * for requiring syntax_tree and RuboCop either. ~100ms, against the ~6s it
+   * cost when a fresh VM had to load both gems from scratch.
    */
   const recycle = (): Promise<RubyFormatterVm> => {
     vmPromise = undefined

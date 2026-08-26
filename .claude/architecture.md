@@ -164,8 +164,28 @@ Runs actual CRuby compiled to WebAssembly with the actual syntax_tree gem loaded
 into it. It works because syntax_tree and prettier_print are pure Ruby whose only
 C dependency is Ripper, which is already inside CRuby's stdlib.
 
-`format()` is async because the first call boots a Ruby VM; the VM is cached, so
-later calls are milliseconds.
+`format()` is async because the first call decompresses and compiles the
+artifact and instantiates a Ruby VM from it; the VM is cached, so later calls
+are milliseconds.
+
+**The artifact is a wizer snapshot of an already-booted VM.** `build.sh` runs
+[wizer](https://github.com/bytecodealliance/wizer) over the module - see
+`build/ruby_fmt/preinit.ts`, which is where every non-obvious part of that step
+is written down - so the linear memory it ships *is* a CRuby with syntax_tree
+and RuboCop required into it. Booting used to cost ~8 s of Ruby and to cost it
+again after every VM recycle, which was about a fifth of the wall-clock of
+formatting a large tree. Three things follow, and none of them is optional:
+
+- `boot-vm.ts` does not call `RubyVM.instantiateModule`, because that helper
+  ends by calling `ruby-init` - which the snapshot has already been through.
+  Re-running it would reinitialise CRuby underneath the loaded gems.
+- The preopened directories the snapshot is taken with have to match the ones
+  the runtime provides, name for name. The guest's preopen table is captured in
+  the snapshot, so a mismatch is a VM that cannot see `/work` at all and dies on
+  the first RuboCop call with `Errno::ENOENT @ dir_s_mkdir`.
+- It costs size: 12.7 MB compressed against 5.4 MB, because a Ruby heap with
+  RuboCop in it is part of the module now. That is the trade, and the size table
+  in the root README states it.
 
 **Two tools, one artifact, both by default.** `format` runs syntax_tree and then
 the real `rubocop --autocorrect --only Layout`. Neither subsumes the other:

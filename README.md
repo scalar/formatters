@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 5.2 MB | ✅ exact +3 fixes | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 12.7 MB | ✅ exact +3 fixes | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -43,6 +43,10 @@ Ruby names two tools because it runs two: syntax_tree reprints the file, then
 RuboCop's Layout department corrects what syntax_tree leaves behind, so the
 result is clean under a consumer's own `rubocop` run. Both are the real gems,
 each held to the exactness rule below by its own conformance test.
+
+Ruby is also much the largest artifact, and 7.3 MB of that is a deliberate
+trade: it ships a Ruby VM that has *already* loaded both gems, so booting one
+costs ~0.6 s rather than ~8 s. See [`packages/ruby`](packages/ruby#what-it-costs).
 
 Exactness is only meaningful against a named reference tool, so the reference is
 stated per package. "Exact" means the package *is* that tool compiled to wasm —
@@ -212,16 +216,22 @@ and a second conformance test asserts byte-identity against `RuboCop::CLI` with
 both gem versions pinned.
 
 `format(source, { rubocop: false })` is syntax_tree on its own for anyone who
-wants it - RuboCop is then never even loaded, which is worth about four seconds
-on the first call. See
+wants it, and saves the pass rather than the loading - the artifact carries
+RuboCop either way. See
 [`packages/ruby`](packages/ruby#two-tools-and-why-both) for the rest of what it
 costs.
 
-It ships as one 5.2 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
+It ships as one 12.7 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
-formatter never loads is stripped, then `wasm-opt -Os` and brotli. It is
-committed, so a fresh clone needs nothing extra; `bun run ruby:build` rebuilds it
-when the Ruby version or pinned gems change.
+formatter never loads is stripped, then `wasm-opt -Os`, then
+[wizer](https://github.com/bytecodealliance/wizer), then brotli. The wizer step
+is why the artifact is more than twice the size of the others' sum: it boots
+CRuby, requires syntax_tree and RuboCop, and serializes the resulting linear
+memory back into the module, so a consumer instantiates a VM that is already up
+instead of spending ~8 s requiring 698 cop files - and spending it again every
+time the leak below forces a recycle. It is committed, so a fresh clone needs
+nothing extra; `bun run ruby:build` rebuilds it when the Ruby version or pinned
+gems change.
 
 The deviations from stock syntax_tree 6.3.0 are all one family: pattern
 matching, where the gem writes back Ruby that no longer parses from input that
@@ -237,8 +247,9 @@ rubocop, rubocop-ast, syntax_tree, parser and regexp_parser gems both ways —
 
 One caveat worth knowing before you format a whole codebase's worth of files:
 the VM leaks about 74 MB of wasm memory per 23 KB of input and would die at the
-wasm32 2 GB boundary, so `format()` recycles it before the wall at the cost of
-an occasional ~1s pause.
+wasm32 2 GB boundary, so `format()` recycles it before the wall. Since the
+artifact is pre-initialized that pause is a fraction of a second rather than the
+several seconds it used to be.
 
 ## Java
 
