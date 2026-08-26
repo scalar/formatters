@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import zlib from 'node:zlib'
 
+import { assetResponse } from './asset-response'
 import type { Archive, HostBuilder, ResourceLoader, RuntimeSource } from './types'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -26,6 +27,15 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const RUNTIME_ENTRY = path.join(here, '..', 'runtime', 'dotnet.js')
 const ARCHIVE = path.join(here, '..', 'csharp_fmt.br')
 
+/**
+ * Room for the whole expanded archive in one allocation.
+ *
+ * 24MB against today's 21MB, so the archive can grow by a rebuild or two before
+ * this stops being one chunk. Getting it wrong only costs the extra chunks back,
+ * never correctness.
+ */
+const ARCHIVE_CHUNK_SIZE = 24 * 1024 * 1024
+
 let archive: Archive | undefined
 
 /**
@@ -47,7 +57,13 @@ export const openArchive = (): Archive => {
     )
   }
 
-  const raw = zlib.brotliDecompressSync(fs.readFileSync(ARCHIVE))
+  // The chunk size is the size of the output buffer node:zlib fills before it
+  // allocates another one and, at the end, concatenates them all. It defaults to
+  // 16KB, which for a 21MB archive is over 1300 allocations and a 21MB copy to
+  // stitch them back together. Asking for the whole thing in one chunk is worth
+  // about 20ms of the boot and costs nothing - the memory is allocated either
+  // way, just not thirteen hundred times.
+  const raw = zlib.brotliDecompressSync(fs.readFileSync(ARCHIVE), { chunkSize: ARCHIVE_CHUNK_SIZE })
   const headerLength = raw.readUInt32LE(0)
   const index = JSON.parse(raw.subarray(4, 4 + headerLength).toString('utf8')) as Record<string, [number, number]>
   const base = 4 + headerLength
@@ -89,7 +105,7 @@ export const nodeRuntimeSource: RuntimeSource = {
     // entry whose name is a path.
     return (_type, name, defaultUri) => {
       const bytes = archive.read(name) ?? archive.read(path.basename(defaultUri ?? ''))
-      return bytes ? Promise.resolve(new Response(bytes)) : undefined
+      return bytes ? Promise.resolve(assetResponse(bytes, name)) : undefined
     }
   },
 }

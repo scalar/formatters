@@ -1,3 +1,4 @@
+import { assetResponse } from './asset-response'
 import { decompressBrotli } from './decompress-brotli'
 import type { Archive, HostBuilder, InitOptions, ResourceLoader, RuntimeSource } from './types'
 
@@ -132,7 +133,7 @@ export const createArtifactLoader = (): {
             if (MODULE_TYPES.has(type)) return runtimeUrl(name) ?? runtimeUrl(fromUri)
 
             const bytes = archive.read(name) ?? archive.read(fromUri)
-            return bytes ? Promise.resolve(new Response(bytes)) : undefined
+            return bytes ? Promise.resolve(assetResponse(bytes, name)) : undefined
           }
         })
         .catch((error: unknown) => {
