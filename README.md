@@ -186,6 +186,36 @@ somewhere those cannot derive, name the directory:
 await init({ runtimeBaseUrl: '/assets/dotnet' })
 ```
 
+## Performance
+
+Every package is the real tool compiled to wasm, so it costs what that tool costs
+plus what a wasm runtime costs to boot. [`BENCHMARKS.md`](BENCHMARKS.md) has the
+whole table — each package beside its native counterpart on the same input, both
+measured cold and warm — and `bun run bench` reproduces it on your machine.
+
+The shape of it, on ~150 lines of ordinary code:
+
+**Booting is the expensive part, and you only pay it once.** `init()` runs from
+45ms for Rust to 4.4s for Ruby with its RuboCop pass loaded, and every package
+caches the booted instance for the life of the process. Call `init()` once at
+startup rather than letting the first `format` pay for it, and keep the module
+around — a process that re-imports per file pays that boot every time.
+
+**Warm, the gap is small.** Per file after boot: C# and Java land within a
+millisecond or two of the native tool, Kotlin and Swift within ~1.5x, Rust ~2.4x
+(on numbers so small the ratio flatters the difference — 5.4ms against 2.2ms).
+The two JVM-backed packages are actually *faster* than their CLIs from cold,
+because starting a JVM costs more than instantiating their wasm.
+
+**PHP wants its files together.** A call per file is ~288ms, most of which is the
+fixer's own setup running again; handing `format` the whole array runs that setup
+once and spreads the work over several instances, which takes it to ~72ms a file.
+
+**Ruby's second pass is most of its cost.** The default pipeline is syntax_tree
+*and* `rubocop --autocorrect --only Layout`, at ~275ms a file. `{ rubocop: false }`
+is ~40ms, and `init({ rubocop: false })` skips the ~3s of boot that loading
+RuboCop costs. Turn it off if you only want syntax_tree's canonical output.
+
 ## Inspired by the wasm-fmt packages
 
 The approach comes from [`@wasm-fmt`](https://github.com/wasm-fmt), which ships
@@ -443,6 +473,7 @@ bun run test:node  # load the built packages under plain Node (24+ for Java)
 bun run test:browser  # load the built browser packages in real Chromium
 bun run check      # biome lint + format check
 bun run types:check
+bun run bench      # each package against its native counterpart
 ```
 
 ```
@@ -452,6 +483,7 @@ packages/               published npm packages
   <pkg>/dist/           compiled output — what consumers import (gitignored)
   <pkg>/test/           integration tests and the plain-Node smoke test
 scripts/                repo tooling
+scripts/benchmark/      the benchmark harness and its samples
 tsconfig.json           strict base config, shared by every package
 tsconfig.build.json     the same, in emit mode
 tsconfig.scripts.json   covers scripts/ and the build pipelines' scripts
