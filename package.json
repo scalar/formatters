@@ -20,6 +20,7 @@
     "test:browser": "bun run build && bun run scripts/test-browser.ts",
     "types:check": "tsc -p tsconfig.scripts.json --noEmit && bun run --filter='*' types:check",
     "ruby:build": "build/ruby_fmt/build.sh",
+    "ruby:bench": "bun run scripts/ruby-bench.ts",
     "java:build": "build/java_fmt/build.sh",
     "java:build:teavm": "build/java_fmt_teavm/build.sh",
     "java:conformance": "build/java_fmt_teavm/conformance.sh",
