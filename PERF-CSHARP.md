@@ -74,12 +74,19 @@ The honest one-line version: **if you format one file from a cold shell, the
 real tool is 1.5x faster; if you format a project, or you hold the module open,
 this package is 1.5–2.7x faster.**
 
-## 2. Where the 513ms boot goes
+## 2. Where the boot goes
+
+A note on the headline number first. The brief quotes a 513ms boot from
+`bun run bench csharp`. That is a bun number taken on an idle machine, and it
+was not reproducible here: on this box the committed build boots in ~405ms under
+Node and ~690–785ms under bun, and `bun run bench csharp` after the change
+reports 717ms. The gap is contention, not a change in the code — which is
+exactly why nothing below is quoted against the brief's figure and every
+comparison is interleaved instead.
 
 Attributed by instrumenting each phase in a fresh Node process, then by
-timestamping the runtime's own `withDiagnosticTracing` output. On this loaded
-machine the same boot measures ~405ms under Node and ~690ms under bun; the
-proportions are what matter.
+timestamping the runtime's own `withDiagnosticTracing` output. The proportions
+are what matter.
 
 | phase | ms (Node, before) | what it is |
 |---|---:|---|
