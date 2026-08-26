@@ -154,7 +154,16 @@ wasm build and the native CLI, in both styles. All 1316 comparisons are
 byte-identical, and so is a run of the same corpus through the GraalVM Web Image
 build of the same version.
 
-### The six patched probes, and why they do not affect that claim
+### What is patched, and why none of it changes output
+
+`patches/google-java-format.patch` touches seven files, and what it does to them
+falls into two kinds. Six sites are *version probes*, patched because TeaVM
+cannot compile reflection. Four more are *speedups*, patched because this build
+runs the formatter somewhere roughly ten times slower than a JVM. The two kinds
+are believed not to change output for different reasons, so they are argued
+separately below — and then one corpus run is the evidence for both.
+
+#### The six version probes
 
 google-java-format supports a range of JDKs, and reaches javac's internals
 through reflection wherever their shape has changed between versions. TeaVM
@@ -177,20 +186,23 @@ so the build proves it: the same 658-file corpus is formatted by a stock
 on a plain JVM. 658/658 identical. The corpus run above then shows the wasm
 matching the *stock* jar, which is the claim that matters.
 
-### The seventh patched site is a shortcut, and it returns the same string
+#### The four speedups
 
-`StringWrapper.wrap` is the fourth and last step of the pipeline below, and it
-opens by asking whether anything needs reflowing at all: is any line longer than
-the column limit, or does any line contain a text-block delimiter? The line
-iterator it asks hands back each line *including* its trailing break, so a line
-of exactly 100 columns measures 101 and the answer comes back yes. Real Java
-formatted at 100 columns is full of lines that land exactly on it — 155 of the
-200 Guava files in the benchmark corpus — and every one of them was walking the
-slow path with nothing whatsoever to reflow. That path costs a full extra format
-pass and four more parses, which is why it was half of this package's per-file
-time.
+Two changes, across four sites. Neither is JDK-specific and both would be worth
+having upstream; they are here because this module runs roughly ten times slower
+than the same code on a JVM, so work upstream can afford to repeat, this build
+cannot.
 
-So the patch returns early when the reflow map comes back empty:
+**`StringWrapper.wrap` returns early when there is nothing to reflow.** `wrap` is
+the fourth and last step of the pipeline below, and it opens by asking whether
+anything needs reflowing at all: is any line longer than the column limit, or
+does any line contain a text-block delimiter? The line iterator it asks hands
+back each line *including* its trailing break, so a line of exactly 100 columns
+measures 101 and the answer comes back yes. Real Java formatted at 100 columns is
+full of lines that land exactly on it — 155 of the 200 Guava files in the
+benchmark corpus — and every one of them was walking the slow path with nothing
+whatsoever to reflow. That path costs a full extra format pass and four more
+parses, which is why it was half of this package's per-file time.
 
 ```java
 TreeRangeMap<Integer, String> replacements = getReflowReplacements(columnLimit, input);
@@ -204,13 +216,38 @@ enough to check by reading: `formatSource` over an empty range set produces an
 empty replacement list, so its result equals its input and the recalculation
 below is skipped; `applyReplacements` over an empty map returns the input by its
 own first branch; and the AST safety check then compares the input against
-itself. The evidence is the same as for the six probes — 658/658 identical
-between the stock jar and the patched one on a JVM, and 658/658 between the wasm
-and the stock jar in both styles — and it roughly halves the per-file cost.
+itself. Every path returns `input`.
 
-Unlike the probes, this one is not JDK-specific and would be worth having
-upstream, either in this shape or by excluding the line terminator from the
-length test in `needWrapping`.
+It is worth knowing what this *does not* touch, because it is the obvious next
+thing to reach for. `needWrapping`'s off-by-one is still there, and it should
+stay until someone measures otherwise: the early return above is what makes an
+over-eager answer harmless — it costs a scan and nothing else — whereas an
+under-eager one would silently skip a reflow that was really wanted. Only the
+false direction is dangerous. Both a fix to the off-by-one and a rewrite of the
+scan were built and measured, at 1.5% and 0.4% respectively, and neither was kept.
+
+**Three `String.matches` call sites became compiled patterns.**
+`JavaInput.isParamComment` is asked about every slash-star comment in the file,
+and `JavadocLexer.optionalizeSpacesAfterLinks` about every literal token in every
+doc comment. `String.matches(regex)` is specified as `Pattern.matches(regex,
+this)`, which is `Pattern.compile(regex).matcher(this).matches()` — so each call
+was compiling its pattern afresh, and hoisting it to a `static final Pattern` is
+the same predicate by definition rather than by argument. That matters more here
+than it would upstream: TeaVM's `java.util.regex` is a port of Apache Harmony's,
+and pattern compilation was about a quarter of the 12.7% of a format that the
+regex engine accounted for. Worth 6.8%, measured by instantiating the previous
+artifact and this one in a single process and alternating them file by file, so a
+busy machine could not flatter either.
+
+#### The evidence, which is the same for both kinds
+
+The argument above is an argument. The build proves it: the same 658-file corpus
+is formatted by a stock `google-java-format-1.36.1-all-deps.jar` and by one
+carrying every one of these patches, both on a plain JVM. 658/658 identical. The
+corpus run above then shows the wasm matching the *stock* jar in both styles,
+which is the claim that matters — the wasm is never compared against a jar
+carrying the same patches, because that would only prove the patches agree with
+themselves.
 
 ## `format()` is the CLI, not just the `Formatter` class
 

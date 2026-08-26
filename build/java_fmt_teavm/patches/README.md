@@ -10,21 +10,44 @@ and can be dropped the moment it lands upstream.
 
 ## What is in `google-java-format.patch`
 
-Six of the seven hunks are *version probes*: google-java-format reflects into
-javac wherever its shape changed between JDKs, TeaVM compiles a closed world and
-cannot serve a probe, and on the pinned JDK 21 each probe has exactly one answer.
-`packages/java/README.md` lists them one by one.
+Two kinds of hunk, believed harmless on two different arguments.
 
-The seventh is different in kind and worth naming here so it is not mistaken for
-a probe. `StringWrapper.wrap` returns early when its reflow map comes back
-empty, which is the same string the rest of that method computes — an empty
-range set makes the intermediate format the identity, `applyReplacements`
-returns its input, and the AST check then compares the input against itself. It
-is there because `needWrapping` measures lines with their trailing break
-attached, so every file with a line of exactly the column limit took the slow
-path for nothing: 155 of 200 in the benchmark corpus, and half of the package's
-per-file cost. Unlike the probes it is not JDK-specific, and it is the one hunk
-here that upstream would want.
+**Six version probes.** google-java-format reflects into javac wherever its shape
+changed between JDKs, TeaVM compiles a closed world and cannot serve a probe, and
+on the pinned JDK 21 each probe has exactly one answer. `packages/java/README.md`
+lists them one by one.
+
+**Four speedups.** These are the ones to be careful about, because a probe that
+is wrong fails loudly at build time and a speedup that is wrong changes somebody's
+formatting. Each is an identity rather than a judgement call, and each says so in
+a comment at the site:
+
+- `StringWrapper.wrap` returns early when its reflow map comes back empty. That
+  is the same string the rest of the method computes — an empty range set makes
+  the intermediate format the identity, `applyReplacements` returns its input,
+  and the AST check then compares the input against itself. It is there because
+  `needWrapping` measures lines with their trailing break attached, so every file
+  with a line of exactly the column limit took the slow path for nothing: 155 of
+  200 in the benchmark corpus, and half of the package's per-file cost.
+- Three `String.matches` call sites — one in `JavaInput`, two in `JavadocLexer` —
+  became `static final Pattern` constants. `String.matches(regex)` is specified
+  as `Pattern.matches(regex, this)`, so this is the same predicate with the
+  compilation done once instead of once per call. It is worth 6.5% here because
+  TeaVM's regex engine is a port of Apache Harmony's and compiling a pattern on
+  it is expensive.
+
+Neither speedup is JDK-specific and both would be worth having upstream, which is
+the opposite of the probes — those exist only because of the pin and should
+disappear when it moves.
+
+**What was deliberately not patched.** `needWrapping`'s off-by-one is real: it
+should measure the line without its terminator. Leave it. The early return above
+is what makes an over-eager answer harmless — it costs a scan and nothing else —
+while an under-eager one would silently skip a reflow that was wanted, and no
+test downstream would notice. Only the false direction is dangerous, so only the
+true direction may be widened. Both a fix to the off-by-one and a rewrite of the
+scan behind it were built and measured, at 1.5% and under 1%; neither was kept.
+`PERF-JVM.md` has the numbers.
 
 ## The TeaVM changes live on the fork, not here
 

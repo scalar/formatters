@@ -11,22 +11,24 @@ modules, so both are reported wherever the difference matters.
 
 ## Summary
 
-- One change shipped, to the Java package: `StringWrapper` returns early when it
-  has nothing to reflow. **+69% throughput on bun, 2.04x on the conformance
-  corpus under Node**, boot unchanged, output byte-identical on 1316 comparisons.
+- Two changes shipped, both to the Java package. `StringWrapper` returns early
+  when it has nothing to reflow — **+69% throughput on bun, 2.04x on the
+  conformance corpus under Node**. Three hot `String.matches` call sites became
+  compiled patterns — **a further 6.8%**. Boot unchanged by either, output
+  byte-identical on 1316 comparisons each time.
 - Nothing shipped for the Kotlin package. Its cost is PSI parsing, three to five
   times per file, and no part of it is redundant in a way that can be proved.
 - **End to end against the native tools, the wasm build now wins outright on
-  Java** — 1.4x to 1.9x at N = 1, 10 and 200 files — and wins on Kotlin up to
-  about 55 files.
+  Java** — 1.17x to 2.00x at N = 1, 10 and 200 files, across two runs —
+  and wins on Kotlin at small N, reaching parity by 200.
 - The JS/wasm string boundary is 0.04-0.14% of a format call. It is not the
   problem and there is nothing to fix there.
 - `mean` being twice `median` is the corpus's file-size distribution, not
   superlinearity. Cost per byte is flat from 2 KB to 92 KB.
 - `optimizationLevel=FULL` buys 8-10% for +55% download and +21-54% boot;
   `strict=false` buys 2-5% for losing catchable exceptions; fixing
-  `needWrapping`'s off-by-one on top of what shipped buys 1.5%. All three were
-  built and measured, all three rejected.
+  `needWrapping`'s off-by-one buys 1.5%; rewriting the line scan behind it buys
+  under 1%. All four were built and measured, all four rejected.
 
 Everything here is reproducible from `perf/`, which is scratch and not committed:
 `stages.ts`, `stringwrapper.ts` and `needwrapping.ts` for the pipeline split,
@@ -208,6 +210,41 @@ varied body of Java, the same change is worth more:
 
 2.04x and 1.63x.
 
+### Three `String.matches` call sites became compiled patterns
+
+`String.matches(regex)` is specified as `Pattern.matches(regex, this)`, which is
+`Pattern.compile(regex).matcher(this).matches()` — the pattern is compiled on
+every call and thrown away. google-java-format asks it about every slash-star
+comment in the file (`JavaInput.isParamComment`) and about every literal token in
+every doc comment (`JavadocLexer.optionalizeSpacesAfterLinks`, and once more in
+`deindentPreCodeBlocks`). Hoisting each to a `static final Pattern` is the same
+predicate by specification rather than by argument, which is the cheapest kind of
+change to be confident about.
+
+It is worth much more here than it would be upstream. Section 1 put 12.7% of a
+Java format in `java.util.regex`, and roughly a quarter of that was
+`Pattern.compile` reached from `String.matches` — TeaVM's engine is a port of
+Apache Harmony's, and compiling on it is expensive.
+
+Measured with `perf/duel.mjs`, which instantiates both artifacts in one process
+and alternates them file by file, so a noisy neighbour lands on both sides in the
+same proportion. Five rounds over the 200-file corpus:
+
+| | full pipeline | throughput |
+|---|---|---|
+| before | 24175 ms | 376 KB/s |
+| after | 22534 ms | 404 KB/s |
+
+**6.8% faster.** On the 658-file conformance corpus under Node: 29.9 → **27.0**
+ms/file in google style, 32.9 → **29.3** in aosp. `bun run bench java` reads 215
+→ 236 KB/s, and the same harness on Node reads 370 → 372 — which is the reason
+the interleaved figure is the one quoted. A whole-corpus absolute on this box
+moves by more than 7% between runs on its own.
+
+Cumulatively with the `StringWrapper` change, against the artifact this branch
+started from: 127 → 236 KB/s on bun, 61.0 → 27.0 ms/file on the conformance
+corpus.
+
 ### Nothing changed for Kotlin
 
 The Kotlin artifact was rebuilt from the same pinned TeaVM and re-cleared
@@ -224,19 +261,34 @@ consumer's first run is not warmed either. Best of three
 
 | Language | N | wasm (Node 24.15) | native (JVM 21) | wasm advantage |
 |---|---|---|---|---|
-| Java | 1 | 345 ms | 567 ms | **1.64x** |
-| Java | 10 | 847 ms | 1606 ms | **1.90x** |
-| Java | 200 | 6532 ms | 9116 ms | **1.40x** |
-| Kotlin | 1 | 569 ms | 1526 ms | **2.68x** |
-| Kotlin | 10 | 1180 ms | 2391 ms | **2.03x** |
-| Kotlin | 200 | 6983 ms | 4770 ms | 0.68x |
+| Java | 1 | 348 ms | 628 ms | **1.80x** |
+| Java | 10 | 832 ms | 1666 ms | **2.00x** |
+| Java | 200 | 5256 ms | 6124 ms | **1.17x** |
+| Kotlin | 1 | 492 ms | 1228 ms | **2.50x** |
+| Kotlin | 10 | 929 ms | 1620 ms | **1.74x** |
+| Kotlin | 200 | 7579 ms | 7445 ms | 0.98x |
 
-**Java is ahead of `google-java-format` end to end at every N measured**, by
-1.4x to 1.9x. That is a genuine result and not an artefact of a cold JVM: the
-gap is widest at N=10, where the JVM has paid its start-up but not yet tiered up.
+Re-measured after the pattern hoists shipped, so these are the current artifact.
+The earlier run, before that change, read 345/847/6532 ms for Java and
+569/1180/6983 for Kotlin against 567/1606/9116 and 1526/2391/4770 native — same
+shape, and the difference in the native columns between the two runs is a
+reminder of how much the neighbours matter here. Both native CLIs spread their
+files over a thread pool sized to the host's processors and this host has four,
+so the N=200 row is one core against four *and* the row most exposed to whatever
+else is running. Treat the direction as solid and the exact ratio as a range: at
+N=200 Java measured 1.17x and 1.40x on the two runs.
 
-**Kotlin is ahead up to about 55 files and behind past that.** Narrowing the
-bracket:
+**Java is ahead of `google-java-format` end to end at every N, on both runs.**
+1.80x and 2.00x at N=1 and N=10, and 1.17x at N=200 on this run against 1.40x on
+the previous one. The gap is widest at N=10, where the JVM has paid its start-up
+but has not yet tiered up, and narrowest at N=200, where it has tiered up *and*
+has four cores to the module's one.
+
+**Kotlin is ahead at small N and lands at parity by 200.** 2.50x at N=1, 1.74x at
+N=10, 0.98x at N=200 — where the previous run, on a busier machine, read 0.68x.
+Nothing shipped for that package, so the movement is the machine rather than the
+formatter, and it is the honest reason not to quote a precise crossover. From the
+earlier run, which bracketed it:
 
 | N | wasm | native ktfmt | wasm advantage |
 |---|---|---|---|
@@ -244,24 +296,29 @@ bracket:
 | 50 | 3350 ms | 3723 ms | 1.11x |
 | 100 | 4426 ms | 3518 ms | 0.79x |
 
-The crossover is between 50 and 100, near 55-60 files.
+Somewhere between 50 and 200 files, then, depending on what else the box is
+doing. Below that range the wasm module is the faster way to format Kotlin; above
+it, ktfmt on a warm JVM with four threads is.
 
-Two things to hold in mind when reading these. Both native CLIs spread their
-files over a thread pool sized to the host's processors, and this host has four;
-the wasm module is single-threaded, so the N=200 column is comparing one core
-against four. And the input tree is restaged between runs, outside the timing, so
-the native tools always see unformatted input the way the wasm side does — an
-earlier version of this script did not, and flattered the JVM by about 25% at
-N=200.
+One methodological note that applies to every row above: the input tree is
+restaged between runs, outside the timing, so the native tools always see
+unformatted input the way the wasm side does. An earlier version of this script
+did not, and flattered the JVM by about 25% at N=200.
 
 For reference, steady-state throughput once everything is warm, same corpora:
 
 | Package | engine | boot | median | mean | p95 | KB/s |
 |---|---|---|---|---|---|---|
-| java | Node 24.15 | 174 ms | 13.44 ms | 24.54 ms | 78.44 ms | 370 |
-| java | bun 1.3.11 | 204 ms | 21.13 ms | 41.22 ms | 137.49 ms | 221 |
-| kotlin | Node 24.15 | 230 ms | 18.30 ms | 26.92 ms | 69.74 ms | 242 |
+| java | Node 24.15 | 193 ms | 12.62 ms | 24.43 ms | 92.71 ms | 372 |
+| java | bun 1.3.11 | 163 ms | 21.16 ms | 38.48 ms | 128.64 ms | 236 |
+| kotlin | Node 24.15 | 322 ms | 18.81 ms | 27.23 ms | 67.52 ms | 239 |
 | kotlin | bun 1.3.11 | 212 ms | 26.89 ms | 39.90 ms | 101.96 ms | 163 |
+
+These are absolutes on a contended box and they wobble by more than the changes
+in section 2 are worth - the Java Node row read 370 KB/s before the pattern
+hoists and 372 after, which says nothing except that this is the wrong instrument
+for a 7% question. `perf/duel.mjs` is the right one, and it is what section 2
+quotes.
 
 **V8 is about 1.5x faster than JavaScriptCore on both modules.** The repo's
 `bun run bench` therefore understates what a consumer on Node gets, for both
@@ -280,6 +337,8 @@ Output is unchanged, and the evidence is the repo's own, not a spot check.
 | `bun test packages/kotlin` | the Kotlin package's tests including `native-conformance` and `quiet` | pass |
 | `build/java_fmt_teavm/conformance.sh` step 1 | 658 Guava + google-java-format files, stock jar vs **patched** jar, on a JVM | 658/658 identical |
 | `build/java_fmt_teavm/conformance.sh` step 2 | the same 658 files, wasm vs **stock** jar, google and aosp | 658/658 and 658/658 |
+| both of the above, re-run after the pattern hoists | same corpus, same comparisons | 658/658 identical, 658/658 and 658/658 |
+| `perf/duel.mjs` | the two artifacts side by side on the 200-file benchmark corpus | identical on all 200 |
 | `kotlin-probe/gate2.sh` | 589 files, stock ktfmt vs patched ktfmt on a JVM, three styles | 589/589 x3, diagnostics identical |
 | `kotlin-probe/conformance.sh` | the same 589 files, wasm vs JVM, three styles | 589/589 x3 |
 
@@ -349,7 +408,7 @@ Counting them through the runtime's `installImports` seam
 (`perf/exceptions.mjs`): Java constructs 3 Throwables per file, worth 1.9% of the
 run; Kotlin constructs **none at all**. Worth knowing, not worth chasing.
 
-### Fixing `needWrapping`'s off-by-one too — 1.5%, and it was built and measured
+### Fixing `needWrapping`'s off-by-one — 1.5%, built and measured
 
 The obvious follow-up to what shipped is to fix the cause rather than shortcut
 past the effect: take the trailing line break off the length `needWrapping`
@@ -379,9 +438,41 @@ walking per file, and no change to *when* the scan concludes can remove the scan
 
 So it was reverted rather than shipped: 1.5% is below this machine's noise floor,
 and it would have added an argument-from-two-places to a patch file whose whole
-value is that each hunk can be checked by reading it. The change is written up in
-section 6 as the upstream candidate it should be, where the scan itself can be
-fixed at the same time.
+value is that each hunk can be checked by reading it.
+
+There is an asymmetry here worth writing down for whoever tries again, and it is
+now recorded at the call site and in both READMEs. The early return that shipped
+makes an over-eager `needWrapping` cost a scan and nothing else. An under-eager
+one would skip a reflow that was really wanted, and nothing downstream would
+catch it — not the corpus, unless the corpus happened to contain that file. Only
+the true direction of that predicate may be widened.
+
+### Rewriting `needWrapping`'s line scan — under 1%, built and measured
+
+If the residue is the scan rather than what the scan decides, then rewrite the
+scan: walk offsets in the input instead of materialising a substring per line,
+and lift the text-block test out of the loop entirely (a `"""` holds no line
+terminator, so it cannot straddle two lines — some line contains one exactly when
+the input does). The returned boolean stays bit-for-bit what it was, off-by-one
+included, which makes it a pure refactor.
+
+It was built, and it was measured two ways. Interleaved against the previous
+artifact over three rounds it read 1.7%; over six rounds, 0.43%. Then the patch
+was rebuilt carrying only the pattern hoists, and that came out **6.8%** against
+the combined build's 6.5% — the same number within noise, which says the scan
+rewrite contributed nothing measurable at all.
+
+The reason is that it removed the allocations but not the work. The original
+scans every character twice (once in `LineOffsetIterator` to find the breaks,
+once in `String.contains` per line) and allocates a substring per line. The
+rewrite also scans every character twice — once for `input.contains`, once for
+the terminators — and allocates nothing. Only the allocation went, and on a
+generational collector that was the cheap part.
+
+Dropped, on the rule that a change under about 2% is patch surface on a vendored
+tool rather than a win.
+
+
 
 ### Superlinearity on large files — there is not any
 
@@ -393,26 +484,24 @@ mean/median gap is the corpus's size distribution.
 
 ### Upstream, in google-java-format
 
-**Fix `needWrapping`, both halves of it.** The off-by-one is real — the length
-test should not count the line terminator — and section 5 has the measurement:
-worth 1.5%, not the 8-10% it looks like, because most of what is left is the scan
-itself rather than the work the scan decides on. Upstream should fix both at
-once: measure the line without its break, and stop materialising a substring per
-line to do it. `Newlines.lineOffsetIterator` already yields the offsets, so the
-length is a subtraction and the text-block test is an `indexOf` on the original
-string over a range. That would take `StringWrapper` on a file with nothing to
-reflow from 3.3 ms to approximately nothing.
+**Fix `needWrapping`, if upstream wants it for its own sake.** The off-by-one is
+real — the length test should not count the line terminator — and the per-line
+substring scan behind it is wasteful. Both were built and measured here and
+neither paid (section 5), so they are offered as correctness-and-tidiness rather
+than as performance. If someone does take them, take them together and in the
+right order: the early return has to be in place first, because it is what makes
+the predicate's true direction free to widen. Doing the off-by-one without it
+would be a silent behaviour change.
 
-**Hoist the recompiled patterns.** `JavaInput.isParamComment` calls
-`String.matches` on every slash-star comment, and
-`JavadocLexer.optionalizeSpacesAfterLinks` calls it on every literal token in
-every doc comment. `String.matches(regex)` is specified as
-`Pattern.compile(regex).matcher(this).matches()`, so hoisting each to a
-`static final Pattern` is an identity by definition — no corpus argument needed
-beyond the run itself. `Pattern::compile` reached from `String::matches` is 3.6%
-of a Java format here, plus the allocation behind it. The same shape exists in
-ktfmt: `KotlinInput.isParamComment` builds a `Regex` per slash-star comment, and
-`kdoc/Paragraph.kt` builds `Regex("\\s+")` per paragraph of KDoc it reflows.
+**Hoist the recompiled patterns — done here, still wanted upstream.** This
+shipped (section 2) and was worth 6.8%. It is an identity by specification, so
+there is nothing for upstream to weigh beyond whether they care about the
+milliseconds; on a JVM they would be smaller but not zero. The same shape exists
+in ktfmt and was left alone on instruction, since a Kotlin cycle is a rebuild
+plus a three-style conformance run for a margin the profile puts at 2.1% of the
+package's regex time: `KotlinInput.isParamComment` builds a `Regex` per
+slash-star comment, and `kdoc/Paragraph.kt` builds `Regex("\\s+")` per paragraph
+of KDoc it reflows.
 
 **Memoize `CommentsHelper.rewrite`.** `Doc.Tok.computeBreaks` calls it
 unconditionally, and the layout search reaches the same `Tok` at the same column

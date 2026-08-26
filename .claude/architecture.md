@@ -253,26 +253,46 @@ shape to keep in mind is that the patches live in
 `build/java_fmt_teavm/patches/` as diffs against pinned upstream checkouts, so
 each one is reviewable and can be dropped as it lands upstream.
 
-**Six of the seven patched google-java-format sites are version probes, and the
-build proves it.** Each reflects into javac to cope with a JDK version
-difference, and each has one answer on the pinned JDK 21. Before any wasm is
-built, the same corpus is formatted on a plain JVM by the stock jar and by the
-patched one: 658/658 identical. That is what lets the exactness claim survive
-the patches — the conformance test then compares the wasm against the *stock*
-jar, never the patched one.
+**Six of the patched google-java-format sites are version probes, and the build
+proves it.** Each reflects into javac to cope with a JDK version difference, and
+each has one answer on the pinned JDK 21. Before any wasm is built, the same
+corpus is formatted on a plain JVM by the stock jar and by the patched one:
+658/658 identical. That is what lets the exactness claim survive the patches —
+the conformance test then compares the wasm against the *stock* jar, never the
+patched one.
 
-**The seventh is a shortcut through `StringWrapper`, and it returns the same
-string.** `StringWrapper.wrap` decides whether to reflow by asking whether any
-line is longer than the column limit, and the line iterator it asks includes the
-trailing line break — so a line of exactly 100 columns measures 101 and takes the
-slow path. 155 of the 200 Guava files in the benchmark corpus land there with
-nothing at all to reflow, and each was paying a full format pass and four more
-parses to arrive back at the string it started with. The patch returns early when
-the reflow map comes back empty, which is what the rest of that method computes
-anyway: an empty range set gives an empty replacement list, so the intermediate
-format is the identity, and the AST check then compares the input against itself.
-Same 658/658 on the JVM, same 658/658 against the stock jar in both styles, and
-it roughly halves the per-file cost.
+**The other four are speedups, and each is an identity rather than a judgement
+call.** That distinction is the whole safety argument, because a probe that is
+wrong fails at build time while a speedup that is wrong quietly changes someone's
+formatting, so each carries the reasoning in a comment at the site.
+
+`StringWrapper.wrap` returns early when its reflow map comes back empty. It
+decides whether to reflow at all by asking whether any line is longer than the
+column limit, and the line iterator it asks includes the trailing line break — so
+a line of exactly 100 columns measures 101 and takes the slow path. 155 of the
+200 Guava files in the benchmark corpus land there with nothing to reflow, each
+paying a full format pass and four more parses to arrive back at the string it
+started with. The early return is what the rest of that method computes anyway:
+an empty range set gives an empty replacement list, so the intermediate format is
+the identity, and the AST check then compares the input against itself. Roughly
+halves the per-file cost.
+
+Three `String.matches` call sites — one in `JavaInput`, two in `JavadocLexer`,
+all of them asked per comment or per token — became `static final Pattern`
+constants. `String.matches(regex)` is specified as `Pattern.matches(regex,
+this)`, so that is the same predicate with the compile done once. Worth 6.8%,
+which is much more than it would be upstream: TeaVM's `java.util.regex` is a port
+of Apache Harmony's, and a quarter of the 12.7% a Java format spends in the regex
+engine is compiling patterns.
+
+**`needWrapping`'s off-by-one stays.** It is a real bug — the length test should
+not count the line terminator — and fixing it is measurably not worth it (1.5%),
+as is rewriting the per-line substring scan behind it (under 1%); both were built
+and measured. More importantly the asymmetry is worth remembering before anyone
+tries again: the early return above makes an over-eager answer cost a scan and
+nothing else, while an under-eager one would skip a reflow that was wanted and
+nothing downstream would catch it. Only the true direction of that predicate may
+be widened.
 
 **Node 24.15, not 22 and not 24.0.** Node 22 has WasmGC and formats correctly,
 but V8's wasm optimizer grows without bound on this module (~100MB/s) until the
