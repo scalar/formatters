@@ -69,8 +69,8 @@ caller who serves the artifact themselves skip it entirely.
 C# fits the same shape with one wrinkle: its assets are not all bytes. The .NET
 runtime imports four `runtime/*.js` files as ES modules by URL, so those cannot
 be handed over the way the assemblies are. Its resource loader answers those by
-returning a URL string rather than a `Response` — the runtime accepts either —
-and the URLs come from four *static* `new URL(name, import.meta.url)` literals.
+returning a URL string rather than bytes — the runtime accepts either — and the
+URLs come from four *static* `new URL(name, import.meta.url)` literals.
 Static matters: a bundler only rewrites the form it can read at build time, so
 one literal per file is the difference between the assets being emitted and the
 consumer being told to copy them. Verified against a real Vite build, which
@@ -408,10 +408,19 @@ without re-running it.
 
 **The artifact is split in two, and the split is forced.** The four `.js` files
 are ES modules the runtime imports by URL, so they must be real files.
-Everything else is fetched through `dotnet.withResourceLoader`, which accepts a
-`Response`, so 21MB of assemblies and ICU data ships as one 4.2MB brotli
+Everything else is fetched through `dotnet.withResourceLoader`, which can be
+handed the bytes, so 21MB of assemblies and ICU data ships as one 4.2MB brotli
 archive. That hook is why this package needs no equivalent of the Java
 package's `fs.promises.readFile` interception.
+
+**The loader answers with a response-shaped object, not a `Response`.** The
+runtime's contract is written in terms of one, and building one was the single
+most expensive thing in the Node boot for two reasons unrelated to the bytes:
+the first `Response` in a Node process is what makes Node load its `fetch`
+implementation, ~60ms, and reading 21MB back out of response bodies cost ~35ms
+of stream machinery on top. `src/asset-response.ts` supplies the five members
+the runtime reads instead, and `PERF-CSHARP.md` has the measurements. Bun and
+browsers are unaffected either way - their `Response` is native.
 
 **`WasmSingleFileBundle` does not work.** It fails on Linux with
 `EmitBundleObjectFiles` dying on a broken pipe, which is why the archive is

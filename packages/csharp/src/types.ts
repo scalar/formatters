@@ -52,15 +52,37 @@ export type Archive = {
 }
 
 /**
+ * What the .NET runtime reads off an answer to a resource request.
+ *
+ * This is the part of `Response` the runtime touches and nothing more: whether
+ * the request succeeded, how to describe it if it did not, and the bytes. A real
+ * `Response` satisfies it, which is what the runtime's own documentation asks
+ * for - but building one is expensive under Node for reasons unrelated to the
+ * bytes, so `asset-response.ts` supplies this shape directly instead. See there
+ * for the measurements.
+ */
+export type AssetResponse = {
+  ok: boolean
+  status: number
+  statusText: string
+  url: string
+  arrayBuffer: () => Promise<ArrayBuffer>
+}
+
+/**
  * The runtime's hook for supplying an asset itself rather than fetching it.
  *
- * Three possible answers, and the runtime treats each differently:
- * a `Response` hands over bytes, a `string` is taken as a URL to load from, and
- * `undefined` means "load it the normal way". The JS halves of the runtime are
- * imported as ES modules and so can only be pointed at, never handed bytes -
- * which is exactly why a `string` is in this union.
+ * Three possible answers, and the runtime treats each differently: an
+ * {@link AssetResponse} hands over bytes, a `string` is taken as a URL to load
+ * from, and `undefined` means "load it the normal way". The JS halves of the
+ * runtime are imported as ES modules and so can only be pointed at, never handed
+ * bytes - which is exactly why a `string` is in this union.
  */
-export type ResourceLoader = (type: string, name: string, defaultUri: string) => Promise<Response> | string | undefined
+export type ResourceLoader = (
+  type: string,
+  name: string,
+  defaultUri: string,
+) => Promise<AssetResponse> | string | undefined
 
 /** What `dotnet.js` exposes, narrowed to the handful of calls used here. */
 export type HostBuilder = {
