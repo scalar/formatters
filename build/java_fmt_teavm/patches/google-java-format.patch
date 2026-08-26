@@ -234,6 +234,33 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/RemoveUnusedImports.
    }
  
    /** Applies the replacements to the given source, and re-format any edited javadoc. */
+diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/StringWrapper.java gjf-src/com/google/googlejavaformat/java/StringWrapper.java
+--- gjf-src-pristine/com/google/googlejavaformat/java/StringWrapper.java	2026-08-26 06:51:53.963016917 +0000
++++ gjf-src/com/google/googlejavaformat/java/StringWrapper.java	2026-08-26 06:52:01.539055299 +0000
+@@ -69,6 +69,23 @@
+     }
+ 
+     TreeRangeMap<Integer, String> replacements = getReflowReplacements(columnLimit, input);
++
++    // With no replacements to make, everything below returns the input unchanged,
++    // so this shortcut is the same answer for a fraction of the work. Read it
++    // downwards: formatSource over an empty range set produces an empty
++    // replacement list, so firstPass equals input and the recalculation is
++    // skipped; applyReplacements over an empty map returns input by its own
++    // first branch; and the AST check then compares the input against itself.
++    //
++    // It matters because needWrapping's line lengths include the trailing line
++    // break, so every file with a line of exactly the column limit lands here -
++    // 155 of the 200 Guava files in the benchmark corpus, none of which has
++    // anything to reflow. Each was paying a full format pass and four more
++    // parses to arrive back at the string it started with.
++    if (replacements.asMapOfRanges().isEmpty()) {
++      return input;
++    }
++
+     String firstPass = formatter.formatSource(input, replacements.asMapOfRanges().keySet());
+ 
+     if (!firstPass.equals(input)) {
 diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/Trees.java gjf-src/com/google/googlejavaformat/java/Trees.java
 --- gjf-src-pristine/com/google/googlejavaformat/java/Trees.java	2026-08-06 21:25:30.861758651 +0000
 +++ gjf-src/com/google/googlejavaformat/java/Trees.java	2026-08-06 21:25:59.492754551 +0000

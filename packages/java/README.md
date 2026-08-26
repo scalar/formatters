@@ -154,7 +154,7 @@ wasm build and the native CLI, in both styles. All 1316 comparisons are
 byte-identical, and so is a run of the same corpus through the GraalVM Web Image
 build of the same version.
 
-### The six patched sites, and why they do not affect that claim
+### The six patched probes, and why they do not affect that claim
 
 google-java-format supports a range of JDKs, and reaches javac's internals
 through reflection wherever their shape has changed between versions. TeaVM
@@ -176,6 +176,41 @@ so the build proves it: the same 658-file corpus is formatted by a stock
 `google-java-format-1.36.1-all-deps.jar` and by one carrying these patches, both
 on a plain JVM. 658/658 identical. The corpus run above then shows the wasm
 matching the *stock* jar, which is the claim that matters.
+
+### The seventh patched site is a shortcut, and it returns the same string
+
+`StringWrapper.wrap` is the fourth and last step of the pipeline below, and it
+opens by asking whether anything needs reflowing at all: is any line longer than
+the column limit, or does any line contain a text-block delimiter? The line
+iterator it asks hands back each line *including* its trailing break, so a line
+of exactly 100 columns measures 101 and the answer comes back yes. Real Java
+formatted at 100 columns is full of lines that land exactly on it — 155 of the
+200 Guava files in the benchmark corpus — and every one of them was walking the
+slow path with nothing whatsoever to reflow. That path costs a full extra format
+pass and four more parses, which is why it was half of this package's per-file
+time.
+
+So the patch returns early when the reflow map comes back empty:
+
+```java
+TreeRangeMap<Integer, String> replacements = getReflowReplacements(columnLimit, input);
+if (replacements.asMapOfRanges().isEmpty()) {
+  return input;
+}
+```
+
+That is what the rest of the method computes anyway, and the reasoning is short
+enough to check by reading: `formatSource` over an empty range set produces an
+empty replacement list, so its result equals its input and the recalculation
+below is skipped; `applyReplacements` over an empty map returns the input by its
+own first branch; and the AST safety check then compares the input against
+itself. The evidence is the same as for the six probes — 658/658 identical
+between the stock jar and the patched one on a JVM, and 658/658 between the wasm
+and the stock jar in both styles — and it roughly halves the per-file cost.
+
+Unlike the probes, this one is not JDK-specific and would be worth having
+upstream, either in this shape or by excluding the line terminator from the
+length test in `needWrapping`.
 
 ## `format()` is the CLI, not just the `Formatter` class
 

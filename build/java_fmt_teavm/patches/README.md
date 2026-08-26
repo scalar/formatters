@@ -8,6 +8,24 @@
 Both are diffs against a pinned upstream release, so the change stays reviewable
 and can be dropped the moment it lands upstream.
 
+## What is in `google-java-format.patch`
+
+Six of the seven hunks are *version probes*: google-java-format reflects into
+javac wherever its shape changed between JDKs, TeaVM compiles a closed world and
+cannot serve a probe, and on the pinned JDK 21 each probe has exactly one answer.
+`packages/java/README.md` lists them one by one.
+
+The seventh is different in kind and worth naming here so it is not mistaken for
+a probe. `StringWrapper.wrap` returns early when its reflow map comes back
+empty, which is the same string the rest of that method computes — an empty
+range set makes the intermediate format the identity, `applyReplacements`
+returns its input, and the AST check then compares the input against itself. It
+is there because `needWrapping` measures lines with their trailing break
+attached, so every file with a line of exactly the column limit took the slow
+path for nothing: 155 of 200 in the benchmark corpus, and half of the package's
+per-file cost. Unlike the probes it is not JDK-specific, and it is the one hunk
+here that upstream would want.
+
 ## The TeaVM changes live on the fork, not here
 
 They used to be six files in this directory - one of them applied to a different
