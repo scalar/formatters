@@ -24,8 +24,9 @@ modules, so both are reported wherever the difference matters.
 - `mean` being twice `median` is the corpus's file-size distribution, not
   superlinearity. Cost per byte is flat from 2 KB to 92 KB.
 - `optimizationLevel=FULL` buys 8-10% for +55% download and +21-54% boot;
-  `strict=false` buys 2-5% for losing catchable exceptions. Both rejected, both
-  measured.
+  `strict=false` buys 2-5% for losing catchable exceptions; fixing
+  `needWrapping`'s off-by-one on top of what shipped buys 1.5%. All three were
+  built and measured, all three rejected.
 
 Everything here is reproducible from `perf/`, which is scratch and not committed:
 `stages.ts`, `stringwrapper.ts` and `needwrapping.ts` for the pipeline split,
@@ -348,6 +349,40 @@ Counting them through the runtime's `installImports` seam
 (`perf/exceptions.mjs`): Java constructs 3 Throwables per file, worth 1.9% of the
 run; Kotlin constructs **none at all**. Worth knowing, not worth chasing.
 
+### Fixing `needWrapping`'s off-by-one too — 1.5%, and it was built and measured
+
+The obvious follow-up to what shipped is to fix the cause rather than shortcut
+past the effect: take the trailing line break off the length `needWrapping`
+measures, so a line sitting exactly on the limit stops entering the slow path at
+all. That saves the reflow scan's javac parse as well, on the 150 files that were
+entering for nothing.
+
+It is provably an identity *given* the early return that shipped, which is the
+neat part. `LongStringsAndTextBlockScanner` — which decides what goes into the
+reflow map — already compares `lineMap.getColumnNumber(lineEnd) - 1`, the count
+of characters before the line's newline, against the same limit. So a file whose
+every line fits inside the limit yields no long string literals; a text block is
+caught by the delimiter test, which never looked at a length; the map is
+therefore empty; and an empty map now means `wrap` returns its input. Walking the
+slow path and skipping it produce the same string.
+
+It was built and measured. Interleaving the two option settings within one
+process, so a noisy neighbour hits both sides equally, `StringWrapper`'s
+remaining cost over the corpus goes from 796 ms to 666 ms — **1.5% of a run**,
+against the 8-10% predicted.
+
+The prediction was wrong about where the residue was. After the early return,
+what `StringWrapper` still costs is not the reflow parse; it is `needWrapping`'s
+own scan, which builds a substring per line, runs `String.contains` on each and
+now three `endsWith` calls as well. 666 ms over 200 files is about 3.3 ms of line
+walking per file, and no change to *when* the scan concludes can remove the scan.
+
+So it was reverted rather than shipped: 1.5% is below this machine's noise floor,
+and it would have added an argument-from-two-places to a patch file whose whole
+value is that each hunk can be checked by reading it. The change is written up in
+section 6 as the upstream candidate it should be, where the scan itself can be
+fixed at the same time.
+
 ### Superlinearity on large files — there is not any
 
 Covered in section 1: cost per byte is flat from 2 KB to 92 KB, and the
@@ -358,15 +393,15 @@ mean/median gap is the corpus's size distribution.
 
 ### Upstream, in google-java-format
 
-**Fix `needWrapping`'s off-by-one rather than shortcutting past it.** The change
-that shipped here returns early *after* the reflow scan; the scan itself is still
-a javac parse that 150 of 200 files did not need. Excluding the line terminator
-from the length test in `needWrapping` would skip that too, and would take the
-`StringWrapper` step to zero on files that have nothing to reflow. It is a
-behaviour change rather than an identity, though — a file whose longest line is
-exactly the limit would stop entering the slow path at all — so it wants the
-corpus run as evidence, and it belongs upstream rather than in a patch here.
-Worth roughly another 8-10% on the Java package, on top of what shipped.
+**Fix `needWrapping`, both halves of it.** The off-by-one is real — the length
+test should not count the line terminator — and section 5 has the measurement:
+worth 1.5%, not the 8-10% it looks like, because most of what is left is the scan
+itself rather than the work the scan decides on. Upstream should fix both at
+once: measure the line without its break, and stop materialising a substring per
+line to do it. `Newlines.lineOffsetIterator` already yields the offsets, so the
+length is a subtraction and the text-block test is an `indexOf` on the original
+string over a range. That would take `StringWrapper` on a file with nothing to
+reflow from 3.3 ms to approximately nothing.
 
 **Hoist the recompiled patterns.** `JavaInput.isParamComment` calls
 `String.matches` on every slash-star comment, and
