@@ -1,7 +1,7 @@
 diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavaInput.java gjf-src/com/google/googlejavaformat/java/JavaInput.java
---- gjf-src-pristine/com/google/googlejavaformat/java/JavaInput.java	2026-08-06 21:25:30.861575348 +0000
-+++ gjf-src/com/google/googlejavaformat/java/JavaInput.java	2026-08-06 21:26:38.252925556 +0000
-@@ -42,8 +42,6 @@
+--- gjf-src-pristine/com/google/googlejavaformat/java/JavaInput.java	2026-07-30 17:26:40.000000000 +0000
++++ gjf-src/com/google/googlejavaformat/java/JavaInput.java	2026-08-26 08:05:48.119141782 +0000
+@@ -42,13 +42,12 @@
  import com.sun.tools.javac.util.Log.DeferredDiagnosticHandler;
  import com.sun.tools.javac.util.Options;
  import java.io.IOException;
@@ -10,7 +10,13 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavaInput.java gjf-s
  import java.net.URI;
  import java.util.ArrayList;
  import java.util.Collection;
-@@ -56,7 +54,6 @@
+ import java.util.Iterator;
+ import java.util.List;
++import java.util.regex.Pattern;
+ import javax.tools.Diagnostic;
+ import javax.tools.DiagnosticCollector;
+ import javax.tools.DiagnosticListener;
+@@ -56,7 +55,6 @@
  import javax.tools.JavaFileObject;
  import javax.tools.JavaFileObject.Kind;
  import javax.tools.SimpleJavaFileObject;
@@ -18,7 +24,7 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavaInput.java gjf-s
  
  /** {@code JavaInput} extends {@link Input} to represent a Java input document. */
  final class JavaInput extends Input {
-@@ -370,16 +367,13 @@
+@@ -370,16 +368,13 @@
              return text;
            }
          });
@@ -41,7 +47,7 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavaInput.java gjf-s
      if (ds.stream().anyMatch(d -> d.getKind() == Diagnostic.Kind.ERROR)) {
        return ImmutableList.of(new Tok(0, "", "", 0, 0, true, null)); // EOF
      }
-@@ -487,39 +481,6 @@
+@@ -487,39 +482,6 @@
      return ImmutableList.copyOf(toks);
    }
  
@@ -81,9 +87,29 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavaInput.java gjf-s
    private static int updateColumn(int columnI, String originalTokText) {
      Integer last = Iterators.getLast(Newlines.lineOffsetIterator(originalTokText));
      if (last > 0) {
+@@ -600,9 +562,17 @@
+     return tokens.build();
+   }
+ 
++  /**
++   * Upstream spells the test below as a String.matches, which compiles the pattern afresh on every
++   * call - and this one is asked about every slash-star comment in the file. Compiling it once is
++   * the same predicate, because String.matches(regex) is specified as Pattern.matches(regex, this),
++   * which is Pattern.compile(regex).matcher(this).matches().
++   */
++  private static final Pattern PARAM_COMMENT_PATTERN =
++      Pattern.compile("\\/\\*[A-Za-z0-9\\s_\\-]+=\\s*\\*\\/");
++
+   private static boolean isParamComment(Tok tok) {
+-    return tok.isSlashStarComment()
+-        && tok.getText().matches("\\/\\*[A-Za-z0-9\\s_\\-]+=\\s*\\*\\/");
++    return tok.isSlashStarComment() && PARAM_COMMENT_PATTERN.matcher(tok.getText()).matches();
+   }
+ 
+   /**
 diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavaInputAstVisitor.java gjf-src/com/google/googlejavaformat/java/JavaInputAstVisitor.java
---- gjf-src-pristine/com/google/googlejavaformat/java/JavaInputAstVisitor.java	2026-08-06 21:25:30.861799639 +0000
-+++ gjf-src/com/google/googlejavaformat/java/JavaInputAstVisitor.java	2026-08-06 21:27:04.084753074 +0000
+--- gjf-src-pristine/com/google/googlejavaformat/java/JavaInputAstVisitor.java	2026-07-30 17:26:40.000000000 +0000
++++ gjf-src/com/google/googlejavaformat/java/JavaInputAstVisitor.java	2026-08-26 08:05:41.494719573 +0000
 @@ -1224,25 +1224,11 @@
      return null;
    }
@@ -115,8 +141,8 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavaInputAstVisitor.
  
    private void checkForTypeAnnotation(ImportTree node) {
 diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavacTokens.java gjf-src/com/google/googlejavaformat/java/JavacTokens.java
---- gjf-src-pristine/com/google/googlejavaformat/java/JavacTokens.java	2026-08-06 21:25:30.861488642 +0000
-+++ gjf-src/com/google/googlejavaformat/java/JavacTokens.java	2026-08-06 21:26:50.540753384 +0000
+--- gjf-src-pristine/com/google/googlejavaformat/java/JavacTokens.java	2026-07-30 17:26:40.000000000 +0000
++++ gjf-src/com/google/googlejavaformat/java/JavacTokens.java	2026-08-26 08:05:41.495074759 +0000
 @@ -129,21 +129,11 @@
      }
  
@@ -145,8 +171,8 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/JavacTokens.java gjf
    }
  
 diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/RemoveUnusedImports.java gjf-src/com/google/googlejavaformat/java/RemoveUnusedImports.java
---- gjf-src-pristine/com/google/googlejavaformat/java/RemoveUnusedImports.java	2026-08-06 21:25:30.861557084 +0000
-+++ gjf-src/com/google/googlejavaformat/java/RemoveUnusedImports.java	2026-08-06 21:27:17.504752767 +0000
+--- gjf-src-pristine/com/google/googlejavaformat/java/RemoveUnusedImports.java	2026-07-30 17:26:40.000000000 +0000
++++ gjf-src/com/google/googlejavaformat/java/RemoveUnusedImports.java	2026-08-26 08:05:41.495306859 +0000
 @@ -108,29 +108,14 @@
  
      // TODO(cushon): remove this override when pattern matching in switch is no longer a preview
@@ -235,8 +261,8 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/RemoveUnusedImports.
  
    /** Applies the replacements to the given source, and re-format any edited javadoc. */
 diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/StringWrapper.java gjf-src/com/google/googlejavaformat/java/StringWrapper.java
---- gjf-src-pristine/com/google/googlejavaformat/java/StringWrapper.java	2026-08-26 06:51:53.963016917 +0000
-+++ gjf-src/com/google/googlejavaformat/java/StringWrapper.java	2026-08-26 06:52:01.539055299 +0000
+--- gjf-src-pristine/com/google/googlejavaformat/java/StringWrapper.java	2026-07-30 17:26:40.000000000 +0000
++++ gjf-src/com/google/googlejavaformat/java/StringWrapper.java	2026-08-26 08:05:41.495493182 +0000
 @@ -69,6 +69,23 @@
      }
  
@@ -262,8 +288,8 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/StringWrapper.java g
  
      if (!firstPass.equals(input)) {
 diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/Trees.java gjf-src/com/google/googlejavaformat/java/Trees.java
---- gjf-src-pristine/com/google/googlejavaformat/java/Trees.java	2026-08-06 21:25:30.861758651 +0000
-+++ gjf-src/com/google/googlejavaformat/java/Trees.java	2026-08-06 21:25:59.492754551 +0000
+--- gjf-src-pristine/com/google/googlejavaformat/java/Trees.java	2026-07-30 17:26:40.000000000 +0000
++++ gjf-src/com/google/googlejavaformat/java/Trees.java	2026-08-26 08:05:41.495673732 +0000
 @@ -39,10 +39,6 @@
  import com.sun.tools.javac.util.Options;
  import java.io.IOError;
@@ -353,3 +379,42 @@ diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/Trees.java gjf-src/c
 -    }
 -  }
  }
+diff -ruN gjf-src-pristine/com/google/googlejavaformat/java/javadoc/JavadocLexer.java gjf-src/com/google/googlejavaformat/java/javadoc/JavadocLexer.java
+--- gjf-src-pristine/com/google/googlejavaformat/java/javadoc/JavadocLexer.java	2026-07-30 17:26:40.000000000 +0000
++++ gjf-src/com/google/googlejavaformat/java/javadoc/JavadocLexer.java	2026-08-26 08:05:48.131700061 +0000
+@@ -509,7 +509,8 @@
+     ImmutableList.Builder<Token> output = ImmutableList.builder();
+ 
+     for (PeekingIterator<Token> tokens = peekingIterator(input.iterator()); tokens.hasNext(); ) {
+-      if (tokens.peek() instanceof Literal && tokens.peek().value().matches("href=[^>]*>")) {
++      if (tokens.peek() instanceof Literal
++          && HREF_LITERAL_PATTERN.matcher(tokens.peek().value()).matches()) {
+         output.add(tokens.next());
+ 
+         if (tokens.peek() instanceof Whitespace) {
+@@ -548,7 +549,8 @@
+       while (tokens.hasNext() && tokens.peek() instanceof ForcedNewline) {
+         initialNewlines.add(tokens.next());
+       }
+-      if (!(tokens.peek() instanceof Literal) || !tokens.peek().value().matches("[ \t]*[{]@code")) {
++      if (!(tokens.peek() instanceof Literal)
++          || !PRE_CODE_LITERAL_PATTERN.matcher(tokens.peek().value()).matches()) {
+         output.addAll(initialNewlines);
+         output.add(tokens.next());
+         continue;
+@@ -698,6 +700,15 @@
+   private static final Pattern BACKSLASH_PLUS_CHARACTER_PATTERN = compile("\\\\.");
+ 
+   /*
++   * Upstream spells the two tests these serve as String.matches, which compiles the pattern afresh
++   * on every call. The first is asked about every literal token in every doc comment, which is the
++   * hottest question this lexer asks. Compiling them once is the same predicate, because
++   * String.matches(regex) is specified as Pattern.matches(regex, this).
++   */
++  private static final Pattern HREF_LITERAL_PATTERN = compile("href=[^>]*>");
++  private static final Pattern PRE_CODE_LITERAL_PATTERN = compile("[ \t]*[{]@code");
++
++  /*
+    * We exclude < so that we don't swallow following HTML tags. This lets us fix up "foo<p>" (~400
+    * hits in Google-internal code).
+    *
