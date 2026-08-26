@@ -471,7 +471,7 @@ most expensive thing in the Node boot for two reasons unrelated to the bytes:
 the first `Response` in a Node process is what makes Node load its `fetch`
 implementation, ~60ms, and reading 21MB back out of response bodies cost ~35ms
 of stream machinery on top. `src/asset-response.ts` supplies the five members
-the runtime reads instead, and `PERF-CSHARP.md` has the measurements. Bun and
+the runtime reads instead, and `bench/csharp.md` has the measurements. Bun and
 browsers are unaffected either way - their `Response` is native.
 
 **`WasmSingleFileBundle` does not work.** It fails on Linux with

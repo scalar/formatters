@@ -47,7 +47,7 @@ while an under-eager one would silently skip a reflow that was wanted, and no
 test downstream would notice. Only the false direction is dangerous, so only the
 true direction may be widened. Both a fix to the off-by-one and a rewrite of the
 scan behind it were built and measured, at 1.5% and under 1%; neither was kept.
-`PERF-JVM.md` has the numbers.
+`bench/java-kotlin.md` has the numbers.
 
 ## The TeaVM changes live on the fork, not here
 
