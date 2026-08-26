@@ -16,6 +16,8 @@
   "scripts": {
     "build": "bun run --filter='*' build",
     "test": "bun run scripts/test-packages.ts",
+    "bench": "bun run scripts/bench.ts",
+    "bench:corpus": "scripts/bench/fetch-corpus.sh",
     "test:node": "bun run build && tsc -p tsconfig.node-smoke.json --noEmit && node --test packages/*/test/node-smoke.ts",
     "test:browser": "bun run build && bun run scripts/test-browser.ts",
     "types:check": "tsc -p tsconfig.scripts.json --noEmit && bun run --filter='*' types:check",
