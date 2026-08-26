@@ -1,5 +1,7 @@
-import type { File } from '@bjorn3/browser_wasi_shim'
+import type { Directory, File } from '@bjorn3/browser_wasi_shim'
 import type { RubyVM } from '@ruby/wasm-wasi'
+
+import type { BootSnapshot } from './snapshot'
 
 /**
  * Options accepted by `format`.
@@ -61,6 +63,16 @@ export type FormatOptions = {
  * boot rather than once per format.
  */
 export type ArtifactSource = () => Promise<WebAssembly.Module>
+
+/**
+ * Supplies the boot snapshot, however this environment gets hold of it.
+ *
+ * Optional in every sense: it may be absent, it may resolve to `undefined`, and
+ * it may reject. All three mean the same thing to `boot-vm.ts` - boot the long
+ * way instead. See `snapshot.ts` for what the image is and why it is allowed to
+ * be missing.
+ */
+export type SnapshotSource = () => Promise<BootSnapshot | undefined>
 
 /**
  * A booted VM's lifecycle, as `createBootVm` hands it over.
@@ -143,6 +155,17 @@ export type InitOptions = InitFormatOptions & {
   /** The artifact itself, already in hand. Skips the fetch entirely. */
   bytes?: ArrayBuffer | ArrayBufferView
   /**
+   * Fetch the boot snapshot. Defaults to `true`.
+   *
+   * The snapshot is an image of a VM that has already loaded syntax_tree and
+   * RuboCop, so restoring it replaces roughly ten seconds of Ruby with about a
+   * fifth of a second - see `snapshot.ts`. It costs about 8MB over the wire,
+   * which is the trade a page is making when it sets this to `false`.
+   */
+  snapshot?: boolean
+  /** Where to fetch the snapshot from. Defaults to the `.br` beside this package. */
+  snapshotUrl?: string | URL
+  /**
    * How the bytes at `url` are encoded. Defaults to `brotli`, matching the
    * committed artifact. Use `none` when the server sets `Content-Encoding: br`
    * - the browser will have expanded it before this package sees it - or when
@@ -166,9 +189,19 @@ export type RubyFormatterVm = {
   /** CRuby (wasm) with syntax_tree already required. */
   vm: RubyVM
   /** The mutable contents map behind /work, so input can be written from JS. */
-  workFiles: Map<string, File>
+  workFiles: Map<string, Directory | File>
   /** The VM's wasm linear memory, watched so the VM can be recycled before it dies. */
   memory: WebAssembly.Memory
+  /**
+   * How large the linear memory was once this VM had finished booting.
+   *
+   * The recycling thresholds in `format.ts` are measured from here rather than
+   * from zero, because booting is not free: a VM with RuboCop loaded starts at
+   * around 374MB, so an absolute ceiling anywhere near that leaves almost no
+   * room to format in before it trips. Growth past this point is the thing
+   * worth watching; the boot itself is a constant.
+   */
+  bootBytes: number
   /**
    * Whether RuboCop has been required into this VM yet.
    *

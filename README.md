@@ -212,16 +212,18 @@ and a second conformance test asserts byte-identity against `RuboCop::CLI` with
 both gem versions pinned.
 
 `format(source, { rubocop: false })` is syntax_tree on its own for anyone who
-wants it - RuboCop is then never even loaded, which is worth about four seconds
-on the first call. See
+wants it, and costs two to three times less per call. See
 [`packages/ruby`](packages/ruby#two-tools-and-why-both) for the rest of what it
 costs.
 
 It ships as one 5.2 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
-formatter never loads is stripped, then `wasm-opt -Os` and brotli. It is
-committed, so a fresh clone needs nothing extra; `bun run ruby:build` rebuilds it
-when the Ruby version or pinned gems change.
+formatter never loads is stripped, then `wasm-opt -Os` and brotli. Beside it sits
+a 7.9 MB `ruby_fmt.snapshot.br`: an image of a VM that has already loaded both
+tools, which is what makes booting cost 0.7 s rather than the nine seconds
+`require "rubocop"` takes on a Ruby running on WebAssembly. Both are committed,
+so a fresh clone needs nothing extra; `bun run ruby:build` rebuilds both when the
+Ruby version or pinned gems change.
 
 The deviations from stock syntax_tree 6.3.0 are all one family: pattern
 matching, where the gem writes back Ruby that no longer parses from input that

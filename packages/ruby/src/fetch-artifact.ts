@@ -1,6 +1,7 @@
 import { decompressBrotli } from './decompress-brotli'
+import { type BootSnapshot, decodeSnapshot, fingerprintArtifact } from './snapshot'
 import { toArtifactBytes } from './to-artifact-bytes'
-import type { ArtifactSource, InitOptions } from './types'
+import type { ArtifactSource, InitOptions, SnapshotSource } from './types'
 
 /**
  * The artifact source for the browser build: fetches the wasm instead of
@@ -20,10 +21,15 @@ export const createArtifactLoader = (
   compile: (bytes: Uint8Array) => Promise<WebAssembly.Module> = (bytes) => WebAssembly.compile(bytes),
 ): {
   compileArtifact: ArtifactSource
+  loadSnapshot: SnapshotSource
   init: (options?: InitOptions) => Promise<void>
 } => {
   let modulePromise: Promise<WebAssembly.Module> | undefined
+  let snapshotPromise: Promise<BootSnapshot | undefined> | undefined
   let options: InitOptions = {}
+
+  /** The expanded artifact's fingerprint, taken while it is compiled - see `snapshot.ts`. */
+  let fingerprint: string | undefined
 
   /** Reads the configured source down to raw wasm bytes. */
   const readBytes = async (): Promise<Uint8Array> => {
@@ -58,13 +64,50 @@ export const createArtifactLoader = (
     // promise - with `init` refusing to run again because something was already
     // in flight. Dropping it on failure is what leaves a retry possible.
     modulePromise ??= readBytes()
-      .then(compile)
+      .then((bytes) => {
+        fingerprint = fingerprintArtifact(bytes)
+        return compile(bytes)
+      })
       .catch((error: unknown) => {
         modulePromise = undefined
         throw error
       })
 
     return modulePromise
+  }
+
+  /**
+   * Fetches and decodes the boot snapshot, once per page.
+   *
+   * Resolves to `undefined` for every failure there is - no snapshot deployed
+   * beside the artifact, a snapshot from a different build, a fetch that 404s -
+   * because a browser that cannot get one should boot the long way rather than
+   * refuse to format. It is a large fetch (about 8MB) and it replaces about ten
+   * seconds of Ruby, so it is worth having; `init({ snapshot: false })` is how a
+   * page that would rather spend the seconds than the bytes says so.
+   */
+  const loadSnapshot: SnapshotSource = () => {
+    if (options.snapshot === false) return Promise.resolve(undefined)
+
+    snapshotPromise ??= (async (): Promise<BootSnapshot | undefined> => {
+      if (!fingerprint) return undefined
+
+      const url = options.snapshotUrl ?? new URL('../ruby_fmt.snapshot.br', import.meta.url)
+      const response = await fetch(url)
+      if (!response.ok) return undefined
+
+      // The snapshot works out its own encoding rather than borrowing the
+      // artifact's `encoding` option, because the two are separate files and a
+      // caller who serves one expanded need not have done the same for the
+      // other. Reading the header is cheap next to the fetch, so trying it
+      // as-is and expanding only if that fails costs nothing and removes an
+      // option there is no good way for a caller to get right.
+      const body = new Uint8Array(await response.arrayBuffer())
+
+      return decodeSnapshot(body, fingerprint) ?? decodeSnapshot(await decompressBrotli(body), fingerprint)
+    })().catch(() => undefined)
+
+    return snapshotPromise
   }
 
   /**
@@ -95,5 +138,5 @@ export const createArtifactLoader = (
     await compileArtifact()
   }
 
-  return { compileArtifact, init }
+  return { compileArtifact, loadSnapshot, init }
 }

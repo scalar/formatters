@@ -110,3 +110,9 @@ node -e '
 rm -f ruby_fmt.raw.wasm ruby_fmt.opt.wasm
 
 echo "built $(du -h "$OUT" | cut -f1) -> packages/ruby/ruby_fmt.wasm.br"
+
+# The boot snapshot is keyed to a fingerprint of the artifact, so the one that
+# was committed alongside the previous build is now stale and would be ignored
+# at runtime - which is safe, but means every consumer pays ten seconds of
+# `require` per process. Rebuilding it here keeps the pair in step. Commit both.
+bun write-snapshot.ts

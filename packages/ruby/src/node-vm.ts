@@ -1,5 +1,6 @@
 import { createBootVm } from './boot-vm'
 import { compileArtifact } from './compile-artifact'
+import { readSnapshot } from './read-snapshot'
 import type { BootVm } from './types'
 
 /**
@@ -10,4 +11,4 @@ import type { BootVm } from './types'
  * linear memory to prove recycling still happens. Building a second `createBootVm`
  * for the test would boot a second VM and measure nothing.
  */
-export const nodeVm: BootVm = createBootVm(compileArtifact)
+export const nodeVm: BootVm = createBootVm(compileArtifact, readSnapshot)

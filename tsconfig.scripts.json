@@ -8,6 +8,7 @@
   "extends": "./tsconfig.json",
   "include": [
     "scripts/**/*.ts",
+    "build/ruby_fmt/*.ts",
     "build/java_fmt_teavm/*.ts",
     "build/java_fmt_teavm/kotlin-probe/*.ts",
     "build/java_fmt_teavm/kotlin-probe/teavm-bug/*.ts"

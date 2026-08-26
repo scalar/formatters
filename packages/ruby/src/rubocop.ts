@@ -35,6 +35,15 @@ const BASE_CONFIG: Record<string, unknown> = {
 }
 
 /**
+ * The guest filename the default configuration is always written under.
+ *
+ * Fixed rather than generated because the boot snapshot has already parsed this
+ * config and cached it against this path - see `configFileNames` in `format.ts`
+ * for why a generated name would be unsafe here.
+ */
+export const DEFAULT_CONFIG_FILE_NAME = 'rubocop-default.yml'
+
+/**
  * Builds the `.rubocop.yml` written into the guest, with a caller's overrides
  * merged over {@link BASE_CONFIG}.
  *
