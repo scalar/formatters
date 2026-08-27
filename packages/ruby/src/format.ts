@@ -213,11 +213,10 @@ export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
    * `formatSync` - and again whenever `formatSync` reports that the VM needs
    * replacing.
    *
-   * It used to require RuboCop as well, which was the expensive half and the
-   * reason `InitFormatOptions.rubocop` exists. The artifact now arrives with
-   * RuboCop already in it, so there is nothing left for a caller to defer and
-   * the option no longer changes anything - see the note on the type. Awaiting
-   * this is a boot and a recycle check, and nothing else.
+   * It used to require RuboCop as well, which was the expensive half, and used
+   * to take an argument for declining that. The artifact now arrives with
+   * RuboCop already in it, so there is nothing left to defer and nothing left to
+   * decline: awaiting this is a boot and a recycle check, and nothing else.
    */
   const init = async (): Promise<void> => {
     const booted = await boot()

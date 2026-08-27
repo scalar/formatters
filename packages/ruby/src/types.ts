@@ -96,35 +96,13 @@ export type FormatSyncFunction = (source: string, options?: FormatOptions) => st
  * Optional for `format`, which boots on demand, and required exactly once before
  * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
  * the second call resolves against the first. The browser build's `init` takes
- * an {@link InitOptions} as well, for pointing the package at its artifact. *
+ * an {@link InitOptions}, for pointing the package at its artifact.
+ *
  * For Ruby this is also the recovery call: `formatSync` refuses once the VM has
  * outgrown what a synchronous caller can clear, and awaiting this again replaces
  * it.
  */
-export type InitFunction = (options?: InitFormatOptions) => Promise<void>
-
-/**
- * What `init` can be told, beyond "get ready".
- *
- * Nothing, now. The one option here existed because `init` used to require
- * RuboCop into the VM and a synchronous caller had no later chance to decline
- * it - `formatSync` needs `init`, so skipping the call is not the opt-out it is
- * for `format`. The artifact carries RuboCop already, so there is no longer a
- * cost to decline.
- */
-export type InitFormatOptions = {
-  /**
-   * Accepted and ignored.
-   *
-   * It used to decide whether `init` spent about nine seconds requiring RuboCop
-   * into the VM. RuboCop is now baked into the wasm artifact, so it is loaded
-   * before `init` is called and no value here can change that. Kept so callers
-   * that pass it keep compiling and keep working; `format`'s and `formatSync`'s
-   * own `rubocop: false` still skips the pass, which is the part that was ever
-   * worth skipping per call.
-   */
-  rubocop?: boolean
-}
+export type InitFunction = () => Promise<void>
 
 /** What `createFormat` returns: the package's public functions over one VM. */
 export type Formatters = {
@@ -138,7 +116,7 @@ export type Formatters = {
  * package where its artifact lives. Every field is optional; the defaults
  * resolve `ruby_fmt.wasm.br` relative to the module and expand it here.
  */
-export type InitOptions = InitFormatOptions & {
+export type InitOptions = {
   /** Where to fetch the artifact from. Defaults to the `.br` beside this package. */
   url?: string | URL
   /** The artifact itself, already in hand. Skips the fetch entirely. */

@@ -209,9 +209,9 @@ RuboCop in 116 of 397 files.
 `rubocop: false` opts out of the pass, which is worth two to three times a
 syntax_tree-only format. It no longer opts out of loading RuboCop: that used to
 happen on the first call that asked for it, at ~9 s a VM, and it now happens at
-build time for every VM. `init` therefore takes no meaningful argument any more -
-`InitFormatOptions.rubocop` is accepted and ignored, kept so that callers passing
-it keep compiling.
+build time for every VM. `init` therefore takes no argument at all any more: the
+`rubocop` option and the `InitFormatOptions` type it lived on are gone, which
+puts Ruby's `InitFunction` back in line with every other package's.
 
 **syntax_tree owns line width.** `Layout/LineLength` is disabled in the config
 written into the guest, because it is the one Layout cop that contradicts

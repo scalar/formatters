@@ -411,15 +411,14 @@ describe('init', () => {
   // claim: whatever the module-level VM has been through by now says nothing
   // about what an artifact hands a caller on the first call.
   //
-  // `{ rubocop: false }` is passed on purpose. The option used to mean "do not
-  // load RuboCop" and now means nothing at all, so the strongest thing to
-  // assert is that even the argument that once suppressed the load leaves a VM
-  // that can run the pass.
-  it('boots a VM that already has RuboCop, whatever it is asked for', async () => {
+  // `init` takes no argument at all now. It used to take one for declining the
+  // RuboCop load, and this is what makes that removal safe rather than merely
+  // tidy: there is nothing left for a caller to decline.
+  it('boots a VM that already has RuboCop, without being asked', async () => {
     const vm = createBootVm(compileArtifact)
     const own = createFormat(vm)
 
-    await own.init({ rubocop: false })
+    await own.init()
 
     expect(vm.peek()?.vm.eval('defined?(RuboCop) ? "loaded" : "missing"').toString()).toBe('loaded')
 

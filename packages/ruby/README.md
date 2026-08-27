@@ -117,9 +117,9 @@ output is not going anywhere near a RuboCop, or if the
 [costs below](#what-it-costs) are not worth paying.
 
 It skips the pass, not the loading — RuboCop is in the artifact either way, so
-there is nothing to say at `init` and `formatSync(source, { rubocop: false })`
-declines exactly as much as `format` does. `init({ rubocop: false })` is still
-accepted, and now does nothing.
+there is nothing to say at `init`, and `formatSync(source, { rubocop: false })`
+declines exactly as much as `format` does. `init` takes no options at all under
+Node; the browser build's take only the artifact's location.
 
 The order is fixed, and it is the only order that works. The two tools disagree,
 so whichever runs last decides. Running syntax_tree second would undo RuboCop's
@@ -162,8 +162,8 @@ time. Measured on one machine, RuboCop on:
 | one VM recycle | 6,339 ms | 507 ms |
 
 What `rubocop: false` now saves is the pass, not the loading: RuboCop is in the
-artifact whether or not you ask for it. `init({ rubocop: false })` accordingly
-does nothing at all, and is kept only so that callers passing it keep working.
+artifact whether or not you ask for it. `init`'s own `rubocop` option is gone —
+it existed to decline that load, and there is no longer a load to decline.
 
 The artifact carries both tools whichever way you call it, so there was never a
 lighter build to be had by dropping one — and the snapshot makes that literal:
