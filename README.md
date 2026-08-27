@@ -294,11 +294,9 @@ Classpath Exception*, which exists precisely to allow linking into a product
 distributed under terms of your choice. Getting there took patches to TeaVM and
 to google-java-format; `packages/java/README.md` names every one.
 
-Two caveats. **Node 24.15 or newer**, and not because of WasmGC: Node 22 formats
-correctly, but V8's wasm optimizer then grows without bound on this module until
-the process is killed, so it would never exit — and Node 24.0 through 24.14
-reject the exception-handling opcodes TeaVM emits outright. bun is unaffected by
-either. And the module
+Two caveats. **Node 24.15 or newer**, and not because of WasmGC: below that V8
+does not compile the module at all, because of how it used to type the wasm
+exception handling TeaVM emits. bun is unaffected. And the module
 has no filesystem and no stdin, so source goes in as a string and comes back as
 one - enough for `format()`, but it rules out shipping the CLI itself.
 

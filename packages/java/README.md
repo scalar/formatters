@@ -45,23 +45,28 @@ Options: `{ style }` (`'google'` default, or `'aosp'`), and the three steps the
 CLI runs by default, each of which can be turned off — `{ sortImports }`,
 `{ removeUnusedImports }`, `{ reflowLongStrings }`.
 
-**Node 24.15 or newer.** Two separate things set that floor, and neither is
-WasmGC — Node 22 has WasmGC and formats correctly.
+**Node 24.15 or newer**, and it is a hard floor rather than a soft one: below
+it V8 does not compile the module at all. It is not a WasmGC floor — Node 22 has
+WasmGC — it is about how V8 types wasm exception handling.
 
-The major is V8's wasm optimizer: on Node 22, once the module is warm it grows
-without bound on it, roughly 100MB/s, until the process is killed. The answers
-are right; the process just never exits, which reads as a hang. V8 13 (Node 24)
-does not do it, and neither does JavaScriptCore, so bun is fine.
+TeaVM emits the final exception-handling proposal, `try_table` over `exnref`,
+and `wasm-opt` leaves `catch_ref` branching to a block typed with a
+*non-nullable* `(ref exn)`. That is what the spec calls for: the reference
+interpreter sends `RefT (NoNull, ExnHT)` to a `catch_ref` label. V8 used to type
+it as a nullable `exnref` and reject the module — `type error in branch[0]
+(expected (ref exn), got exnref)` — which is why Node 22 and Node 24.0 through
+24.14 both refuse it. 24.15.0 is where V8 accepts it, and JavaScriptCore accepts
+it throughout, so bun is fine.
 
-The minor is the wasm exception-handling opcodes. TeaVM emits the final
-proposal — `try_table` over `exnref` — which V8 accepts unflagged on Node 22,
-rejects on Node 24.0 through 24.14, and accepts again from 24.15.0. On those
-releases the module fails to compile rather than misbehaving, and
-`--experimental-wasm-exnref` is enough to run it.
+Node 22 additionally had V8's wasm optimizer grow without bound on this module,
+roughly 100MB/s until the process was killed. That no longer decides anything —
+the module does not compile there — but it is why running an older build on
+Node 22 reads as a hang rather than an error.
 
-The package checks for both and says all this rather than hanging or throwing a
-raw `CompileError`. The second check compiles a 28-byte probe module instead of
-reading a version number, so bun — which reports a Node version of its own,
+The package checks for this and says so rather than throwing a raw
+`CompileError`. The check compiles a 52-byte probe module — the same
+`catch_ref`-into-`(ref exn)` shape the artifact uses — instead of reading a
+version number, so bun — which reports a Node version of its own,
 below this floor — is judged on what its engine actually does.
 
 ## The version it carries
