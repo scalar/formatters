@@ -48,11 +48,30 @@
 // allowed to be checked only by the tests that run later.
 //
 // A note on what gets frozen: everything the boot observed, including the bytes
-// CRuby drew from `random_get` to seed its Hash function. Those become per
-// artifact rather than per process. It does not reach the output - Ruby's
-// hashes iterate in insertion order, and the corpus comparison in
-// CONTRIBUTING.md is what checks that rather than assuming it - but a build
-// that ever came to depend on per-process randomness would not get it here.
+// CRuby drew from `random_get` to seed its Hash function. That seed is now a
+// constant published in an npm tarball rather than something each process
+// draws for itself - `"abc".hash` returns the same integer in every process,
+// on every machine.
+//
+// It does not reach the output. Ruby's hashes iterate in insertion order, and
+// the corpus comparison CONTRIBUTING.md asks for is what checks that rather
+// than assuming it. What it does give up is the reason Ruby randomizes that
+// seed at all: hash-flooding becomes precomputable, and this package does parse
+// caller-supplied Ruby into hashes on the way through prism, parser and
+// RuboCop. The exposure is judged acceptable here - a formatter's input is
+// source its caller already chose to format, the pathological case is slow
+// rather than unsafe, and the same input is equally slow on the native gems -
+// but it is a real property of a pre-initialized artifact and not a detail of
+// how it was built.
+//
+// The other consequence of that seed is that this step is **not byte
+// reproducible**. Two runs over the same input wasm, with the same wizer and
+// the same program below, produce artifacts that differ in about two thirds of
+// their bytes: the seed moves every hash bucket, and the snapshot is a dump of
+// the heap those buckets live in. Both behave identically - that is what
+// `verify` and the corpus comparison in CONTRIBUTING.md establish - but a
+// rebuild cannot be checked by diffing it against the committed bytes, and
+// nothing here should be written as though it could.
 
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -112,10 +131,20 @@ ${RUBOCOP_SETUP}
 const RUBOCOP_SAMPLE = 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n'
 const RUBOCOP_SAMPLE_FORMATTED = 'class Client\n  attr_reader :base_url\n\n  def to_s\n    @base_url\n  end\nend\n'
 
-/** Prints why this cannot continue, and stops. */
+/**
+ * Stops, with a reason.
+ *
+ * Throws rather than calling `process.exit`, which is not interchangeable here:
+ * `process.exit` terminates synchronously and `finally` blocks do not run, so
+ * every failing build would leave its ~37MB scratch directory behind in the
+ * system temp. The catch at the bottom of the file turns this back into an exit
+ * code, after the cleanup has happened.
+ *
+ * Annotated on the binding rather than only on the arrow so TypeScript treats a
+ * call as ending control flow.
+ */
 const fail: (message: string) => never = (message) => {
-  console.error(`preinit: ${message}`)
-  process.exit(1)
+  throw new Error(message)
 }
 
 /** Runs a build tool, failing loudly rather than leaving a half-made artifact behind. */
@@ -229,7 +258,13 @@ const verify = async (wasmPath: string): Promise<void> => {
 }
 
 const [input, output] = process.argv.slice(2)
-if (!input || !output) fail('usage: bun preinit.ts <in.wasm> <out.wasm>')
+
+// Checked before the scratch directory exists, so this one really can exit on
+// the spot - there is nothing yet for the `finally` below to clean up.
+if (!input || !output) {
+  console.error('usage: bun preinit.ts <in.wasm> <out.wasm>')
+  process.exit(1)
+}
 
 // rbwasm downloads binaryen for its own use and build.sh downloads wizer beside
 // it, so both default to that cache and neither has to be on PATH. $WIZER and
@@ -314,6 +349,9 @@ try {
   const before = statSync(input).size
   const after = statSync(output).size
   console.log(`preinit: ${(before / 1024 ** 2).toFixed(1)}MB -> ${(after / 1024 ** 2).toFixed(1)}MB uncompressed`)
+} catch (error) {
+  console.error(`preinit: ${error instanceof Error ? error.message : String(error)}`)
+  process.exitCode = 1
 } finally {
   rmSync(scratch, { recursive: true, force: true })
 }

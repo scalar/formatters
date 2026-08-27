@@ -186,6 +186,11 @@ formatting a large tree. Three things follow, and none of them is optional:
 - It costs size: 12.2 MB compressed against 5.2 MB, because a Ruby heap with
   RuboCop in it is part of the module now. That is the trade, and the size table
   in the root README states it.
+- It costs byte reproducibility: CRuby's `Hash` seed comes from `random_get` at
+  startup and the snapshot is a dump of the heap those hashes live in, so two
+  builds from identical inputs differ in most of their bytes while behaving
+  identically. A rebuild is checked with the corpus comparison, never by
+  diffing against the committed artifact.
 
 **Two tools, one artifact, both by default.** `format` runs syntax_tree and then
 the real `rubocop --autocorrect --only Layout`. Neither subsumes the other:

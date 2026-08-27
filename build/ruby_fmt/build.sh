@@ -118,9 +118,17 @@ if [ ! -x "$WIZER_DIR/wizer" ]; then
       ;;
   esac
 
-  mkdir -p "$WIZER_DIR"
+  # Unpacked beside the cache and moved into place only once the whole stream
+  # has been read, because the check above is "is there an executable here" and
+  # a download interrupted mid-member can leave one that is not a whole binary.
+  # `set -e` aborts the interrupted run either way; what this prevents is the
+  # *next* run skipping the download and executing the truncated copy.
+  rm -rf "$WIZER_DIR.incoming"
+  mkdir -p "$WIZER_DIR.incoming"
   curl -sSfL "https://github.com/bytecodealliance/wizer/releases/download/v${WIZER_VERSION}/wizer-v${WIZER_VERSION}-${WIZER_TARGET}.tar.xz" |
-    tar -xJ -C "$WIZER_DIR" --strip-components 1
+    tar -xJ -C "$WIZER_DIR.incoming" --strip-components 1
+  rm -rf "$WIZER_DIR"
+  mv "$WIZER_DIR.incoming" "$WIZER_DIR"
 fi
 
 # Boot CRuby, load syntax_tree and RuboCop, and serialize the resulting linear
@@ -140,6 +148,13 @@ fi
 # It costs the artifact size: ~37MB expanded becomes ~67MB, and ~5.2MB
 # compressed becomes ~12.2MB. That is the trade, and it is the reason this is a
 # step here rather than something the runtime could opt into.
+#
+# It also costs byte reproducibility. CRuby seeds its Hash function from
+# `random_get` during startup, and the snapshot is a dump of the heap those
+# hashes live in, so two runs over identical input differ in most of their
+# bytes while behaving identically. Rebuilding and diffing against the committed
+# artifact proves nothing; run the corpus comparison CONTRIBUTING.md describes
+# instead.
 bun preinit.ts ruby_fmt.opt.wasm ruby_fmt.preinit.wasm
 
 # Ship it brotli-compressed. The artifact is mostly Ruby source text and a

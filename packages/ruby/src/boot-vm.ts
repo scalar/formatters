@@ -103,11 +103,11 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       const instance = await WebAssembly.instantiate(await compileArtifact(), imports)
       await vm.setInstance(instance)
 
-      // Hands the shim its instance, and nothing more: wizer runs `_initialize`
-      // itself before the snapshot and drops the export, so there is no reactor
-      // constructor left here to call twice. Left in rather than replaced with
-      // an assignment because it is what makes this work against an artifact
-      // that has *not* been snapshotted - useful when bisecting the build.
+      // This is what sets `wasi.inst`, which the shim's syscalls and the memory
+      // handle below both read, so it has to happen and it has to happen here.
+      // What it does *not* do any more is run `_initialize`: wizer calls the
+      // reactor constructor itself before taking the snapshot and then drops
+      // the export, so there is none left to call a second time.
       //
       // The shim types `initialize` against a narrower instance than
       // `WebAssembly.Instance` - it wants `exports.memory` declared, which the

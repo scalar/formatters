@@ -565,6 +565,13 @@ bun run ruby:build    # ~20 min from cold, needs Ruby + bundler + Bun
 produced the checked-in bytes are recoverable rather than whatever resolves
 today.
 
+The bytes themselves are not. CRuby seeds its `Hash` function from `random_get`
+while it starts, and the snapshot is a dump of the heap those hashes live in, so
+two builds from identical inputs differ in most of their bytes and behave
+identically. A rebuild is checked by running the corpus comparison in
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md), not by diffing it against what is
+committed.
+
 ---
 
 ## Known bug: the VM leaks, and recycles itself to survive it
