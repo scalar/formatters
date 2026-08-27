@@ -183,7 +183,7 @@ formatting a large tree. Three things follow, and none of them is optional:
   the runtime provides, name for name. The guest's preopen table is captured in
   the snapshot, so a mismatch is a VM that cannot see `/work` at all and dies on
   the first RuboCop call with `Errno::ENOENT @ dir_s_mkdir`.
-- It costs size: 12.7 MB compressed against 5.4 MB, because a Ruby heap with
+- It costs size: 12.2 MB compressed against 5.2 MB, because a Ruby heap with
   RuboCop in it is part of the module now. That is the trade, and the size table
   in the root README states it.
 
@@ -201,12 +201,12 @@ Order decides the result, because the two disagree about multiline indentation:
 syntax_tree first, RuboCop second. Running syntax_tree afterwards would revert
 RuboCop in 116 of 397 files.
 
-`rubocop: false` opts out, and then RuboCop is never required into the VM at all
-- worth about four seconds on the first call. `init` does load it, because it is
-the default pass and `formatSync` would otherwise stall for those seconds in a
-caller that chose the synchronous entry point precisely because it cannot wait;
-`init({ rubocop: false })` is how such a caller declines, and the only way,
-since `formatSync` cannot run without `init`.
+`rubocop: false` opts out of the pass, which is worth two to three times a
+syntax_tree-only format. It no longer opts out of loading RuboCop: that used to
+happen on the first call that asked for it, at ~9 s a VM, and it now happens at
+build time for every VM. `init` therefore takes no meaningful argument any more -
+`InitFormatOptions.rubocop` is accepted and ignored, kept so that callers passing
+it keep compiling.
 
 **syntax_tree owns line width.** `Layout/LineLength` is disabled in the config
 written into the guest, because it is the one Layout cop that contradicts
@@ -228,7 +228,7 @@ RuboCop pin and the `RUBY_VERSION` in `build.sh` move together.
 
 **WASI comes from `@bjorn3/browser_wasi_shim`, not `node:wasi`,** even though the
 package only ever runs on Node. The interfaces are compatible —
-`RubyVM.instantiateModule` wants `{ wasiImport, initialize }` and Node's WASI has
+`@ruby/wasm-wasi` wants `{ wasiImport, initialize }` and Node's WASI has
 both — but Node's implementation segfaults non-deterministically once ruby.wasm
 is given preopened directories, and a preopen is how the input file reaches
 Ruby. Measured at 2 failures in 6 runs on identical input, killing the process

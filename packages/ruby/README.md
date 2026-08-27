@@ -131,13 +131,20 @@ corrections — over those same 397 files, in 116 of them.
 |:---|:---|:---|
 | cold start, one fresh process | ~1.0 s | ~2.1 s |
 | every call after | ~9 ms | 2–3× that |
-| one VM recycle | ~0.1 s | ~0.5 s |
-| artifact | 12.7 MB either way | |
+| one VM recycle, and the format after it | ~0.1 s | ~0.5 s |
+| artifact | 12.2 MB either way | |
 
-Almost all of the cold start is the artifact: expanding and compiling 12.7 MB of
-brotli into 70 MB of wasm takes ~0.9 s, and instantiating a VM from it takes
-~0.2 s. `rubocop: true` adds most of the rest, and that is the RuboCop config
-being merged over its `default.yml` once per VM, not RuboCop being loaded.
+Cold start is the artifact plus one VM: expanding and compiling 12.2 MB of
+brotli into 67 MB of wasm takes ~0.9 s, and instantiating a VM from it takes
+~0.2 s. That ~1.1 s is the whole of the `rubocop: false` column, within
+measurement noise. The default column adds ~1 s on top, and it is not RuboCop
+being loaded — it is the config being merged over RuboCop's own `default.yml`,
+which happens once per VM and is cached by path after that.
+
+A recycle is the second row's ~0.2 s of instantiation minus the compile, which
+the module cache makes free: 91 ms measured. The row is larger than that because
+it prices what a caller actually feels — the recycle *and* the first format
+after it, which is where that per-VM config merge lands again.
 
 **Loading is not on this table any more, and that is the change worth knowing
 about.** RuboCop's 698 cop files used to be read and evaluated by a Ruby running
@@ -159,7 +166,7 @@ does nothing at all, and is kept only so that callers passing it keep working.
 
 The artifact carries both tools whichever way you call it, so there was never a
 lighter build to be had by dropping one — and the snapshot makes that literal:
-7.3 MB of the 12.7 MB is a Ruby heap with both gems already in it.
+7 MB of the 12.2 MB is a Ruby heap with both gems already in it.
 
 ### When it gives up
 
@@ -214,7 +221,7 @@ await init({ url: '/assets/ruby_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 70 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 67 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 Formatting grows the VM's linear memory until it is recycled at 400 MB — a
@@ -223,7 +230,7 @@ ceiling picked for a Node process, and one a pre-initialized VM starts within
 less room to absorb that than a server does, so keep large files off the main
 thread.
 
-The browser reads the same brotli artifact as Node (12.7 MB over the wire) and
+The browser reads the same brotli artifact as Node (12.2 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -481,11 +488,11 @@ is a cached module-level value rather than an object you have to construct.
 
 | File | Exports | Purpose |
 |:---|:---|:---|
-| `src/format.ts` | `format` | The public entry point: recycle if needed, validate options, write input, format. |
+| `src/format.ts` | `createFormat` | The public entry point: recycle if needed, validate options, write input, format. |
 | `src/boot-vm.ts` | `createBootVm`, `WORK_DIR` | Instantiates the pre-initialized CRuby, patches syntax_tree, and caches the result. |
 | `src/stree-patch.ts` | `STREE_PATCHES` | The fixes applied on top of the gem, and why each is safe. |
 | `src/rubocop.ts` | `RUBOCOP_SETUP`, `buildRuboCopConfig` | The Layout pass: how RuboCop is driven, and which of its parts are used. `RUBOCOP_SETUP` is evaluated at build time, into the artifact. |
-| `src/wasi-shims.ts` | `SHIM_FILES`, `createShimDirectory` | Stand-ins for the two stdlib extensions wasip1 cannot provide. |
+| `src/wasi-shims.ts` | `SHIM_MOUNT_PATH`, `SHIM_FILES`, `createShimDirectory` | Stand-ins for the two stdlib extensions wasip1 cannot provide. |
 | `src/compile-artifact.ts` | `compileArtifact` | Locates, decompresses and compiles `ruby_fmt.wasm.br`, at most once per process. |
 | `src/types.ts` | `FormatOptions`, `RubyFormatterVm` | The two types the other files share. |
 
@@ -516,7 +523,7 @@ is a Ruby VM that has already started.
 That is worth 9 s on a cold start and 5.8 s on every VM recycle, and the recycle
 is the one that compounds — formatting leaks, so a process formatting a whole
 tree recycles repeatedly and used to re-read 698 cop files each time. It costs
-7.3 MB of install size, which is the entire downside and is stated in the size
+7 MB of install size, which is the entire downside and is stated in the size
 table in the [root README](../../README.md).
 
 `build/ruby_fmt/preinit.ts` is the step, and its header is where the three
@@ -577,8 +584,9 @@ codebase does.
 `format()` therefore watches the VM's memory and rebuilds it before the wall.
 Recycling reuses the cached `WebAssembly.Module`, so it costs the VM boot alone —
 not another decompress and compile — and since the artifact is pre-initialized it
-no longer costs requiring the gems either: **507 ms**, measured, against the
-6,339 ms it cost when a fresh VM had to load RuboCop from scratch.
+no longer costs requiring the gems either: **91 ms**, or **507 ms** counting the
+first format after it, against 1,101 ms and 6,339 ms when a fresh VM had to load
+RuboCop from scratch.
 `test/vm-recycle.test.ts` keeps the leak itself honest by asserting the bound
 rather than the crash: it formats past the ceiling repeatedly and fails if linear
 memory ever climbs beyond 800MB, which is what happens the moment recycling

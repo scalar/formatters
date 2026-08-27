@@ -28,7 +28,7 @@ const DEFAULT_RUBOCOP = true
  * and the incoming one at once. At the 1.1GB this used to sit at, that pair
  * peaked at ~1.5GB resident and made the whole suite thrash on a 16GB CI
  * runner. 400MB keeps the peak near 1GB, and the extra recycles it costs are
- * ~250ms each against the ~113MB every 37KB of input adds.
+ * ~0.5s each against the ~113MB every 37KB of input adds.
  */
 const MEMORY_LIMIT_BYTES = 400_000_000
 

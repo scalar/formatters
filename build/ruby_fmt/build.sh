@@ -125,7 +125,7 @@ fi
 
 # Boot CRuby, load syntax_tree and RuboCop, and serialize the resulting linear
 # memory back into the module - so that the runtime instantiates a VM that is
-# already up instead of paying ~8s to require both gems, and paying it again
+# already up instead of paying ~9s to require both gems, and paying it again
 # every time formatting's memory leak forces a recycle.
 #
 # The step is its own script because it needs the package's own sources: the
@@ -137,8 +137,8 @@ fi
 # the first RuboCop call with `Errno::ENOENT @ dir_s_mkdir - /work`. See the
 # header of ./preinit.ts.
 #
-# It costs the artifact size: ~39MB expanded becomes ~70MB, and ~5.4MB
-# compressed becomes ~12.8MB. That is the trade, and it is the reason this is a
+# It costs the artifact size: ~37MB expanded becomes ~67MB, and ~5.2MB
+# compressed becomes ~12.2MB. That is the trade, and it is the reason this is a
 # step here rather than something the runtime could opt into.
 bun preinit.ts ruby_fmt.opt.wasm ruby_fmt.preinit.wasm
 

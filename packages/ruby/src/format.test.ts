@@ -8,7 +8,7 @@ import type { FormatOptions } from './types'
 import { beforeAll, describe, expect, it } from 'bun:test'
 
 /**
- * Generous, because this decompresses and compiles a ~70MB wasm artifact before
+ * Generous, because this decompresses and compiles a ~67MB wasm artifact before
  * it boots anything. Requiring RuboCop used to be the expensive half; the
  * artifact carries it now.
  */
@@ -405,7 +405,7 @@ describe('init', () => {
   // wizer snapshot of a VM that had already required syntax_tree and RuboCop
   // (see build/ruby_fmt/preinit.ts), and nothing at runtime requires either any
   // more - so an artifact rebuilt without that step would leave `RuboCop`
-  // undefined here rather than quietly costing seven seconds a boot.
+  // undefined here rather than quietly costing nine seconds a boot.
   //
   // Built on its own VM rather than the shared one because a fresh boot is the
   // claim: whatever the module-level VM has been through by now says nothing

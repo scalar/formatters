@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 12.7 MB | ✅ exact +3 fixes | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 12.2 MB | ✅ exact +3 fixes | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -44,9 +44,10 @@ RuboCop's Layout department corrects what syntax_tree leaves behind, so the
 result is clean under a consumer's own `rubocop` run. Both are the real gems,
 each held to the exactness rule below by its own conformance test.
 
-Ruby is also much the largest artifact, and 7.3 MB of that is a deliberate
-trade: it ships a Ruby VM that has *already* loaded both gems, so booting one
-costs ~0.6 s rather than ~8 s. See [`packages/ruby`](packages/ruby#what-it-costs).
+Ruby is the second largest artifact, behind Swift, and 7 MB of that is a
+deliberate trade: it ships a Ruby VM that has *already* loaded both gems, so the
+first `format` call costs ~2.1 s rather than ~11.1 s. See
+[`packages/ruby`](packages/ruby#what-it-costs).
 
 Exactness is only meaningful against a named reference tool, so the reference is
 stated per package. "Exact" means the package *is* that tool compiled to wasm —
@@ -221,17 +222,16 @@ RuboCop either way. See
 [`packages/ruby`](packages/ruby#two-tools-and-why-both) for the rest of what it
 costs.
 
-It ships as one 12.7 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
+It ships as one 12.2 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
 formatter never loads is stripped, then `wasm-opt -Os`, then
 [wizer](https://github.com/bytecodealliance/wizer), then brotli. The wizer step
-is why the artifact is more than twice the size of the others' sum: it boots
-CRuby, requires syntax_tree and RuboCop, and serializes the resulting linear
-memory back into the module, so a consumer instantiates a VM that is already up
-instead of spending ~8 s requiring 698 cop files - and spending it again every
-time the leak below forces a recycle. It is committed, so a fresh clone needs
-nothing extra; `bun run ruby:build` rebuilds it when the Ruby version or pinned
-gems change.
+is what more than doubled it, from 5.2 MB: it boots CRuby, requires syntax_tree
+and RuboCop, and serializes the resulting linear memory back into the module, so
+a consumer instantiates a VM that is already up instead of spending ~9 s
+requiring 698 cop files - and spending it again every time the leak below forces
+a recycle. It is committed, so a fresh clone needs nothing extra;
+`bun run ruby:build` rebuilds it when the Ruby version or pinned gems change.
 
 The deviations from stock syntax_tree 6.3.0 are all one family: pattern
 matching, where the gem writes back Ruby that no longer parses from input that

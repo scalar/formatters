@@ -42,8 +42,9 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
    *
    * That is the whole shape of this function now. The artifact is a wizer
    * snapshot of a VM that had already run `ruby-init` and required both gems -
-   * see `build/ruby_fmt/preinit.ts` - so booting is an instantiation and two
-   * short evals rather than the ~8s of Ruby it used to be. Formats then reuse
+   * see `build/ruby_fmt/preinit.ts` - so booting is an instantiation, the
+   * syntax_tree patches and one `ScalarRubyFmt.setup` rather than the ~9s of
+   * Ruby it used to be. Formats then reuse
    * the VM, and a recycle costs about what this does instead of paying for the
    * requires again.
    *
@@ -123,7 +124,7 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       // itself is in the snapshot (see `RUBOCOP_SETUP` in rubocop.ts), but `setup`
       // chdirs into /work and builds the Layout cop set, and both of those belong
       // to a VM rather than to an artifact - a recycled VM starts over on each.
-      // It costs ~40ms against the ~7s requiring RuboCop used to.
+      // It costs ~40ms against the ~8.9s requiring RuboCop used to.
       vm.eval(`ScalarRubyFmt.setup(${JSON.stringify(WORK_DIR)})`)
 
       current = { vm, workFiles, memory: wasi.inst.exports.memory }
@@ -146,8 +147,9 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
    * the only lever we have. It is cheap: the artifact source still has the
    * compiled module cached, so a recycle pays for neither the decompress nor
    * the compile - and since the artifact is pre-initialized, it no longer pays
-   * for requiring syntax_tree and RuboCop either. ~100ms, against the ~6s it
-   * cost when a fresh VM had to load both gems from scratch.
+   * for requiring syntax_tree and RuboCop either. 91ms measured, and 507ms
+   * counting the extra work the first format after it does - against the 6,339ms
+   * the same pair cost when a fresh VM had to load both gems from scratch.
    */
   const recycle = (): Promise<RubyFormatterVm> => {
     vmPromise = undefined

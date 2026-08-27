@@ -35,9 +35,11 @@ export type BenchRequest =
  *
  * Three parts and a warm baseline rather than one number, because the parts move
  * independently and only some of them are worth attacking: `compileMs` is
- * brotli plus `WebAssembly.compile`, `bootMs` is instantiating the VM and
- * requiring syntax_tree, and `firstFormatMs` carries `RUBOCOP_SETUP` when
- * RuboCop is on - which is where most of a cold call with RuboCop goes.
+ * brotli plus `WebAssembly.compile`, `bootMs` is instantiating the VM plus the
+ * syntax_tree patches and `ScalarRubyFmt.setup`, and `firstFormatMs` carries
+ * RuboCop's config merge over its own `default.yml` when RuboCop is on - which
+ * is where most of a cold call with RuboCop goes now that the artifact arrives
+ * with both gems already required.
  */
 export type BootResult = {
   measurement: 'boot'
@@ -61,9 +63,8 @@ export type BootResult = {
  *
  * A recycle is two costs, not one. `recycleMs` is `boot()` again - cheaper than
  * a cold start because the compiled module is still cached - and `reloadMs` is
- * the next format, which finds `rubocopLoaded: false` on the new VM and pays
- * `RUBOCOP_SETUP` over again when RuboCop is on. Subtracting a warm format
- * leaves the overhead.
+ * the next format, which pays the per-VM RuboCop config merge over again when
+ * RuboCop is on. Subtracting a warm format leaves the overhead.
  */
 export type RecycleResult = {
   measurement: 'recycle'
@@ -130,8 +131,9 @@ export type BenchResult = BootResult | RecycleResult | CorpusResult
  * The source the boot and recycle measurements format.
  *
  * Deliberately tiny. Both measurements are about what booting costs, so the
- * format on the end is there only to force the lazy work - requiring RuboCop -
- * to happen and be counted. A real file would add its own formatting cost to a
+ * format on the end is there only to force the per-VM work a first format still
+ * does - the RuboCop config merge - to happen and be counted. A real file would
+ * add its own formatting cost to a
  * number that is supposed to be about the VM, and would make results from two
  * machines with different corpora incomparable.
  */
@@ -241,9 +243,9 @@ const measureRecycle = async (rounds: number, rubocop: boolean): Promise<Recycle
     const beforeGrowth = nodeVm.peek()
     await format(GROWTH_SAMPLE, { rubocop: false })
 
-    // The margin here is real but not wide: a freshly recycled VM that has
-    // reloaded RuboCop already sits within a couple of hundred megabytes of the
-    // ceiling. If a future artifact closes that gap, the growth format starts
+    // The margin here is real but not wide: a pre-initialized VM arrives with
+    // RuboCop's heap in it and so starts within ~30MB of the ceiling. If a
+    // future artifact closes that gap further, the growth format starts
     // recycling on its own before the timed one, which costs a round its time
     // rather than its correctness - but silently, so it says so.
     if (beforeGrowth && nodeVm.peek() !== beforeGrowth) {

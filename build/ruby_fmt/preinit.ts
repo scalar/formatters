@@ -10,8 +10,9 @@
 //
 // ## Why this exists
 //
-// Booting used to cost ~8s: `ruby-init`, then `require "syntax_tree"` (~1.1s),
-// then `require "rubocop"` (~7s, 698 cop files). Formatting leaks the VM's
+// The first `format` call used to cost ~11s: ~1.8s for `ruby-init`, rubygems,
+// /bundle/setup and syntax_tree, then ~8.9s more for `require "rubocop"` and its
+// 698 cop files. Formatting leaks the VM's
 // linear memory, so `format()` recycles the VM every so often (see
 // `packages/ruby/src/format.ts`) and paid all of it again each time - about a
 // fifth of the wall-clock of formatting a large tree, spent re-reading gems
@@ -312,7 +313,7 @@ try {
 
   const before = statSync(input).size
   const after = statSync(output).size
-  console.log(`preinit: ${(before / 1e6).toFixed(1)}MB -> ${(after / 1e6).toFixed(1)}MB uncompressed`)
+  console.log(`preinit: ${(before / 1024 ** 2).toFixed(1)}MB -> ${(after / 1024 ** 2).toFixed(1)}MB uncompressed`)
 } finally {
   rmSync(scratch, { recursive: true, force: true })
 }

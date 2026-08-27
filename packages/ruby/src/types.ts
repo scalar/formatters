@@ -23,7 +23,7 @@ export type FormatOptions = {
    * Set it to `false` for syntax_tree on its own. What that saves is the pass:
    * a format with RuboCop costs two to three times what syntax_tree alone does.
    * It no longer saves any loading. RuboCop used to be required into the VM on
-   * the first call that asked for it, at about four seconds a VM and again
+   * the first call that asked for it, at about nine seconds a VM and again
    * after every recycle; it is now baked into the artifact, so it is there
    * whether this is `true` or `false`.
    *
@@ -89,9 +89,9 @@ export type FormatSyncFunction = (source: string, options?: FormatOptions) => st
 /**
  * Boots the VM, so that `formatSync` can be called afterwards.
  *
- * Booting is instantiating the artifact and two short evals - the artifact
- * carries syntax_tree and RuboCop already loaded, so neither gem is required at
- * runtime any more.
+ * Booting is instantiating the artifact, applying the syntax_tree patches and
+ * building the Layout cop set - the artifact carries syntax_tree and RuboCop
+ * already loaded, so neither gem is required at runtime any more.
  *
  * Optional for `format`, which boots on demand, and required exactly once before
  * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
@@ -116,7 +116,7 @@ export type InitFormatOptions = {
   /**
    * Accepted and ignored.
    *
-   * It used to decide whether `init` spent about four seconds requiring RuboCop
+   * It used to decide whether `init` spent about nine seconds requiring RuboCop
    * into the VM. RuboCop is now baked into the wasm artifact, so it is loaded
    * before `init` is called and no value here can change that. Kept so callers
    * that pass it keep compiling and keep working; `format`'s and `formatSync`'s

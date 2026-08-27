@@ -1,12 +1,14 @@
 // Measures what @scalar/ruby-fmt costs, so a change to it can be argued with
 // numbers instead of adjectives.
 //
-// Ruby is the slowest package here to get going, and by some distance. It pays
-// for the VM and syntax_tree, then several seconds more to require RuboCop's 698
-// cop files - and it pays both again every time formatting's linear-memory leak
-// forces `format()` to recycle the VM (see packages/ruby/src/format.ts). The
-// artifact compile is the one part a recycle does not repeat, because the
-// compiled module is cached for the life of the process.
+// Ruby is the slowest package here to get going, and by some distance: the
+// artifact is the largest in the repo, and instantiating a VM from it is not
+// free. What it no longer pays for is loading gems - the artifact is a wizer
+// snapshot of a VM with syntax_tree and RuboCop already required into it (see
+// build/ruby_fmt/preinit.ts), so neither a cold start nor one of the recycles
+// formatting's linear-memory leak forces reads a cop file. The artifact compile
+// is the one part a recycle does not repeat either, because the compiled module
+// is cached for the life of the process.
 //
 // Three measurements, each in its own process, because they interfere - booting
 // is once per process and formatting leaks, so whatever runs second is timed
@@ -80,8 +82,8 @@ const VALUES_TAKEN = { switch: 0, value: 1, pair: 2 }
  * How many recycles the recycle measurement times.
  *
  * Three is enough for a median to mean something and short enough that the
- * measurement stays a couple of minutes - every round grows the VM past the
- * recycle ceiling, boots a new one, and requires RuboCop again.
+ * measurement stays short - every round grows the VM past the recycle ceiling,
+ * drops it and boots a new one from the cached module.
  */
 const RECYCLE_ROUNDS = 3
 
@@ -260,10 +262,11 @@ const ensureWritable = (target: string): void => {
  * Reads the artifact and hashes it, before anything is timed.
  *
  * Two jobs, one read, and warming the page cache is the reason it happens here
- * rather than inside a measurement. Whichever process touches the 5MB artifact first
- * pays for a cold page cache and every process after it does not: measured on
- * one machine at 1,275ms of "artifact compile" in the first child against 387ms
- * in the second, on identical work. That is a gap the size of the thing being
+ * rather than inside a measurement. Whichever process touches the artifact
+ * first pays for a cold page cache and every process after it does not:
+ * measured on one machine at 1,275ms of "artifact compile" in the first child
+ * against 387ms in the second, on identical work - and the artifact has since
+ * grown, so the gap has not shrunk. That is a gap the size of the thing being
  * measured, sitting on whichever column happens to run first, so the read is
  * pulled out here where it biases nothing.
  *
@@ -402,8 +405,8 @@ const reportBoot = (withRuboCop: BootResult, withoutRuboCop: BootResult): void =
   // The `first format` cells are subtracted rather than the totals: the compile
   // and boot rows do identical work in both columns, so their difference is
   // noise between two processes and folding it in would only blur this. What is
-  // left is almost all `RUBOCOP_SETUP` - almost, because the RuboCop pass over
-  // the snippet itself is in there too, which is small but not nothing.
+  // left is the per-VM work only a RuboCop run does: merging the config over
+  // RuboCop's own `default.yml`, plus the pass over the snippet itself.
   console.log(`\nRuboCop's share of the first format: ${ms(withRuboCop.firstFormatMs - withoutRuboCop.firstFormatMs)}`)
   console.log('cold totals are measured with the artifact already in the page cache')
 }
@@ -428,8 +431,9 @@ const reportRecycle = (result: RecycleResult): void => {
  * directly: it grows a VM past the same ceiling `format()` recycles at and drops
  * it while the outgoing memory is still live. It is still a different process,
  * so the product is an estimate - but of a measured cost rather than a modelled
- * one. The two runs share the `rubocop` setting, without which the RuboCop
- * reload would be priced into a corpus that never loaded RuboCop at all.
+ * one. The two runs share the `rubocop` setting, without which a recycle's
+ * per-VM RuboCop config merge would be priced into a corpus that never ran the
+ * RuboCop pass at all.
  */
 const reportCorpus = (result: CorpusResult, recycle: RecycleResult | undefined): void => {
   const kilobytes = result.bytes / 1024
