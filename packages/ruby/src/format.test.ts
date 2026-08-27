@@ -8,14 +8,15 @@ import type { FormatOptions } from './types'
 import { beforeAll, describe, expect, it } from 'bun:test'
 
 /**
- * Generous, because this boots the VM *and* requires RuboCop: 698 cop files,
- * read and evaluated by a Ruby running on wasm, which takes several seconds.
+ * Generous, because this decompresses and compiles a ~67MB wasm artifact before
+ * it boots anything. Requiring RuboCop used to be the expensive half; the
+ * artifact carries it now.
  */
 const WARMUP_TIMEOUT_MS = 120_000
 
-// Warmed up front rather than left to whichever test happens to run first. The
-// RuboCop pass is on by default, so without this the load lands on an arbitrary
-// test and blows its timeout - and which test that is depends on run order.
+// Warmed up front rather than left to whichever test happens to run first, so
+// that the compile lands here instead of on an arbitrary test whose timeout was
+// sized for a format.
 beforeAll(async () => {
   await init()
 }, WARMUP_TIMEOUT_MS)
@@ -389,8 +390,8 @@ describe('formatSync', () => {
     expect(result).not.toHaveProperty('then')
   })
 
-  // `init` loads RuboCop, so the synchronous path gets the default pass without
-  // a first-call stall - and the same bytes as the asynchronous one.
+  // The synchronous path runs the default pass and produces the same bytes as
+  // the asynchronous one, which is the whole contract: same VM, same tools.
   it('runs the rubocop pass and produces the same bytes as format', async () => {
     await init()
     const source = 'class A\n  attr_reader :b\n  def c\n@b\n  end\nend'
@@ -400,26 +401,32 @@ describe('formatSync', () => {
 })
 
 describe('init', () => {
-  // `formatSync` requires `init`, so without an argument here a synchronous
-  // caller could skip the RuboCop pass per call but never avoid loading it.
-  // Built on its own VM because the shared one has RuboCop loaded already, and
-  // the claim is precisely that this one does not.
-  it('leaves RuboCop unloaded when asked not to', async () => {
-    const vm = createBootVm(compileArtifact)
-    const own = createFormat(vm)
-
-    await own.init({ rubocop: false })
-
-    expect(vm.peek()?.rubocopLoaded).toBe(false)
-    expect(own.formatSync('x=1', { rubocop: false })).toBe('x = 1\n')
-  }, 120_000)
-
-  it('loads RuboCop by default, so the first formatSync does not stall', async () => {
+  // The check that the committed artifact really is pre-initialized. It is a
+  // wizer snapshot of a VM that had already required syntax_tree and RuboCop
+  // (see build/ruby_fmt/preinit.ts), and nothing at runtime requires either any
+  // more - so an artifact rebuilt without that step would leave `RuboCop`
+  // undefined here rather than quietly costing nine seconds a boot.
+  //
+  // Built on its own VM rather than the shared one because a fresh boot is the
+  // claim: whatever the module-level VM has been through by now says nothing
+  // about what an artifact hands a caller on the first call.
+  //
+  // `init` takes no argument at all now. It used to take one for declining the
+  // RuboCop load, and this is what makes that removal safe rather than merely
+  // tidy: there is nothing left for a caller to decline.
+  it('boots a VM that already has RuboCop, without being asked', async () => {
     const vm = createBootVm(compileArtifact)
     const own = createFormat(vm)
 
     await own.init()
 
-    expect(vm.peek()?.rubocopLoaded).toBe(true)
+    expect(vm.peek()?.vm.eval('defined?(RuboCop) ? "loaded" : "missing"').toString()).toBe('loaded')
+
+    // A blank line RuboCop's Layout/EmptyLinesAroundAttributeAccessor inserts
+    // and syntax_tree never would, so it is the pass itself being observed and
+    // not a reprint that happens to agree.
+    expect(own.formatSync('class A\n  attr_reader :b\n  def c\n    @b\n  end\nend\n')).toBe(
+      'class A\n  attr_reader :b\n\n  def c\n    @b\n  end\nend\n',
+    )
   }, 120_000)
 })

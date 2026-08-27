@@ -1,7 +1,8 @@
 import { File } from '@bjorn3/browser_wasi_shim'
 
-import { RUBOCOP_SETUP, buildRuboCopConfig } from './rubocop'
-import type { BootVm, FormatOptions, Formatters, InitFormatOptions, RubyFormatterVm } from './types'
+import { WORK_DIR } from './boot-vm'
+import { buildRuboCopConfig } from './rubocop'
+import type { BootVm, FormatOptions, Formatters, RubyFormatterVm } from './types'
 
 /** syntax_tree's own default line width. */
 const DEFAULT_PRINT_WIDTH = 80
@@ -11,7 +12,8 @@ const DEFAULT_PRINT_WIDTH = 80
  *
  * On, because syntax_tree alone leaves Layout offenses in about 30% of real
  * files and output a linter rejects is not finished output. `rubocop: false`
- * turns it off and skips loading RuboCop entirely.
+ * turns the pass off; it does not turn off loading RuboCop, which the artifact
+ * has already done.
  */
 const DEFAULT_RUBOCOP = true
 
@@ -25,8 +27,9 @@ const DEFAULT_RUBOCOP = true
  * memory synchronously, so for a moment the process holds the outgoing buffer
  * and the incoming one at once. At the 1.1GB this used to sit at, that pair
  * peaked at ~1.5GB resident and made the whole suite thrash on a 16GB CI
- * runner. 400MB keeps the peak near 1GB, and the extra recycles it costs are
- * ~250ms each against the ~113MB every 37KB of input adds.
+ * runner. 400MB keeps the peak near 1GB. A pre-initialized VM starts ~27MB
+ * under that ceiling, which real input crosses about every 140KB - measured at
+ * 17 recycles over a 2.4MB corpus - and each of those costs ~0.5s.
  */
 const MEMORY_LIMIT_BYTES = 400_000_000
 
@@ -41,9 +44,6 @@ const MEMORY_LIMIT_BYTES = 400_000_000
  * many more samples a synchronous caller gets before it has to await.
  */
 const SYNC_MEMORY_LIMIT_BYTES = 1_200_000_000
-
-/** The preopened directory the guest reads its input and its config from. */
-const WORK_DIR = '/work'
 
 /**
  * Where the source being formatted lives in the guest filesystem.
@@ -84,23 +84,6 @@ const writeConfig = (booted: RubyFormatterVm, yaml: string): string => {
 }
 
 /**
- * Requires RuboCop into a VM that has not had it yet, and builds the Layout
- * pass over it.
- *
- * Lazy rather than part of the boot because it costs about four seconds, which
- * is not a bill to hand a caller who only ever wanted syntax_tree. Synchronous
- * because `vm.eval` is, which is what lets `formatSync` ask for RuboCop too -
- * its first such call is simply a slow one.
- */
-const ensureRuboCop = (booted: RubyFormatterVm): void => {
-  if (booted.rubocopLoaded) return
-
-  booted.vm.eval(RUBOCOP_SETUP)
-  booted.vm.eval(`ScalarRubyFmt.setup(${JSON.stringify(WORK_DIR)})`)
-  booted.rubocopLoaded = true
-}
-
-/**
  * Formats one source through an already-booted VM.
  *
  * Every step here is synchronous, which is the whole reason `formatSync` can
@@ -126,8 +109,6 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // does not escape '#', so any Ruby snippet containing #{} would be evaluated.
   workFiles.set('input.rb', new File(new TextEncoder().encode(source)))
 
-  if (rubocop) ensureRuboCop(booted)
-
   // The config travels the same way the source does - written into the guest
   // filesystem, referenced by a path this side generated.
   const configPath = rubocop ? writeConfig(booted, buildRuboCopConfig(options.rubocopConfig)) : ''
@@ -147,7 +128,7 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // syntax_tree 6.3.0 does exactly that on some `case/in` patterns - see
   // stree-patch.ts, which fixes the shapes we know about. This catches the ones
   // we do not: Ripper is already loaded for syntax_tree's own parsing, so the
-  // check costs ~2.7ms against a ~28ms format and turns a silently corrupt file
+  // check costs ~2.7ms against a ~24ms format and turns a silently corrupt file
   // into an exception raised before anything is written.
   return vm
     .eval(
@@ -168,9 +149,9 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
  */
 export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
   /**
-   * Formats Ruby source with syntax_tree running on CRuby compiled to
-   * WebAssembly. The first call boots the VM (~1.1s); later calls reuse it and
-   * take about 4ms.
+   * Formats Ruby source with syntax_tree and RuboCop running on CRuby compiled
+   * to WebAssembly. The first call expands and compiles the artifact and
+   * instantiates a VM from it; later calls reuse that VM.
    */
   const format = async (source: string, options: FormatOptions = {}): Promise<string> => {
     // Formatting leaks: the VM's linear memory grows by roughly 74MB per 23KB of
@@ -192,7 +173,7 @@ export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
    *
    * Same tools, same options, same bytes out as `format`. Two things it cannot
    * do, both following from the same fact - recycling the VM is asynchronous,
-   * because `RubyVM.instantiateModule` is:
+   * because `WebAssembly.instantiate` is:
    *
    * 1. It throws until `init` has resolved, like every `formatSync` here.
    * 2. It throws once the VM's memory passes {@link SYNC_MEMORY_LIMIT_BYTES},
@@ -226,27 +207,20 @@ export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
   }
 
   /**
-   * Boots the VM and loads RuboCop into it, so that `formatSync` can be called
-   * afterwards.
+   * Boots the VM, so that `formatSync` can be called afterwards.
    *
-   * Optional for `format`, which boots and loads on demand, and required before
-   * the first `formatSync` - and again whenever `formatSync` reports that the VM
-   * needs replacing.
+   * Optional for `format`, which boots on demand, and required before the first
+   * `formatSync` - and again whenever `formatSync` reports that the VM needs
+   * replacing.
+   *
+   * It used to require RuboCop as well, which was the expensive half, and used
+   * to take an argument for declining that. The artifact now arrives with
+   * RuboCop already in it, so there is nothing left to defer and nothing left to
+   * decline: awaiting this is a boot and a recycle check, and nothing else.
    */
-  const init = async (options: InitFormatOptions = {}): Promise<void> => {
+  const init = async (): Promise<void> => {
     const booted = await boot()
-    const ready = booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES ? await recycle() : booted
-
-    // RuboCop is loaded here, not left to the first format, because it is the
-    // default pass and `init` exists precisely so that the first `formatSync`
-    // is not a surprise. Requiring RuboCop is synchronous Ruby, so without this
-    // that first call would stall for four seconds in a caller that chose the
-    // synchronous entry point because it cannot wait at all.
-    //
-    // `init({ rubocop: false })` is how a synchronous caller opts out of that.
-    // It is the only way: `formatSync` needs `init`, so without this argument
-    // the pass could be skipped per call but never actually left unloaded.
-    if (options.rubocop ?? DEFAULT_RUBOCOP) ensureRuboCop(ready)
+    if (booted.memory.buffer.byteLength > MEMORY_LIMIT_BYTES) await recycle()
   }
 
   return { format, formatSync, init }

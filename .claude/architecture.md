@@ -48,9 +48,9 @@ guarded by a `peek()` that answers "is it booted" without one. Two limits shape
 it, both measured rather than assumed: a browser main thread refuses both
 `WebAssembly.Module` and `WebAssembly.Instance` above 8MB, so booting always uses
 async `WebAssembly.instantiate` and only trap recovery tries the synchronous
-form; and Ruby cannot recycle synchronously at all, because
-`RubyVM.instantiateModule` is async, so its `formatSync` refuses past a memory
-ceiling and asks for another `init`.
+form; and Ruby cannot recycle synchronously at all, because booting a VM awaits
+`WebAssembly.instantiate`, so its `formatSync` refuses past a memory ceiling and
+asks for another `init`.
 
 `format.ts` and `boot-module.ts` are factories over an artifact source rather
 than importers of one. That is what lets both entry points share a single
@@ -164,8 +164,33 @@ Runs actual CRuby compiled to WebAssembly with the actual syntax_tree gem loaded
 into it. It works because syntax_tree and prettier_print are pure Ruby whose only
 C dependency is Ripper, which is already inside CRuby's stdlib.
 
-`format()` is async because the first call boots a Ruby VM; the VM is cached, so
-later calls are milliseconds.
+`format()` is async because the first call decompresses and compiles the
+artifact and instantiates a Ruby VM from it; the VM is cached, so later calls
+are milliseconds.
+
+**The artifact is a wizer snapshot of an already-booted VM.** `build.sh` runs
+[wizer](https://github.com/bytecodealliance/wizer) over the module - see
+`build/ruby_fmt/preinit.ts`, which is where every non-obvious part of that step
+is written down - so the linear memory it ships *is* a CRuby with syntax_tree
+and RuboCop required into it. Booting used to cost ~9 s of Ruby and to cost it
+again after every VM recycle, which was about a quarter of the wall-clock of
+formatting a large tree. Four things follow, and none of them is optional:
+
+- `boot-vm.ts` does not call `RubyVM.instantiateModule`, because that helper
+  ends by calling `ruby-init` - which the snapshot has already been through.
+  Re-running it would reinitialise CRuby underneath the loaded gems.
+- The preopened directories the snapshot is taken with have to match the ones
+  the runtime provides, name for name. The guest's preopen table is captured in
+  the snapshot, so a mismatch is a VM that cannot see `/work` at all and dies on
+  the first RuboCop call with `Errno::ENOENT @ dir_s_mkdir`.
+- It costs size: 12.2 MB compressed against 5.2 MB, because a Ruby heap with
+  RuboCop in it is part of the module now. That is the trade, and the size table
+  in the root README states it.
+- It costs byte reproducibility: CRuby's `Hash` seed comes from `random_get` at
+  startup and the snapshot is a dump of the heap those hashes live in, so two
+  builds from identical inputs differ in most of their bytes while behaving
+  identically. A rebuild is checked with the corpus comparison, never by
+  diffing against the committed artifact.
 
 **Two tools, one artifact, both by default.** `format` runs syntax_tree and then
 the real `rubocop --autocorrect --only Layout`. Neither subsumes the other:
@@ -181,12 +206,12 @@ Order decides the result, because the two disagree about multiline indentation:
 syntax_tree first, RuboCop second. Running syntax_tree afterwards would revert
 RuboCop in 116 of 397 files.
 
-`rubocop: false` opts out, and then RuboCop is never required into the VM at all
-- worth about four seconds on the first call. `init` does load it, because it is
-the default pass and `formatSync` would otherwise stall for those seconds in a
-caller that chose the synchronous entry point precisely because it cannot wait;
-`init({ rubocop: false })` is how such a caller declines, and the only way,
-since `formatSync` cannot run without `init`.
+`rubocop: false` opts out of the pass, which is worth two to three times a
+syntax_tree-only format. It no longer opts out of loading RuboCop: that used to
+happen on the first call that asked for it, at ~9 s a VM, and it now happens at
+build time for every VM. `init` therefore takes no argument at all any more: the
+`rubocop` option and the `InitFormatOptions` type it lived on are gone, which
+puts Ruby's `InitFunction` back in line with every other package's.
 
 **syntax_tree owns line width.** `Layout/LineLength` is disabled in the config
 written into the guest, because it is the one Layout cop that contradicts
@@ -208,7 +233,7 @@ RuboCop pin and the `RUBY_VERSION` in `build.sh` move together.
 
 **WASI comes from `@bjorn3/browser_wasi_shim`, not `node:wasi`,** even though the
 package only ever runs on Node. The interfaces are compatible —
-`RubyVM.instantiateModule` wants `{ wasiImport, initialize }` and Node's WASI has
+`@ruby/wasm-wasi` wants `{ wasiImport, initialize }` and Node's WASI has
 both — but Node's implementation segfaults non-deterministically once ruby.wasm
 is given preopened directories, and a preopen is how the input file reaches
 Ruby. Measured at 2 failures in 6 runs on identical input, killing the process

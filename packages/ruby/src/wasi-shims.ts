@@ -96,8 +96,23 @@ class IO
 end
 `
 
-/** Where the shims are mounted in the guest, and what `boot-vm.ts` appends to `$LOAD_PATH`. */
+/** Where the shims are mounted in the guest, and what the artifact's `$LOAD_PATH` ends with. */
 export const SHIM_MOUNT_PATH = '/wasi-shims'
+
+/**
+ * The shims, keyed by their path under {@link SHIM_MOUNT_PATH}.
+ *
+ * Flat, and exported, because two things need this list and only one of them
+ * can use a preopened directory. `createShimDirectory` below mounts them in a
+ * running guest; `build/ruby_fmt/preinit.ts` writes them to a real directory so
+ * that wizer can map it at the same path while it snapshots the VM - the
+ * requires that reach these files happen inside that snapshot, so a shim
+ * missing there is a build that fails rather than a runtime that copes.
+ */
+export const SHIM_FILES: ReadonlyMap<string, string> = new Map([
+  ['socket.rb', SOCKET_RB],
+  ['io/wait.rb', IO_WAIT_RB],
+])
 
 /**
  * Builds the preopened directory holding the shims above.
@@ -116,14 +131,27 @@ export const SHIM_MOUNT_PATH = '/wasi-shims'
  */
 export const createShimDirectory = (): PreopenDirectory => {
   const encoder = new TextEncoder()
+  const root = new Map<string, Directory | File>()
 
-  const io = new Directory(new Map([['wait.rb', new File(encoder.encode(IO_WAIT_RB))]]))
+  // One level of nesting, because one level is all {@link SHIM_FILES} has - the
+  // only shim in a subdirectory is io/wait.rb, mirroring where the stdlib keeps
+  // the extension it stands in for.
+  for (const [shimPath, source] of SHIM_FILES) {
+    const file = new File(encoder.encode(source))
+    const separator = shimPath.lastIndexOf('/')
 
-  return new PreopenDirectory(
-    SHIM_MOUNT_PATH,
-    new Map<string, Directory | File>([
-      ['socket.rb', new File(encoder.encode(SOCKET_RB))],
-      ['io', io],
-    ]),
-  )
+    if (separator === -1) {
+      root.set(shimPath, file)
+      continue
+    }
+
+    const parentName = shimPath.slice(0, separator)
+    const parent = root.get(parentName)
+    const directory = parent instanceof Directory ? parent : new Directory(new Map())
+
+    directory.contents.set(shimPath.slice(separator + 1), file)
+    root.set(parentName, directory)
+  }
+
+  return new PreopenDirectory(SHIM_MOUNT_PATH, root)
 }

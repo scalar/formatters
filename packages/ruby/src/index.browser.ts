@@ -10,7 +10,6 @@ export type {
   FormatOptions,
   FormatSyncFunction,
   Formatters,
-  InitFormatOptions,
   InitFunction,
   InitOptions,
   RubyFormatterVm,
@@ -33,7 +32,7 @@ const { format, formatSync, init: bootVm } = createFormat(createBootVm(loader.co
  */
 const init = async (options?: InitOptions): Promise<void> => {
   await loader.init(options)
-  await bootVm(options)
+  await bootVm()
 }
 
 /**
@@ -48,7 +47,7 @@ const init = async (options?: InitOptions): Promise<void> => {
  * the VM is asynchronous, so a long synchronous run has to `await init()` again
  * when it says so. See `formatSync` in `format.ts`.
  *
- * Run this in a worker. Booting compiles 20MB of wasm, and formatting leaks the
+ * Run this in a worker. Booting compiles 67MB of wasm, and formatting leaks the
  * VM's linear memory until it is recycled - a tab has far less room to absorb
  * that than a server does.
  */

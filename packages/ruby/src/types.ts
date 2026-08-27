@@ -20,13 +20,12 @@ export type FormatOptions = {
    * rejects is not finished, so clearing it is the default rather than an
    * opt-in.
    *
-   * Set it to `false` for syntax_tree on its own. That is worth doing when
-   * neither cost below is worth paying: the first call into a VM requires
-   * RuboCop, which takes roughly four seconds - 698 cop files, read and
-   * evaluated by a Ruby that is itself running on WebAssembly - and each format
-   * afterwards costs two to three times what syntax_tree alone does. Both are
-   * per VM, so they are paid again after a recycle. Opting out skips all of it:
-   * RuboCop is never loaded at all.
+   * Set it to `false` for syntax_tree on its own. What that saves is the pass:
+   * a format with RuboCop costs two to three times what syntax_tree alone does.
+   * It no longer saves any loading. RuboCop used to be required into the VM on
+   * the first call that asked for it, at about nine seconds a VM and again
+   * after every recycle; it is now baked into the artifact, so it is there
+   * whether this is `true` or `false`.
    *
    * The order is fixed and matters. The two tools disagree, so whichever runs
    * last decides; RuboCop goes second, so RuboCop wins. It cannot go first,
@@ -88,42 +87,22 @@ export type FormatFunction = (source: string, options?: FormatOptions) => Promis
 export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
 
 /**
- * Boots the VM and loads RuboCop into it, so that `formatSync` can be called
- * afterwards.
+ * Boots the VM, so that `formatSync` can be called afterwards.
  *
- * RuboCop is loaded here rather than on first use because it is the default
- * pass and requiring it is synchronous - left to `formatSync`, that first call
- * would stall for four seconds in a caller that cannot wait at all. A caller
- * who only ever passes `rubocop: false` should skip this and let `format` boot
- * on its own, which never loads RuboCop.
+ * Booting is instantiating the artifact, applying the syntax_tree patches and
+ * building the Layout cop set - the artifact carries syntax_tree and RuboCop
+ * already loaded, so neither gem is required at runtime any more.
  *
  * Optional for `format`, which boots on demand, and required exactly once before
  * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
  * the second call resolves against the first. The browser build's `init` takes
- * an {@link InitOptions} as well, for pointing the package at its artifact. *
+ * an {@link InitOptions}, for pointing the package at its artifact.
+ *
  * For Ruby this is also the recovery call: `formatSync` refuses once the VM has
  * outgrown what a synchronous caller can clear, and awaiting this again replaces
  * it.
  */
-export type InitFunction = (options?: InitFormatOptions) => Promise<void>
-
-/**
- * What `init` can be told, beyond "get ready".
- *
- * Only one thing, and only because `formatSync` cannot decide it later: `init`
- * loads RuboCop, and a synchronous caller that never wants it has no other way
- * to say so - `formatSync` requires `init`, so skipping the call is not an
- * option the way it is for `format`.
- */
-export type InitFormatOptions = {
-  /**
-   * Load RuboCop, so that the default pass is ready. Defaults to `true`.
-   *
-   * `false` skips the four seconds it costs, for a caller that will only ever
-   * pass `rubocop: false` to `format` and `formatSync`.
-   */
-  rubocop?: boolean
-}
+export type InitFunction = () => Promise<void>
 
 /** What `createFormat` returns: the package's public functions over one VM. */
 export type Formatters = {
@@ -137,7 +116,7 @@ export type Formatters = {
  * package where its artifact lives. Every field is optional; the defaults
  * resolve `ruby_fmt.wasm.br` relative to the module and expand it here.
  */
-export type InitOptions = InitFormatOptions & {
+export type InitOptions = {
   /** Where to fetch the artifact from. Defaults to the `.br` beside this package. */
   url?: string | URL
   /** The artifact itself, already in hand. Skips the fetch entirely. */
@@ -163,19 +142,10 @@ export type InitOptions = InitFormatOptions & {
  * state that a recycle could leave pointing at a dead VM.
  */
 export type RubyFormatterVm = {
-  /** CRuby (wasm) with syntax_tree already required. */
+  /** CRuby (wasm) with syntax_tree and RuboCop already loaded. */
   vm: RubyVM
   /** The mutable contents map behind /work, so input can be written from JS. */
   workFiles: Map<string, File>
   /** The VM's wasm linear memory, watched so the VM can be recycled before it dies. */
   memory: WebAssembly.Memory
-  /**
-   * Whether RuboCop has been required into this VM yet.
-   *
-   * Mutable, and deliberately per VM rather than per module: requiring RuboCop
-   * is expensive enough to want caching, and a recycled VM has not done it,
-   * so a module-level flag would leave `format` calling into a constant that
-   * the new VM has never heard of.
-   */
-  rubocopLoaded: boolean
 }

@@ -51,11 +51,20 @@ export const buildRuboCopConfig = (overrides: Record<string, unknown> = {}): str
   `${JSON.stringify({ ...BASE_CONFIG, ...overrides }, null, 2)}\n`
 
 /**
- * Loads RuboCop into the VM and defines the Layout pass over it.
+ * Loads RuboCop into the artifact and defines the Layout pass over it.
  *
- * Evaluated on the first call that needs RuboCop rather than at boot, because
- * requiring RuboCop costs about four seconds against syntax_tree's one, and a
- * caller who only ever passes `rubocop: false` should never pay it.
+ * Evaluated at *build* time, not at runtime. `build/ruby_fmt/preinit.ts` runs
+ * this inside the VM that wizer then snapshots, so the artifact ships with
+ * RuboCop required and `ScalarRubyFmt` defined. It used to run on the first
+ * call that asked for RuboCop and cost about nine seconds every time a VM was
+ * booted or recycled, which is the whole reason the artifact is pre-initialized
+ * at all.
+ *
+ * It stays here rather than moving under `build/` because it is the definition
+ * of the pass this package performs - `format.ts` calls `ScalarRubyFmt.correct`,
+ * `boot-vm.ts` calls `ScalarRubyFmt.setup`, and
+ * `test/rubocop-conformance.test.ts` is the check on what it claims below.
+ * Editing it means rebuilding the artifact; nothing at runtime reads it.
  *
  * ## What this is, and what it is not
  *

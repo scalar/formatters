@@ -6,10 +6,13 @@
 # mean a second copy of CRuby (~20MB expanded) and a second VM in any process
 # that used both.
 #
-# Requires Ruby and bundler (build time only) - consumers of the package need
-# nothing but Node. The artifact is committed, so this only needs rerunning when
-# the Ruby version or the pinned gems in ./Gemfile change. Commit the result:
-# the bytes in git are the bytes the tests run against.
+# Requires Ruby, bundler and Bun (build time only) - consumers of the package
+# need nothing but Node. Bun is here for ./preinit.ts, which imports the
+# package's own TypeScript so that the Ruby baked into the artifact is the Ruby
+# the runtime documents. The artifact is committed, so this only needs rerunning
+# when the Ruby version, the pinned gems in ./Gemfile, or anything ./preinit.ts
+# bakes in changes. Commit the result: the bytes in git are the bytes the tests
+# run against.
 #
 # Expect the first run to take ~20 minutes: rbwasm downloads the wasi-sdk
 # toolchain and builds CRuby from source. Later runs reuse ./build and only
@@ -20,6 +23,11 @@ cd "$(dirname "$0")"
 RUBY_VERSION="${RUBY_VERSION:-4.0}"
 OUT="../../packages/ruby/ruby_fmt.wasm.br"
 BUILD_ID="ruby-${RUBY_VERSION}-wasm32-unknown-wasip1-full"
+
+# The pre-initializer. Pinned, like everything else that decides the artifact's
+# bytes: wizer serializes a whole initialized linear memory, so its version is
+# as load-bearing here as the Ruby version is.
+WIZER_VERSION="7.0.5"
 
 # The stdlib directory CRuby installs into, which is the x.y.0 of the release
 # rather than the release itself - 4.0.6 would still be 4.0.0 here. Derived from
@@ -93,13 +101,69 @@ bundle exec rbwasm build \
 WASM_OPT="build/toolchain/binaryen/bin/wasm-opt"
 "$WASM_OPT" -Os --strip-debug --strip-producers ruby_fmt.raw.wasm -o ruby_fmt.opt.wasm
 
-# Ship it brotli-compressed. The artifact is mostly Ruby source text and packs
-# down about 7x, which is the difference between a ~36MB and a ~5MB install.
-# Quality 11 takes a minute or so here and costs the consumer nothing - the
-# runtime decompresses once per process, in ~100ms.
+# Fetch wizer beside binaryen, for the same reason: a contributor rebuilding this
+# artifact should not also have to install a pre-initializer and match its
+# version. Cached by executable, so a second run downloads nothing, and confined
+# to build/toolchain/ - which is gitignored build scratch, like the rest of it.
+WIZER_DIR="build/toolchain/wizer"
+if [ ! -x "$WIZER_DIR/wizer" ]; then
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) WIZER_TARGET="x86_64-linux" ;;
+    Linux-aarch64 | Linux-arm64) WIZER_TARGET="aarch64-linux" ;;
+    Darwin-x86_64) WIZER_TARGET="x86_64-macos" ;;
+    Darwin-arm64) WIZER_TARGET="aarch64-macos" ;;
+    *)
+      echo "wizer publishes no build for $(uname -s)-$(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+
+  # Unpacked beside the cache and moved into place only once the whole stream
+  # has been read, because the check above is "is there an executable here" and
+  # a download interrupted mid-member can leave one that is not a whole binary.
+  # `set -e` aborts the interrupted run either way; what this prevents is the
+  # *next* run skipping the download and executing the truncated copy.
+  rm -rf "$WIZER_DIR.incoming"
+  mkdir -p "$WIZER_DIR.incoming"
+  curl -sSfL "https://github.com/bytecodealliance/wizer/releases/download/v${WIZER_VERSION}/wizer-v${WIZER_VERSION}-${WIZER_TARGET}.tar.xz" |
+    tar -xJ -C "$WIZER_DIR.incoming" --strip-components 1
+  rm -rf "$WIZER_DIR"
+  mv "$WIZER_DIR.incoming" "$WIZER_DIR"
+fi
+
+# Boot CRuby, load syntax_tree and RuboCop, and serialize the resulting linear
+# memory back into the module - so that the runtime instantiates a VM that is
+# already up instead of paying ~9s to require both gems, and paying it again
+# every time formatting's memory leak forces a recycle.
+#
+# The step is its own script because it needs the package's own sources: the
+# program it runs inside the VM is `RUBOCOP_SETUP` from src/rubocop.ts, and the
+# directories it hands wizer are the ones src/boot-vm.ts and src/wasi-shims.ts
+# name. Those preopens are the part that is easy to get wrong - the guest's
+# preopen table is captured in the snapshot, so mapping them differently here
+# produces an artifact that boots, formats with syntax_tree, and then dies on
+# the first RuboCop call with `Errno::ENOENT @ dir_s_mkdir - /work`. See the
+# header of ./preinit.ts.
+#
+# It costs the artifact size: ~37MB expanded becomes ~67MB, and ~5.2MB
+# compressed becomes ~12.2MB. That is the trade, and it is the reason this is a
+# step here rather than something the runtime could opt into.
+#
+# It also costs byte reproducibility. CRuby seeds its Hash function from
+# `random_get` during startup, and the snapshot is a dump of the heap those
+# hashes live in, so two runs over identical input differ in most of their
+# bytes while behaving identically. Rebuilding and diffing against the committed
+# artifact proves nothing; run the corpus comparison CONTRIBUTING.md describes
+# instead.
+bun preinit.ts ruby_fmt.opt.wasm ruby_fmt.preinit.wasm
+
+# Ship it brotli-compressed. The artifact is mostly Ruby source text and a
+# serialized Ruby heap, and packs down about 5.5x. Quality 11 takes a few
+# minutes here and costs the consumer nothing - the runtime decompresses once
+# per process, in ~250ms.
 node -e '
   const fs = require("node:fs"), zlib = require("node:zlib")
-  const raw = fs.readFileSync("ruby_fmt.opt.wasm")
+  const raw = fs.readFileSync("ruby_fmt.preinit.wasm")
   fs.writeFileSync(process.argv[1], zlib.brotliCompressSync(raw, { params: {
     [zlib.constants.BROTLI_PARAM_QUALITY]: 11,
     [zlib.constants.BROTLI_PARAM_LGWIN]: 24,
@@ -107,6 +171,6 @@ node -e '
   }}))
 ' "$OUT"
 
-rm -f ruby_fmt.raw.wasm ruby_fmt.opt.wasm
+rm -f ruby_fmt.raw.wasm ruby_fmt.opt.wasm ruby_fmt.preinit.wasm
 
 echo "built $(du -h "$OUT" | cut -f1) -> packages/ruby/ruby_fmt.wasm.br"
