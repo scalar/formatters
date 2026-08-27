@@ -48,9 +48,9 @@ guarded by a `peek()` that answers "is it booted" without one. Two limits shape
 it, both measured rather than assumed: a browser main thread refuses both
 `WebAssembly.Module` and `WebAssembly.Instance` above 8MB, so booting always uses
 async `WebAssembly.instantiate` and only trap recovery tries the synchronous
-form; and Ruby cannot recycle synchronously at all, because
-`RubyVM.instantiateModule` is async, so its `formatSync` refuses past a memory
-ceiling and asks for another `init`.
+form; and Ruby cannot recycle synchronously at all, because booting a VM awaits
+`WebAssembly.instantiate`, so its `formatSync` refuses past a memory ceiling and
+asks for another `init`.
 
 `format.ts` and `boot-module.ts` are factories over an artifact source rather
 than importers of one. That is what lets both entry points share a single

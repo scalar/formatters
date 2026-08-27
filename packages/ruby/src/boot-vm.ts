@@ -66,11 +66,18 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       //
       // HOME is set because RuboCop asks for it: `Dir.home` backs its cache
       // root, and with no HOME in the environment that raises rather than
-      // falling back. It points at /work because that is the one directory
-      // here that exists and can be written to.
+      // falling back. It points at /work because that is the one directory here
+      // that exists and can be written to.
+      //
+      // Ruby reads the environment once, during `ruby-init`, which now happens
+      // at build time - so what actually reaches `ENV` is the environment
+      // `preinit.ts` gives wizer, and this is the copy that has to agree with
+      // it. It is what an artifact that has not been snapshotted would read,
+      // and it is what the snapshot was taken with; keeping the two identical
+      // is the point.
       const wasi = new WASI(
         ['ruby'],
-        ['HOME=/work'],
+        [`HOME=${WORK_DIR}`],
         [
           new OpenFile(new File([])),
           ConsoleStdout.lineBuffered(() => {}),

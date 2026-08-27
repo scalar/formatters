@@ -12,7 +12,8 @@ const DEFAULT_PRINT_WIDTH = 80
  *
  * On, because syntax_tree alone leaves Layout offenses in about 30% of real
  * files and output a linter rejects is not finished output. `rubocop: false`
- * turns it off and skips loading RuboCop entirely.
+ * turns the pass off; it does not turn off loading RuboCop, which the artifact
+ * has already done.
  */
 const DEFAULT_RUBOCOP = true
 
@@ -147,9 +148,9 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
  */
 export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
   /**
-   * Formats Ruby source with syntax_tree running on CRuby compiled to
-   * WebAssembly. The first call boots the VM (~1.1s); later calls reuse it and
-   * take about 4ms.
+   * Formats Ruby source with syntax_tree and RuboCop running on CRuby compiled
+   * to WebAssembly. The first call expands and compiles the artifact and
+   * instantiates a VM from it; later calls reuse that VM.
    */
   const format = async (source: string, options: FormatOptions = {}): Promise<string> => {
     // Formatting leaks: the VM's linear memory grows by roughly 74MB per 23KB of
@@ -171,7 +172,7 @@ export const createFormat = ({ boot, peek, recycle }: BootVm): Formatters => {
    *
    * Same tools, same options, same bytes out as `format`. Two things it cannot
    * do, both following from the same fact - recycling the VM is asynchronous,
-   * because `RubyVM.instantiateModule` is:
+   * because `WebAssembly.instantiate` is:
    *
    * 1. It throws until `init` has resolved, like every `formatSync` here.
    * 2. It throws once the VM's memory passes {@link SYNC_MEMORY_LIMIT_BYTES},
