@@ -126,7 +126,7 @@ The engine floor is checked at boot and is real: the module uses the final wasm
 exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
 earliest.
 
-The browser reads the same brotli artifact as Node (0.83 MB over the wire) and
+The browser reads the same brotli artifact as Node (0.77 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -197,7 +197,7 @@ replicates all four, in that order.
 
 `build/java_fmt_teavm/build.sh` produces two files, both committed:
 
-- `java_fmt.wasm.br` — the module, 0.82MB brotli-compressed (3.3MB raw)
+- `java_fmt.wasm.br` — the module, 0.77MB brotli-compressed (3.3MB raw)
 - `java_fmt.runtime.mjs` — TeaVM's generated runtime, which supplies the
   module's imports and the string and exception bridges
 
@@ -244,10 +244,15 @@ and then produces wrong answers or none:
 back as a string, which is all this package needs, but it rules out shipping the
 CLI itself.
 
-**There is no `wasm-opt` pass.** Binaryen 123 rewrites TeaVM's exception handling
-into a form V8 rejects — `type error in branch[0] (expected (ref exn), got
-exnref)` — at every optimisation level, so the artifact is TeaVM's `ADVANCED`
-output as emitted. It is a quarter the size of the Web Image build anyway.
+**There is a `wasm-opt` pass, and there did not used to be.** Binaryen was long
+skipped here because its output was rejected by V8 — `type error in branch[0]
+(expected (ref exn), got exnref)` — at every optimisation level. That was never
+Binaryen's bug. The reference interpreter sends a *non-nullable* `(ref exn)` to a
+`catch_ref` label (`RefT (NoNull, ExnHT)` in `valid.ml`), which is exactly what
+Binaryen models; V8 was the side typing it as a nullable `exnref`, and V8 has
+since been fixed. So the artifact is now TeaVM's `ADVANCED` output put through
+`wasm-opt -O3`, which takes it from 0.83MB to 0.77MB and formats about 14%
+faster. The conformance corpus is what says it changed no output.
 
 **google-java-format is not idempotent in `aosp` style.** Reflowing a long
 string literal writes the `+` continuation at a hardcoded four columns, and a

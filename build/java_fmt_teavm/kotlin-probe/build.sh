@@ -93,6 +93,13 @@ mvn -B -q -f pom-ktfmt.xml -Dteavm.version="$TEAVM_VERSION" package
 
 mkdir -p "$OUT_DIR"
 cp target-ktfmt/wasm/classes.wasm-runtime.js "$OUT_DIR/kotlin_fmt.runtime.mjs"
+
+# wasm-opt, over TeaVM's output. See ../binaryen.sh for why this was skipped
+# until now: the module Binaryen emits was always spec-valid and V8 has stopped
+# rejecting it. Worth about 10% off the shipped artifact here, and
+# ./conformance.sh is what proves it changes no formatting.
+TOOLCHAIN="$TOOLCHAIN" ../binaryen.sh target-ktfmt/wasm/classes.wasm
+
 "$NODE" -e "
 const fs = require('node:fs'), zlib = require('node:zlib')
 const raw = fs.readFileSync('target-ktfmt/wasm/classes.wasm')

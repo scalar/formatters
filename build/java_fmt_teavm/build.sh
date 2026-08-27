@@ -172,11 +172,12 @@ mvn -q install:install-file -Dfile="$TOOLCHAIN/teavm-stubs.jar" \
 # ----------------------------------------------------------------------------
 mvn -q -B clean package -Dgjf.version="$GJF_VERSION" -Dteavm.version="$TEAVM_VERSION"
 
-# No wasm-opt pass. Binaryen 123 rewrites TeaVM's exception handling into a form
-# V8 rejects ("type error in branch[0] (expected (ref exn), got exnref)") at
-# every optimisation level, and the recipe here is to fix problems in the
-# compiler rather than in the bytes. TeaVM's own ADVANCED level already gets the
-# module to 3.3MB, which is a quarter of what Web Image emits.
+# wasm-opt, over TeaVM's ADVANCED output. See binaryen.sh for why this was
+# skipped until now and what changed; the short version is that the module
+# Binaryen emits was always spec-valid and V8 has stopped rejecting it. Worth
+# about 8% off the shipped artifact, and the conformance corpora are what prove
+# it changes no formatting.
+TOOLCHAIN="$TOOLCHAIN" ./binaryen.sh target/wasm/classes.wasm
 
 # Ship it brotli-compressed: node:zlib decompresses it once per process in
 # ~50ms, so this costs the consumer nothing and adds no dependency.

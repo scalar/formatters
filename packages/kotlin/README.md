@@ -128,14 +128,14 @@ await init({ url: '/assets/kotlin_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 3.8 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 3.5 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 The engine floor is checked at boot and is real: the module uses the final wasm
 exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
 earliest.
 
-The browser reads the same brotli artifact as Node (0.91 MB over the wire) and
+The browser reads the same brotli artifact as Node (0.82 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -213,8 +213,12 @@ refusal the noise comes back rather than the silence spreading.
 bun run kotlin:build
 ```
 
-Needs a JDK 21, Maven, git and Node; it fetches TeaVM, ktfmt and the repo's
-pinned Node into a gitignored `toolchain/`. Around 15 minutes cold, most of it
+Needs a JDK 21, Maven, git and Node; it fetches TeaVM, ktfmt, Binaryen and the
+repo's pinned Node into a gitignored `toolchain/`. TeaVM's output then goes
+through `wasm-opt -O3`, which takes the artifact from 0.91 MB to 0.82 MB and
+formats about 14% faster; `conformance.sh` is what says it changed no output.
+See [`packages/java`](../java#readme) for why that pass was skipped until
+recently — it was a V8 bug, not a Binaryen one. Around 15 minutes cold, most of it
 compiling TeaVM. The artifact is committed, so this only needs rerunning when a
 pin or a patch changes.
 

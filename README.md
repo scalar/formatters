@@ -27,8 +27,8 @@ Composer, no native binaries, no postinstall downloads.
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
 | [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 12.2 MB | ✅ exact +3 fixes | ✅ |
-| [`@scalar/java-fmt`](packages/java) | google-java-format | 0.83 MB | ✅ exact | ✅ |
-| [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.91 MB | ✅ exact | ✅ |
+| [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
+| [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
 | [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.4 MB | ✅ exact | ✅ |
 | [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact | — |
@@ -278,7 +278,7 @@ reproduces that at every pass, which means formatting here and then verifying
 with the jar compares pass one against pass two and looks like a divergence that
 is not one. `packages/java/README.md` has the detail and the two ways out.
 
-It ships as a 0.83 MB `java_fmt.wasm.br` plus TeaVM's generated runtime, which
+It ships as a 0.77 MB `java_fmt.wasm.br` plus TeaVM's generated runtime, which
 supplies the module's imports. Both are committed, so a fresh clone needs
 nothing extra; `bun run java:build:teavm` rebuilds them from a JDK 21, Maven,
 git and Node.
