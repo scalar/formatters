@@ -154,6 +154,12 @@ module ScalarRubyFmt
   # settled after 200 rounds is looping, not converging.
   MAX_ITERATIONS = 200
 
+  # What \`warm\` corrects at build time. Small, and deliberately not
+  # already clean: \`Layout/EmptyLinesAroundAttributeAccessor\` corrects it, so
+  # the warm run goes round the correction loop twice rather than exiting on the
+  # first pass and leaving half the path cold.
+  WARM_SAMPLE = "class Client\\n  attr_reader :base_url\\n  def to_s\\n    @base_url\\n  end\\nend\\n"
+
   class << self
     # Builds the cop set once, so that every later correction pays for it once.
     # Instantiating the Layout department is most of the per-call cost otherwise.
@@ -175,13 +181,73 @@ module ScalarRubyFmt
       nil
     end
 
+    # Does the part of RuboCop's start-up that is the same in every VM, so that
+    # no VM has to do it again.
+    #
+    # Called at *build* time only, from \`build/ruby_fmt/preinit.ts\`, inside the
+    # VM wizer snapshots. Nothing at runtime calls it.
+    #
+    # \`ConfigLoader.default_configuration\` parses and validates RuboCop's own
+    # ~600-cop default.yml, and every \`configuration_from_file\` merges onto the
+    # result. It costs about a second, it is memoized on \`ConfigLoader\` rather
+    # than on us, and - the point - it depends on nothing a caller can vary: two
+    # VMs given completely different \`.rubocop.yml\` files compute the identical
+    # object here. So it belongs in the artifact, and a snapshot taken after this
+    # call carries it into every VM restored from it.
+    #
+    # Left unwarmed it was paid on the first RuboCop format of a VM, which made
+    # a cold start ~680ms slower and made every recycle expensive again - the
+    # recycles this package performs to survive the linear-memory leak
+    # (see format.ts). Warmed, that first \`config_for\` is ~11ms.
+    #
+    # The throwaway correction warms the rest of the path: instantiating the
+    # Layout department and the constant lookups each cop performs on first use
+    # are another ~120ms, and are per-VM for the same reason.
+    #
+    # The config is written by the caller rather than built here so that the one
+    # this warms on is \`buildRuboCopConfig\`'s own output - warming against a
+    # config the package would never produce would warm the wrong parser, since
+    # \`TargetRubyVersion\` is what decides whether RuboCop parses with prism or
+    # with the \`parser\` gem.
+    #
+    # Only that one config is warmed, and deliberately. The parser half of the
+    # warm is per target version - \`Parser::Ruby32\` and \`Parser::Ruby31\` are
+    # different classes, and loading one does nothing for the other - so warming
+    # every version this package supports would mean baking in fourteen of them.
+    # A caller on a target below 3.3 therefore still loads its own parser on its
+    # first format (~150ms, once per VM); what it does not pay is the second for
+    # default.yml, which is the part worth carrying. The way out of that 150ms is
+    # \`TargetRubyVersion: 3.3\` or above, which is on prism and is the faster
+    # parser anyway.
+    #
+    # It costs the artifact ~6.6MB of Ruby heap, which is also ~6.6MB off the
+    # headroom a fresh VM has before \`MEMORY_LIMIT_BYTES\` recycles it (see
+    # format.ts). That trade is worth taking as it stands - a recycled VM is
+    # restored from this same snapshot, so it comes back warm, and the recycle
+    # that used to cost a config reparse on top of the instantiation no longer
+    # does - but the ceiling was picked against a VM that started ~6.6MB lower,
+    # and is worth re-measuring against a rebuilt artifact.
+    #
+    # \`@configs\` is emptied on the way out, and \`setup\` empties it again in
+    # every VM: the warm config's path exists on the build machine and not in
+    # the guest a consumer runs, and a cache entry naming it would be a hit for
+    # a file that is not there.
+    def warm(work_dir, config_path)
+      setup(work_dir)
+      RuboCop::ConfigLoader.default_configuration
+      correct(WARM_SAMPLE, File.join(work_dir, "warm.rb"), config_path)
+      @configs = {}
+      nil
+    end
+
     # The parsed config for one config file, built at most once per path.
     #
-    # Cached because merging a config over RuboCop's default.yml costs about
-    # half a second, and a caller formatting many files with the same options
-    # should pay that once. Keyed by path, and the JavaScript side keeps one
-    # path per distinct config, so a hit can never be a stale answer for
-    # different settings.
+    # Cached because merging a config over RuboCop's default.yml is ~11ms in a
+    # warmed VM and about a second in one that is not (see \`warm\`), and a
+    # caller formatting many files with the same options should pay it once
+    # either way. Keyed by path, and the JavaScript side keeps one path per
+    # distinct config, so a hit can never be a stale answer for different
+    # settings.
     def config_for(config_path)
       @configs[config_path] ||= RuboCop::ConfigLoader.configuration_from_file(config_path)
     end
