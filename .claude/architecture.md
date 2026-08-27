@@ -172,9 +172,9 @@ are milliseconds.
 [wizer](https://github.com/bytecodealliance/wizer) over the module - see
 `build/ruby_fmt/preinit.ts`, which is where every non-obvious part of that step
 is written down - so the linear memory it ships *is* a CRuby with syntax_tree
-and RuboCop required into it. Booting used to cost ~8 s of Ruby and to cost it
-again after every VM recycle, which was about a fifth of the wall-clock of
-formatting a large tree. Three things follow, and none of them is optional:
+and RuboCop required into it. Booting used to cost ~9 s of Ruby and to cost it
+again after every VM recycle, which was about a quarter of the wall-clock of
+formatting a large tree. Four things follow, and none of them is optional:
 
 - `boot-vm.ts` does not call `RubyVM.instantiateModule`, because that helper
   ends by calling `ruby-init` - which the snapshot has already been through.

@@ -27,8 +27,9 @@ const DEFAULT_RUBOCOP = true
  * memory synchronously, so for a moment the process holds the outgoing buffer
  * and the incoming one at once. At the 1.1GB this used to sit at, that pair
  * peaked at ~1.5GB resident and made the whole suite thrash on a 16GB CI
- * runner. 400MB keeps the peak near 1GB, and the extra recycles it costs are
- * ~0.5s each against the ~113MB every 37KB of input adds.
+ * runner. 400MB keeps the peak near 1GB. A pre-initialized VM starts ~27MB
+ * under that ceiling, which real input crosses about every 140KB - measured at
+ * 17 recycles over a 2.4MB corpus - and each of those costs ~0.5s.
  */
 const MEMORY_LIMIT_BYTES = 400_000_000
 
@@ -127,7 +128,7 @@ const formatThrough = (booted: RubyFormatterVm, source: string, options: FormatO
   // syntax_tree 6.3.0 does exactly that on some `case/in` patterns - see
   // stree-patch.ts, which fixes the shapes we know about. This catches the ones
   // we do not: Ripper is already loaded for syntax_tree's own parsing, so the
-  // check costs ~2.7ms against a ~28ms format and turns a silently corrupt file
+  // check costs ~2.7ms against a ~24ms format and turns a silently corrupt file
   // into an exception raised before anything is written.
   return vm
     .eval(

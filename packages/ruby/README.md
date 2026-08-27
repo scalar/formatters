@@ -131,7 +131,7 @@ corrections — over those same 397 files, in 116 of them.
 |:---|:---|:---|
 | cold start, one fresh process | ~1.0 s | ~2.1 s |
 | every call after | ~9 ms | 2–3× that |
-| one VM recycle, and the format after it | ~0.1 s | ~0.5 s |
+| one VM recycle, over an ordinary call | ~0.1 s | ~0.5 s |
 | artifact | 12.2 MB either way | |
 
 Cold start is the artifact plus one VM: expanding and compiling 12.2 MB of
@@ -141,10 +141,11 @@ measurement noise. The default column adds ~1 s on top, and it is not RuboCop
 being loaded — it is the config being merged over RuboCop's own `default.yml`,
 which happens once per VM and is cached by path after that.
 
-A recycle is the second row's ~0.2 s of instantiation minus the compile, which
-the module cache makes free: 91 ms measured. The row is larger than that because
-it prices what a caller actually feels — the recycle *and* the first format
-after it, which is where that per-VM config merge lands again.
+Recycling the VM is 91 ms of that instantiation — less than the 196 ms a cold
+process pays, because by then the engine has the module in hand and warm. The
+row is larger because it prices what a caller feels: the recycle *plus* what the
+next format costs over an ordinary one, which is that per-VM config merge
+landing again.
 
 **Loading is not on this table any more, and that is the change worth knowing
 about.** RuboCop's 698 cop files used to be read and evaluated by a Ruby running

@@ -11,11 +11,11 @@
 // ## Why this exists
 //
 // The first `format` call used to cost ~11s: ~1.8s for `ruby-init`, rubygems,
-// /bundle/setup and syntax_tree, then ~8.9s more for `require "rubocop"` and its
-// 698 cop files. Formatting leaks the VM's
-// linear memory, so `format()` recycles the VM every so often (see
+// /bundle/setup and syntax_tree, then ~8.9s more for `require "rubocop"` and
+// its 698 cop files. Formatting leaks the VM's linear memory, so `format()`
+// recycles the VM every so often (see
 // `packages/ruby/src/format.ts`) and paid all of it again each time - about a
-// fifth of the wall-clock of formatting a large tree, spent re-reading gems
+// quarter of the wall-clock of formatting a large tree, spent re-reading gems
 // that had not changed. wizer runs that boot at build time and serializes the
 // resulting linear memory back into the module, so the runtime instantiates a
 // VM that is already up.
@@ -269,7 +269,9 @@ if (!input || !output) {
 // rbwasm downloads binaryen for its own use and build.sh downloads wizer beside
 // it, so both default to that cache and neither has to be on PATH. $WIZER and
 // $WASM_MERGE are for running this against a tree those have not been fetched
-// into - the same shape build.sh uses for wasm-opt.
+// into - the same shape build.sh uses for wasm-opt. Give $WIZER an absolute
+// path: wizer is run with an environment of exactly HOME, for the reason below,
+// and that leaves nothing on PATH to resolve a bare name against.
 const wizer = process.env['WIZER'] ?? path.join(here, 'build', 'toolchain', 'wizer', 'wizer')
 const wasmMerge = process.env['WASM_MERGE'] ?? path.join(here, 'build', 'toolchain', 'binaryen', 'bin', 'wasm-merge')
 

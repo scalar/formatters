@@ -44,9 +44,8 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
    * snapshot of a VM that had already run `ruby-init` and required both gems -
    * see `build/ruby_fmt/preinit.ts` - so booting is an instantiation, the
    * syntax_tree patches and one `ScalarRubyFmt.setup` rather than the ~9s of
-   * Ruby it used to be. Formats then reuse
-   * the VM, and a recycle costs about what this does instead of paying for the
-   * requires again.
+   * Ruby it used to be. Formats then reuse the VM, and a recycle costs about
+   * what this does instead of paying for the requires again.
    *
    * `@bjorn3/browser_wasi_shim` rather than `node:wasi` on purpose. Node's built-in
    * WASI segfaults non-deterministically once ruby.wasm is given preopened
@@ -91,12 +90,12 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
         { debug: false },
       )
 
-      // Deliberately not `RubyVM.instantiateModule`, which is these four steps
-      // plus a fifth: `vm.initialize(args)`, which calls the artifact's
+      // Deliberately not `RubyVM.instantiateModule`, which is these steps plus
+      // one more at the end: `vm.initialize(args)`, which calls the artifact's
       // `ruby-init` export and then requires /bundle/setup. The snapshot has
       // already been through both, and running `ruby-init` again would
       // reinitialise CRuby underneath the syntax_tree and RuboCop sitting in
-      // its heap. So the first four are done here and the fifth is not.
+      // its heap. So everything up to that point is done here and that is not.
       const vm = new RubyVM()
       const imports = { wasi_snapshot_preview1: wasi.wasiImport }
       vm.addToImports(imports)

@@ -32,9 +32,9 @@ import { format } from '../src/index'
 import { nodeVm } from '../src/node-vm'
 import { describe, expect, it } from 'bun:test'
 
-// ~37KB, and enough on its own to carry a fresh VM over the 400MB ceiling
+// ~37KB, and enough for two passes to carry a fresh VM over the 400MB ceiling
 // `format()` recycles at: the artifact arrives pre-initialized, so a VM starts
-// at ~373MB and one pass takes it to ~395MB.
+// at ~373MB, one pass takes it to ~395MB and the second to ~406MB.
 const SAMPLE = Array.from(
   { length: 400 },
   (_, i) => `def method_${i}(alpha, beta: ${i}, gamma: nil)\n  alpha.map { |x| x * ${i} }.select(&:positive?)\nend`,
@@ -51,7 +51,7 @@ const PASSES = 10
  * The bound, and it is a long way clear of the measured peak on purpose.
  *
  * A recycling VM peaks at 406MB here - the ~373MB a pre-initialized VM starts
- * at, plus one pass, caught on the call that trips the ceiling. This number is
+ * at, plus the two passes it takes to trip the ceiling. This number is
  * not sized against that peak: it is sized against the wasm32 2GB wall the
  * recycling exists to keep the VM away from, so that a regression that lets
  * memory climb is caught well before the crash and without this file failing on
