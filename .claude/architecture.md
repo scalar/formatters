@@ -255,7 +255,8 @@ character offset, which CRuby answers in constant time only while a string is
 one byte per character — so one accented letter anywhere in a file makes every
 index count characters from the string's start. The patch points the walk at an
 ASCII stand-in of the same character length, built once per parse. It is applied
-at boot alongside `STREE_PATCHES` and is load-bearing for anything formatting
+at boot alongside the `case`/`in` fixes in `src/stree-patch.ts`, and is
+load-bearing for anything formatting
 generated code, which is comment-dense and routinely carries an accent in a
 description. Output is held identical by `test/native-conformance.test.ts`; the
 mechanism itself is guarded by `src/stree-perf-patch.test.ts`, because every

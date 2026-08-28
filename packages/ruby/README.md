@@ -170,11 +170,11 @@ lighter build to be had by dropping one — and the snapshot makes that literal:
 7 MB of the 12.2 MB is a Ruby heap with both gems already in it.
 
 Per-call cost grows faster than file size, so a very large file is worse per KB
-than the row above suggests. It used to be far worse again for a file carrying
-any multi-byte character at all — one accented letter made syntax_tree's parser
-quadratic in the file's size. That one is
+than the ~9 ms row above suggests. It used to be far worse again for a file
+carrying any multi-byte character at all — one accented letter made
+syntax_tree's parser quadratic in the file's size. That term is
 [gone](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source); the
-remaining superlinearity is inside the gems.
+superlinearity that remains is the gems' own, and stays.
 
 ### When it gives up
 
@@ -446,7 +446,8 @@ spaces and tabs, indexing the source a character at a time. `String#[]` is
 constant time only while CRuby can treat a string as one byte per character, so
 a single accented letter anywhere in a file makes each of those indexes count
 characters from the start of the string — and a file with a comment above most
-of its lines does that tens of thousands of times.
+of its lines does that a great many times: 104,172 of them in one 317 KB file of
+generated Ruby carrying four accented characters.
 
 `src/stree-perf-patch.ts` points the walk at a copy of the source with
 everything that is not a space, a tab or a newline replaced by `x`: the same
@@ -454,11 +455,14 @@ number of characters, so an offset means the same thing in both, and pure ASCII,
 so it indexes in constant time. Built once per parse, and not at all for a
 source that is already ASCII.
 
-Output is unchanged, which is the whole claim: 879 files of generated Ruby
-(12MB) format to the same bytes in 126s against 211s, and the worst file in that
-corpus — 568KB carrying two accented characters — goes from 17.4s to 2.7s with
-the RuboCop pass off. What comes out is the dominant quadratic term, not every
-one: formatting a large file is still superlinear in its size.
+Output is unchanged, which is the whole claim. Run `bun run ruby:bench` over 879
+files of generated Ruby — 12 MB, the `.rb` half through syntax_tree and RuboCop
+and the `.rbi` half through syntax_tree alone — and `--compare` the before and
+after snapshots: every file hashes the same, in 126 s against the 211 s they
+used to take. The worst file in that corpus, 568 KB carrying two accented
+characters, goes from 17.4 s to 2.7 s with the RuboCop pass off. What comes out
+is the dominant quadratic term, not every one: formatting a large file is still
+superlinear in its size.
 
 ### How narrow the divergence is
 
@@ -466,9 +470,7 @@ Measured rather than asserted: formatting the rubocop (1.74 and 1.81),
 rubocop-ast, syntax_tree, parser and regexp_parser gems both ways — 2,076 files
 — the three fixes change the output of none of them, and none of them starts
 failing to format. They fire only where stock syntax_tree emits a syntax
-error. The fourth patch is narrower still, since it is not supposed to fire at
-all in the sense the others do: it changes what the parse costs and nothing
-about what it produces.
+error.
 
 `test/native-conformance.test.ts` pins that in both directions: byte-identity
 with native syntax_tree everywhere else — including on a source shaped to run

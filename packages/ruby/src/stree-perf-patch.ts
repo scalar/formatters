@@ -34,9 +34,15 @@
  * above nearly every line and each one is indented. Take a 317KB generated Ruby
  * file carrying four accented characters. Under a profiler that counts them,
  * `on_comment` makes 104,172 of those indexes and they account for 5.4s of a
- * 7.3s parse. Unprofiled the same parse is 6.1s, and the control - the same
- * file with its four characters replaced by ASCII ones, so identical in
- * characters and in shape - is 377ms.
+ * 7.3s parse. The control settles what they cost: the same file with its four
+ * characters replaced by ASCII ones - identical in characters and in shape -
+ * parses in 377ms against 6.1s.
+ *
+ * Those are `SyntaxTree.parse` timed on its own inside the VM. The end-to-end
+ * figures below are `format` calls, each warmed once first. Read within a pair,
+ * not across the two - a parse is part of a format, but these came off
+ * different harnesses and different VM states, and the VM is stateful enough
+ * that the numbers do not nest.
  *
  * ## The fix
  *
@@ -121,15 +127,16 @@ module SyntaxTree
       comment
     end
 
-    # The source, with every character that is not a space, a tab or a newline
-    # replaced by "x", so that indexing it by character offset is O(1).
+    # A stand-in for the source that indexes by character offset in O(1), which
+    # CRuby manages only on a string it can treat as one byte per character.
     #
-    # Built once per parse and only when it would help: an ASCII source already
-    # indexes in constant time, and a source whose encoding is invalid is handed
-    # back untouched because tr would refuse it. ASCII is not the only encoding
-    # that indexes in constant time - a single-byte one such as ISO-8859-1 does
-    # too, and builds a copy here for nothing - but Ruby exposes no predicate
-    # for that, and those encodings do not reach this package.
+    # Built once per parse and only when it would help. An ASCII source is
+    # already such a string; a source whose encoding is invalid is handed back
+    # untouched because tr refuses one, which is the fallback the constant's
+    # documentation explains. ASCII is not the only encoding that would index in
+    # constant time - a single-byte one such as ISO-8859-1 does too, and builds
+    # a copy here for nothing - but Ruby exposes no predicate for that, and
+    # those encodings do not reach this package.
     #
     # The copy costs one more source-sized string, live for as long as the parse
     # is. That is far below the granularity of the VM's linear-memory leak,
