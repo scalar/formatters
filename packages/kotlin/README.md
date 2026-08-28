@@ -61,17 +61,18 @@ await format('fun f( {')
 // Error: com.facebook.ktfmt.format.ParseError: 1:7: error: Expecting ')'
 ```
 
-**Node 24.15 or newer.** The module uses WasmGC with the `js-string` builtins,
-which Node 22 has — the floor is elsewhere. Node 22 formats correctly but V8's
-wasm optimizer then grows without bound on the module until the process is
-killed, and Node 24.0 through 24.14 reject the wasm exception-handling opcodes
-TeaVM emits (`try_table` over `exnref`) at compile time, which 22 and 24.15+
-both accept. The package checks for both and says so rather than failing
-obscurely; the second check compiles a 28-byte probe module rather than reading
-a version number, so bun — JavaScriptCore, reporting a Node version of its own —
-is judged on what its engine actually does. See
+**Node 24.15 or newer**, and it is a hard floor: below it V8 does not compile
+the module at all. Not a WasmGC floor — Node 22 has WasmGC — but a question of
+how V8 types wasm exception handling. TeaVM emits `try_table` over `exnref`, and
+`wasm-opt` leaves `catch_ref` branching to a block typed with a non-nullable
+`(ref exn)`, which is what the spec calls for; V8 used to type it as nullable and
+reject the module, on Node 22 and on 24.0 through 24.14 alike. JavaScriptCore
+accepts it throughout, so bun is fine. The package checks and says so rather than
+failing obscurely; the check compiles a 52-byte probe of that exact shape rather
+than reading a version number, so bun — reporting a Node version of its own — is
+judged on what its engine actually does. See
 [`packages/java`](../java#readme) for the long version; both packages are TeaVM
-output and hit the same two things.
+output and hit the same thing.
 
 ## The version it carries
 
@@ -128,14 +129,14 @@ await init({ url: '/assets/kotlin_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 3.8 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 3.5 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 The engine floor is checked at boot and is real: the module uses the final wasm
 exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
 earliest.
 
-The browser reads the same brotli artifact as Node (0.91 MB over the wire) and
+The browser reads the same brotli artifact as Node (0.82 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -213,8 +214,12 @@ refusal the noise comes back rather than the silence spreading.
 bun run kotlin:build
 ```
 
-Needs a JDK 21, Maven, git and Node; it fetches TeaVM, ktfmt and the repo's
-pinned Node into a gitignored `toolchain/`. Around 15 minutes cold, most of it
+Needs a JDK 21, Maven, git and Node; it fetches TeaVM, ktfmt, Binaryen and the
+repo's pinned Node into a gitignored `toolchain/`. TeaVM's output then goes
+through `wasm-opt -O3`, which takes the artifact from 0.91 MB to 0.82 MB and
+formats about 14% faster; `conformance.sh` is what says it changed no output.
+See [`packages/java`](../java#readme) for why that pass was skipped until
+recently — it was a V8 bug, not a Binaryen one. Around 15 minutes cold, most of it
 compiling TeaVM. The artifact is committed, so this only needs rerunning when a
 pin or a patch changes.
 
