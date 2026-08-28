@@ -2,6 +2,7 @@ import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/b
 import { RubyVM } from '@ruby/wasm-wasi'
 
 import { STREE_PATCHES } from './stree-patch'
+import { STREE_PERF_PATCHES } from './stree-perf-patch'
 import type { ArtifactSource, BootVm, RubyFormatterVm } from './types'
 import { createShimDirectory } from './wasi-shims'
 
@@ -114,10 +115,11 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       // than the shim's expectations being weakened.
       wasi.initialize(instance as unknown as Parameters<typeof wasi.initialize>[0])
 
-      // A handful of correctness fixes on top of the stock gem, applied here
-      // rather than in the artifact so they stay reviewable. See stree-patch.ts
-      // for what each one fixes and the evidence that it changes nothing else.
-      for (const patch of STREE_PATCHES) vm.eval(patch)
+      // A handful of fixes on top of the stock gem, applied here rather than in
+      // the artifact so they stay reviewable. See stree-patch.ts for the
+      // correctness ones and the evidence that they change nothing else, and
+      // stree-perf-patch.ts for the ones that change only what the gem costs.
+      for (const patch of [...STREE_PATCHES, ...STREE_PERF_PATCHES]) vm.eval(patch)
 
       // The one part of the RuboCop setup that cannot be baked in. `ScalarRubyFmt`
       // itself is in the snapshot (see `RUBOCOP_SETUP` in rubocop.ts), but `setup`

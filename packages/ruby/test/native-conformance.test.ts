@@ -116,6 +116,19 @@ end`,
       -v  verbose
   TEXT
 end`,
+  // The shape src/stree-perf-patch.ts changes how the parser reads: indented
+  // comments, inline and standalone, with multi-byte characters ahead of them.
+  // A character offset stops matching a byte offset from the first accent on,
+  // so this is where a scan source that is not a faithful stand-in for the
+  // source would move a comment.
+  'comments around multi-byte text': `# frozen_string_literal: true
+module Billing
+  # Preço unitário, em centavos.
+  ATTRS = { moeda: "R$", preço: 100 }.freeze
+  def unit_price(plan) # devolve o preço
+    plan.fetch(:preço) # com acento
+  end
+end`,
 }
 
 /**
