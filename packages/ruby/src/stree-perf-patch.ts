@@ -31,41 +31,49 @@
  * O(file size) per step and the parse becomes quadratic in it.
  *
  * Nothing about that is exotic in generated code, where a doc comment sits
- * above nearly every line and each one is indented. A 317KB generated Ruby file
- * carrying four accented characters makes 104,172 of those indexes, and they
- * account for 5.4s of the 7.3s the parse takes while they are being counted.
- * The control is the same file with its four characters replaced by ASCII ones:
- * identical size, identical shape, and it parses in 377ms against 6.1s.
+ * above nearly every line and each one is indented. Take a 317KB generated Ruby
+ * file carrying four accented characters. Under a profiler that counts them,
+ * `on_comment` makes 104,172 of those indexes and they account for 5.4s of a
+ * 7.3s parse. Unprofiled the same parse is 6.1s, and the control - the same
+ * file with its four characters replaced by ASCII ones, so identical in
+ * characters and in shape - is 377ms.
  *
  * ## The fix
  *
  * Scan a copy of the source with every character that is not a space, a tab or
- * a newline replaced by `x`. It answers exactly the three questions the loop
- * asks, it has the same number of characters as the source so an index means
- * the same thing in both, and being pure ASCII it indexes in constant time. It
- * is built once per parse, and not at all for a source that is already ASCII.
+ * a newline replaced by `x`. The loop asks three questions of a character - is
+ * it a tab, is it a space, is it a newline - and the copy answers all three the
+ * same way the source does; it has the same number of characters, so an index
+ * means the same thing in both; and being pure ASCII it indexes in constant
+ * time. It is built once per parse, and not at all for a source that is already
+ * ASCII.
  *
  * End to end, with the RuboCop pass off: that 317KB file formats in 0.7s
  * instead of 5.8s, and the 568KB file from the same tree in 2.7s instead of
- * 17.4s.
+ * 17.4s. What that removes is the dominant quadratic term, not every one -
+ * formatting a large file is still superlinear in its size after this, and
+ * still slower with a multi-byte character in it than without.
  *
  * The patch is deliberately confined to `on_comment`. The parser indexes
  * `source` in a handful of other places, and every one of them is O(file size)
  * on a multi-byte source for the same reason - but they are reached per node
- * rather than per indented character, and over the same file they come to 178ms
- * of the 1.3s the parse now takes, against `on_comment`'s 5.4s before this.
- * Nothing else is worth diverging from the gem for.
+ * rather than per indented character. Over the file above they come to 178ms of
+ * the 1.3s that parse now takes under the same profiler, against `on_comment`'s
+ * 5.4s before this. One file is thin evidence for a general claim, but it is
+ * two orders of magnitude of headroom, and nothing else here is worth diverging
+ * from the gem for on less.
  */
 
 /**
  * How `on_comment` tells an inline comment from a standalone one.
  *
- * The body is stock syntax_tree 6.3.0 with one substitution: the two reads of
- * `source` become reads of the string `whitespace_scan_source` returns. Comment
- * classification is unchanged by construction - the replacement preserves every
- * space, tab and newline, and the loop asks about nothing else. Every other
- * character stops the backward walk in both, and is not a newline in either, so
- * `inline` comes out the same.
+ * The body is stock syntax_tree 6.3.0's, with its three reads of `source`
+ * pointed at the string `whitespace_scan_source` returns and its comments
+ * shortened - the long ones are re-told above rather than repeated here.
+ * Comment classification is unchanged by construction: the replacement
+ * preserves every space, tab and newline, and the loop asks about nothing else.
+ * Every other character stops the backward walk in both, and is not a newline
+ * in either, so `inline` comes out the same.
  *
  * `rindex` and a regular expression are still avoided inside the loop, for the
  * reason the gem gives where it wrote it: both refuse a string carrying invalid
@@ -74,7 +82,7 @@
  * string too, so a file that only stock syntax_tree could read keeps being read
  * the way stock syntax_tree reads it, at stock syntax_tree's cost.
  */
-export const COMMENT_SCAN_PATCH = `
+export const ON_COMMENT_SCAN_PATCH = `
 module SyntaxTree
   class Parser
     # Private because every Ripper handler in the gem is - reopening the class
@@ -118,7 +126,14 @@ module SyntaxTree
     #
     # Built once per parse and only when it would help: an ASCII source already
     # indexes in constant time, and a source whose encoding is invalid is handed
-    # back untouched because tr would refuse it.
+    # back untouched because tr would refuse it. ASCII is not the only encoding
+    # that indexes in constant time - a single-byte one such as ISO-8859-1 does
+    # too, and builds a copy here for nothing - but Ruby exposes no predicate
+    # for that, and those encodings do not reach this package.
+    #
+    # The copy costs one more source-sized string, live for as long as the parse
+    # is. That is far below the granularity of the VM's linear-memory leak,
+    # which format.ts recycles at 400MB after roughly every 140KB of input.
     def whitespace_scan_source
       @whitespace_scan_source ||=
         if source.ascii_only? || !source.valid_encoding?
@@ -132,4 +147,4 @@ end
 `
 
 /** Every performance patch, in the order the VM should evaluate them. */
-export const STREE_PERF_PATCHES = [COMMENT_SCAN_PATCH] as const
+export const STREE_PERF_PATCHES = [ON_COMMENT_SCAN_PATCH] as const

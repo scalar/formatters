@@ -2,7 +2,7 @@
 // backwards over for one that answers the same three questions in constant
 // time. It is a speed change and nothing else, so what these assert is that the
 // substitution is faithful: a comment is classified the same way whether or not
-// the source around it carries a multi-byte character.
+// the source before it carries multi-byte characters.
 //
 // The other half of the guard is native-conformance.test.ts, which puts a
 // source shaped like this one through the real gem on a native Ruby and asserts
@@ -20,40 +20,72 @@ beforeAll(async () => {
 }, WARMUP_TIMEOUT_MS)
 
 /**
- * Every shape the backward walk has to tell apart, with one character of the
- * caller's choosing sitting in the middle of them.
+ * Every shape the backward walk has to tell apart, with four characters of the
+ * caller's choosing sitting ahead of them.
  *
- * The comments after the marker are the ones that matter: `on_comment` decides
- * inline from standalone by counting characters back from the `#`, so a
- * multi-byte character *earlier in the file* is what moves a character offset
- * out of step with a byte offset. Passing `é` and `e` through the same shape is
- * how the two runs stay comparable - both are one character, so every offset
- * after them is identical.
+ * Four rather than one, and ahead of the comments rather than among them,
+ * because a scan source whose offsets have drifted still lands on *some*
+ * character - and any character that is not a space, tab or newline answers
+ * "inline". Only a standalone comment reached across accumulated drift can tell
+ * a correct index from a plausible one, and only if the line above it ends in
+ * something that is not whitespace, so a drifted index has content to hit.
+ *
+ * `é` and `e` are interchangeable here because both are one character: every
+ * offset after them is identical, so the two runs stay comparable.
  */
-const commentShapes = (marker: string) => `# a standalone comment
-class Report # an inline comment
-  # ${marker} an indented standalone comment
-  def total(rows) # inline after a def
-    rows.sum # inline after code
+const commentShapes = (accent: string): string => `# a standalone comment
+module Billing
+  LABELS = { moeda: "R$", nota: "${accent}${accent}${accent}${accent}" }.freeze
+  # a standalone comment reached across the drift
+\t# a tab-indented standalone comment
+  def unit_price(plan) # inline after a def
+    plan.fetch(:moeda) # inline after code
   end
 end
 `
 
-describe('the on_comment scan source', () => {
+describe('stree-perf-patch', () => {
   // `rubocop: false` throughout: the claim is about syntax_tree's parser, and
   // the Layout pass would be a second thing deciding where a comment lands.
-  it('classifies comments the same with and without a multi-byte character', async () => {
+  it('classifies comments the same with and without multi-byte characters', async () => {
     const wide = await format(commentShapes('é'), { rubocop: false })
     const ascii = await format(commentShapes('e'), { rubocop: false })
 
     expect(wide.replaceAll('é', 'e')).toBe(ascii)
   })
 
-  it('keeps inline and standalone comments apart after a multi-byte character', async () => {
+  it('keeps inline and standalone comments apart across multi-byte drift', async () => {
     const out = await format(commentShapes('é'), { rubocop: false })
 
-    expect(out).toContain('\n  # é an indented standalone comment\n')
-    expect(out).toContain('rows.sum # inline after code')
+    expect(out).toContain('\n  # a standalone comment reached across the drift\n')
+    expect(out).toContain('\n  # a tab-indented standalone comment\n')
+    expect(out).toContain('plan.fetch(:moeda) # inline after code')
+  })
+
+  // The one assertion about the mechanism rather than the output, and the only
+  // one that fails if the patch is never applied at all - every other test here
+  // passes against stock syntax_tree, which gets these inputs right and merely
+  // takes quadratic time over them. It also catches the two ways the patch
+  // could stay installed and stop working: a scan source of the wrong length,
+  // and one rebuilt per comment rather than per parse.
+  it('builds one ASCII scan source, of the same length as the source, per parse', async () => {
+    const { vm } = await nodeVm.boot()
+
+    const result = vm
+      .eval(`
+        source = "# a comment\\nx = 1 # caf\\u00E9\\n"
+        parser = SyntaxTree::Parser.new(source)
+        scan = parser.send(:whitespace_scan_source)
+
+        [
+          scan.ascii_only?,
+          scan.length == source.length,
+          parser.send(:whitespace_scan_source).equal?(scan)
+        ].inspect
+      `)
+      .toString()
+
+    expect(result).toBe('[true, true, true]')
   })
 
   // `format` cannot reach this: it writes the source into the guest as UTF-8 it

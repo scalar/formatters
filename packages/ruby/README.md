@@ -169,6 +169,13 @@ The artifact carries both tools whichever way you call it, so there was never a
 lighter build to be had by dropping one — and the snapshot makes that literal:
 7 MB of the 12.2 MB is a Ruby heap with both gems already in it.
 
+Per-call cost grows faster than file size, so a very large file is worse per KB
+than the row above suggests. It used to be far worse again for a file carrying
+any multi-byte character at all — one accented letter made syntax_tree's parser
+quadratic in the file's size. That one is
+[gone](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source); the
+remaining superlinearity is inside the gems.
+
 ### When it gives up
 
 Corrections can introduce offenses, so RuboCop corrects in a loop until the
@@ -318,7 +325,7 @@ why the RuboCop this ships and the CRuby it runs on move together.
 
 ---
 
-## What is not stock: three fixes for `case`/`in`
+## What is not stock: three fixes for `case`/`in`, and one for speed
 
 syntax_tree 6.3.0 has a family of bugs in pattern matching, and they all end the
 same way — source that parsed on the way in comes back out as source Ruby cannot
@@ -328,6 +335,10 @@ file, so what these cost a consumer today is a formatter that refuses whole
 files. `src/stree-patch.ts` carries the fixes, applied by reopening the classes
 at boot: the artifact stays stock syntax_tree 6.3.0, and retiring a fix once it
 lands upstream is deleting a constant.
+
+A fourth patch, in `src/stree-perf-patch.ts`, is applied the same way and is
+listed separately below because it changes no output at all — only how long the
+gem takes to produce it.
 
 ### 1. A pattern that *ends* in an endless range
 
@@ -427,17 +438,42 @@ returns on the next run. And `in {}` after an exponent is the quiet one — it
 becomes `in **`, which parses, but `in {}` matches only an empty hash while
 `in **` matches any hash at all.
 
+### 4. The comment walk that is quadratic on a multi-byte source
+
+The one patch here that is not a bug fix. `SyntaxTree::Parser#on_comment` tells
+an inline comment from a standalone one by walking backwards from the `#` over
+spaces and tabs, indexing the source a character at a time. `String#[]` is
+constant time only while CRuby can treat a string as one byte per character, so
+a single accented letter anywhere in a file makes each of those indexes count
+characters from the start of the string — and a file with a comment above most
+of its lines does that tens of thousands of times.
+
+`src/stree-perf-patch.ts` points the walk at a copy of the source with
+everything that is not a space, a tab or a newline replaced by `x`: the same
+number of characters, so an offset means the same thing in both, and pure ASCII,
+so it indexes in constant time. Built once per parse, and not at all for a
+source that is already ASCII.
+
+Output is unchanged, which is the whole claim: 879 files of generated Ruby
+(12MB) format to the same bytes in 126s against 211s, and the worst file in that
+corpus — 568KB carrying two accented characters — goes from 17.4s to 2.7s with
+the RuboCop pass off. What comes out is the dominant quadratic term, not every
+one: formatting a large file is still superlinear in its size.
+
 ### How narrow the divergence is
 
 Measured rather than asserted: formatting the rubocop (1.74 and 1.81),
 rubocop-ast, syntax_tree, parser and regexp_parser gems both ways — 2,076 files
-— the patches change the output of none of them, and none of them starts
+— the three fixes change the output of none of them, and none of them starts
 failing to format. They fire only where stock syntax_tree emits a syntax
-error.
+error. The fourth patch is narrower still, since it is not supposed to fire at
+all in the sense the others do: it changes what the parse costs and nothing
+about what it produces.
 
 `test/native-conformance.test.ts` pins that in both directions: byte-identity
-with native syntax_tree everywhere else, plus a test asserting that native
-output for each of these shapes still fails to parse while ours does not. When
+with native syntax_tree everywhere else — including on a source shaped to run
+through the comment walk above — plus a test asserting that native output for
+each of the three shapes still fails to parse while ours does not. When
 syntax_tree releases a fix, that test fails and the patch behind it comes out.
 
 Separately, `format()` parses everything it returns and raises instead of
@@ -492,6 +528,7 @@ is a cached module-level value rather than an object you have to construct.
 | `src/format.ts` | `createFormat` | The public entry point: recycle if needed, validate options, write input, format. |
 | `src/boot-vm.ts` | `createBootVm`, `WORK_DIR` | Instantiates the pre-initialized CRuby, patches syntax_tree, and caches the result. |
 | `src/stree-patch.ts` | `STREE_PATCHES` | The fixes applied on top of the gem, and why each is safe. |
+| `src/stree-perf-patch.ts` | `STREE_PERF_PATCHES` | The one patch that changes what the gem costs rather than what it writes, and the evidence that output is unchanged. |
 | `src/rubocop.ts` | `RUBOCOP_SETUP`, `buildRuboCopConfig` | The Layout pass: how RuboCop is driven, and which of its parts are used. `RUBOCOP_SETUP` is evaluated at build time, into the artifact. |
 | `src/wasi-shims.ts` | `SHIM_MOUNT_PATH`, `SHIM_FILES`, `createShimDirectory` | Stand-ins for the two stdlib extensions wasip1 cannot provide. |
 | `src/compile-artifact.ts` | `compileArtifact` | Locates, decompresses and compiles `ruby_fmt.wasm.br`, at most once per process. |

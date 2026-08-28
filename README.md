@@ -56,10 +56,13 @@ line-breaking heuristics are emergent from its implementation rather than
 specified anywhere, and the drift stays invisible until a consumer's CI fails.
 
 Ruby reads `exact +3 fixes` because it carries three deviations from the gem it
-ships, all of them fixes for syntax_tree bugs that turn valid `case`/`in` code
-into a syntax error. Each is tested against native syntax_tree so it cannot
-drift quietly, and each goes away when the fix lands upstream —
-[details below](#ruby).
+ships that change its output, all of them fixes for syntax_tree bugs that turn
+valid `case`/`in` code into a syntax error. Each is tested against native
+syntax_tree so it cannot drift quietly, and each goes away when the fix lands
+upstream — [details below](#ruby). A fourth patch reopens the same parser to
+take a quadratic term out of it and is deliberately not counted here, because
+what the count is about is output: that one changes none, and the same
+conformance test is what says so.
 
 Browser is the same claim held to the same standard: ✅ means the package has a
 `browser` export condition and `bun run test:browser` loads that build in real
