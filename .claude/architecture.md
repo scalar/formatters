@@ -249,6 +249,20 @@ pointer read as a signed i32 goes negative and the JS glue throws
 ceiling is about 680 KB of cumulative input per process. Anything that formats a
 whole codebase in one process must recycle the VM.
 
+**`on_comment` is quadratic on a multi-byte source, and
+`src/stree-perf-patch.ts` is why the dominant term of that is gone.** The gem's
+comment walk indexes `source` by
+character offset, which CRuby answers in constant time only while a string is
+one byte per character — so one accented letter anywhere in a file makes every
+index count characters from the string's start. The patch points the walk at an
+ASCII stand-in of the same character length, built once per parse. It is applied
+at boot alongside the `case`/`in` fixes in `src/stree-patch.ts`, and is
+load-bearing for anything formatting generated code, which is comment-dense and
+routinely carries an accent in a description. Output is held identical by
+`test/native-conformance.test.ts`; the mechanism itself is guarded by
+`src/stree-perf-patch.test.ts`, because every
+output assertion around it passes against the stock gem too.
+
 ### `@scalar/java-fmt` (`packages/java`)
 
 Reference: **google-java-format**. Status: exact.

@@ -56,10 +56,12 @@ line-breaking heuristics are emergent from its implementation rather than
 specified anywhere, and the drift stays invisible until a consumer's CI fails.
 
 Ruby reads `exact +3 fixes` because it carries three deviations from the gem it
-ships, all of them fixes for syntax_tree bugs that turn valid `case`/`in` code
-into a syntax error. Each is tested against native syntax_tree so it cannot
-drift quietly, and each goes away when the fix lands upstream —
-[details below](#ruby).
+ships that change its output, all of them fixes for syntax_tree bugs that turn
+valid `case`/`in` code into a syntax error. Each is tested against native
+syntax_tree so it cannot drift quietly, and each goes away when the fix lands
+upstream — [details below](#ruby). A fourth patch takes a quadratic term out of
+the same parser; it is not in the count because the count is about output, and
+that one changes none of it.
 
 Browser is the same claim held to the same standard: ✅ means the package has a
 `browser` export condition and `bun run test:browser` loads that build in real
@@ -204,7 +206,8 @@ does not cover.
 See [`packages/ruby`](packages/ruby). It runs the real syntax_tree gem on real
 CRuby compiled to wasm, so output is byte-identical to a native Ruby; a
 conformance test asserts that against a native `ruby` across classes, endless
-methods, `case`/`when`, blocks and heredocs.
+methods, `case`/`when`, blocks, heredocs, and comments reached across multi-byte
+text.
 
 It is also the one package that runs two tools, because neither does the whole
 job. syntax_tree reprints a file - it throws away the input's line breaking and
@@ -233,17 +236,23 @@ requiring 698 cop files - and spending it again every time the leak below forces
 a recycle. It is committed, so a fresh clone needs nothing extra;
 `bun run ruby:build` rebuilds it when the Ruby version or pinned gems change.
 
-The deviations from stock syntax_tree 6.3.0 are all one family: pattern
-matching, where the gem writes back Ruby that no longer parses from input that
-parsed going in. `then` is mandatory in a clause whose pattern *ends* in an
-endless range and syntax_tree only keeps it when the whole pattern is one; a
-guarded clause such as `in (400..) if g` loses the parentheses that are its only
-legal spelling; and a hash pattern both misprints the ` then` after a bare `**`
-and adopts any earlier `n**2` in the file as a `**` that was never written.
+The output-changing deviations from stock syntax_tree 6.3.0 are all one family:
+pattern matching, where the gem writes back Ruby that no longer parses from
+input that parsed going in. `then` is mandatory in a clause whose pattern *ends*
+in an endless range and syntax_tree only keeps it when the whole pattern is one;
+a guarded clause such as `in (400..) if g` loses the parentheses that are its
+only legal spelling; and a hash pattern both misprints the ` then` after a bare
+`**` and adopts any earlier `n**2` in the file as a `**` that was never written.
 `format()` fixes all three, and it also parses everything it produces so a bug
 of that shape can never again return a broken file quietly. Formatting the
 rubocop, rubocop-ast, syntax_tree, parser and regexp_parser gems both ways —
-2,076 files — the patches change none of them.
+2,076 files — the three fixes change none of them.
+
+A fourth patch reopens the gem's parser for a different reason: its comment
+classification indexes the source by character offset, which CRuby answers in
+constant time only on a one-byte-per-character string, so a single accented
+letter anywhere in a file makes the parse quadratic in the file's size. That one
+changes no output at all, which is why the status above does not count it.
 
 One caveat worth knowing before you format a whole codebase's worth of files:
 the VM leaks about 74 MB of wasm memory per 23 KB of input and would die at the
