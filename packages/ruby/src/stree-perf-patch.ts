@@ -82,9 +82,12 @@
  *
  * The gem inside the artifact can only change when `build/ruby_fmt/Gemfile`'s
  * pin does, so `stree-perf-patch.test.ts` asserts the VM still reports this
- * version. Bumping the pin fails that test, which is the point: the copy then
- * has to be re-derived from the new gem, or dropped because the new gem no
- * longer needs it.
+ * version. Bumping that pin *and rebuilding the artifact* fails that test,
+ * which is the point: the copy then has to be re-derived from the new gem, or
+ * dropped because the new gem no longer needs it. The version is read out of
+ * the running VM rather than off disk, so it is the gem actually in the
+ * artifact that has to agree - a bumped pin nobody has rebuilt yet says
+ * nothing, and is `native-conformance`'s to notice.
  */
 export const DERIVED_FROM_SYNTAX_TREE = '6.3.0'
 
@@ -102,11 +105,11 @@ export const DERIVED_FROM_SYNTAX_TREE = '6.3.0'
  * `\\n` that already stopped the walk, or stops the walk itself, and `x` is no
  * more a newline than `\\r` is.
  *
- * The claim is also smaller than it looks. The walk stops at the first
- * character that is not a space or a tab, and going backwards from a `#` that
- * is either the newline ending the line before or the start of the file - so
- * the stand-in only has to be faithful within one line's leading whitespace,
- * never across the file.
+ * The claim is also smaller than it looks. Going backwards from the `#`, the
+ * walk stops at the first character that is not a space or a tab - a content
+ * character on the same line, the newline ending the line before, or the start
+ * of the file - so the stand-in only has to be faithful within one line's
+ * leading whitespace, never across the file.
  *
  * `rindex` and a regular expression are still avoided inside the loop, for the
  * reason the gem gives where it wrote it: both refuse a string carrying invalid

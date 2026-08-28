@@ -466,7 +466,8 @@ two runs used to take. Only 51 of them carry a multi-byte character and so take
 the stand-in at all — but those 51 are around 60% of the bytes, which is the
 shape of the problem. The worst file in them — 568 KB carrying two accented
 characters — goes from 24.1 s to 3.6 s formatted on its own with the RuboCop
-pass off, which is the second row of the table in `src/stree-perf-patch.ts`. What comes out is the dominant quadratic
+pass off, which is the second row of the table in
+`src/stree-perf-patch.ts`. What comes out is the dominant quadratic
 term, not every one: formatting a large file is still superlinear in its size,
 and still somewhat slower with a multi-byte character in it than without.
 
@@ -483,8 +484,8 @@ with native syntax_tree everywhere else — including on a source shaped to run
 through the comment walk above — plus a test asserting that native output for
 each of the five shapes the three fixes cover still fails to parse while ours
 does not, and a sixth checked against the bytes because it is the one whose
-native output parses and means something else. When
-syntax_tree releases a fix, that test fails and the patch behind it comes out.
+native output parses and means something else. When syntax_tree releases a fix,
+that test fails and the patch behind it comes out.
 
 Separately, `format()` parses everything it returns and raises instead of
 handing back source Ruby cannot read. It costs about 2.7ms on a 28ms format,
