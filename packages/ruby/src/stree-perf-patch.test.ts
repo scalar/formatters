@@ -62,30 +62,62 @@ describe('stree-perf-patch', () => {
     expect(out).toContain('plan.fetch(:moeda) # inline after code')
   })
 
-  // The one assertion about the mechanism rather than the output, and the only
-  // one that fails if the patch is never applied at all - every other test here
-  // passes against stock syntax_tree, which gets these inputs right and merely
-  // takes quadratic time over them. It also catches the two ways the patch
-  // could stay installed and stop working: a scan source of the wrong length,
-  // and one rebuilt per comment rather than per parse.
+  // The assertions about the mechanism rather than the output, and the only
+  // ones that fail if the patch is never applied - every other test here passes
+  // against stock syntax_tree, which gets these inputs right and merely takes
+  // quadratic time over them.
+  //
+  // Read through a real parse rather than by calling the helper: the ivar can
+  // only be set if `on_comment` asked for it, so this is also what catches the
+  // patch staying installed while the walk quietly goes back to reading
+  // `source` - which costs the entire win and changes not one byte of output.
   it('builds one ASCII scan source, of the same length as the source, per parse', async () => {
     const { vm } = await nodeVm.boot()
 
     const result = vm
       .eval(`
-        source = "# a comment\\nx = 1 # caf\\u00E9\\n"
-        parser = SyntaxTree::Parser.new(source)
-        scan = parser.send(:whitespace_scan_source)
+        lambda do
+          source = "# a comment\\n  # indented after caf\\u00E9\\nx = 1 # inline\\n"
+          parser = SyntaxTree::Parser.new(source)
+          parser.parse
+          scan = parser.instance_variable_get(:@whitespace_scan_source)
 
-        [
-          scan.ascii_only?,
-          scan.length == source.length,
-          parser.send(:whitespace_scan_source).equal?(scan)
-        ].inspect
+          [
+            !scan.nil?,
+            scan.ascii_only?,
+            scan.length == source.length,
+            parser.send(:whitespace_scan_source).equal?(scan)
+          ].inspect
+        end.call
       `)
       .toString()
 
-    expect(result).toBe('[true, true, true]')
+    expect(result).toBe('[true, true, true, true]')
+  })
+
+  // The negative control for the test above. A scan source that answers "not
+  // whitespace" everywhere has to reclassify every comment as inline; if the
+  // walk were reading `source` instead, swapping this one out would change
+  // nothing. Overridden per parser rather than on the class, so the swap cannot
+  // outlive the test and reach another one through the shared VM.
+  it('reads the scan source rather than the source when it classifies', async () => {
+    const { vm } = await nodeVm.boot()
+
+    const result = vm
+      .eval(`
+        lambda do
+          source = "# standalone\\n  # indented standalone\\nx = 1 # inline\\n"
+          parser = SyntaxTree::Parser.new(source)
+          filler = "x" * source.length
+          parser.define_singleton_method(:whitespace_scan_source) { filler }
+          parser.parse
+
+          parser.comments.map { |comment| comment.inline? }.inspect
+        end.call
+      `)
+      .toString()
+
+    expect(result).toBe('[true, true]')
   })
 
   // `format` cannot reach this: it writes the source into the guest as UTF-8 it
@@ -100,12 +132,14 @@ describe('stree-perf-patch', () => {
 
     const result = vm
       .eval(`
-        source = "x = 1 # inline\\n__END__\\n\\xC3".dup.force_encoding("UTF-8")
-        raise "the sample is supposed to have an invalid encoding" if source.valid_encoding?
+        lambda do
+          source = "x = 1 # inline\\n__END__\\n\\xC3".dup.force_encoding("UTF-8")
+          raise "the sample is supposed to have an invalid encoding" if source.valid_encoding?
 
-        parser = SyntaxTree::Parser.new(source)
-        parser.parse
-        parser.comments.map { |comment| [comment.value, comment.inline?] }.inspect
+          parser = SyntaxTree::Parser.new(source)
+          parser.parse
+          parser.comments.map { |comment| [comment.value, comment.inline?] }.inspect
+        end.call
       `)
       .toString()
 

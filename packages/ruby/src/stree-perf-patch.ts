@@ -31,18 +31,10 @@
  * O(file size) per step and the parse becomes quadratic in it.
  *
  * Nothing about that is exotic in generated code, where a doc comment sits
- * above nearly every line and each one is indented. Take a 317KB generated Ruby
- * file carrying four accented characters. Under a profiler that counts them,
- * `on_comment` makes 104,172 of those indexes and they account for 5.4s of a
- * 7.3s parse. The control settles what they cost: the same file with its four
- * characters replaced by ASCII ones - identical in characters and in shape -
- * parses in 377ms against 6.1s.
- *
- * Those are `SyntaxTree.parse` timed on its own inside the VM. The end-to-end
- * figures below are `format` calls, each warmed once first. Read within a pair,
- * not across the two - a parse is part of a format, but these came off
- * different harnesses and different VM states, and the VM is stateful enough
- * that the numbers do not nest.
+ * above nearly every line and each one is indented. Under a profiler that
+ * counts them, `on_comment` makes 104,172 of those indexes on one 317KB
+ * generated Ruby file carrying four accented characters, and they account for
+ * 5.4s of that run's 7.3s parse.
  *
  * ## The fix
  *
@@ -54,17 +46,25 @@
  * time. It is built once per parse, and not at all for a source that is already
  * ASCII.
  *
- * End to end, with the RuboCop pass off: that 317KB file formats in 0.7s
- * instead of 5.8s, and the 568KB file from the same tree in 2.7s instead of
- * 17.4s. What that removes is the dominant quadratic term, not every one -
- * formatting a large file is still superlinear in its size after this, and
- * still slower with a multi-byte character in it than without.
+ * What it buys, formatting with the RuboCop pass off, each file warmed once
+ * first, every figure off the same harness so a parse sits inside its format:
+ *
+ *     317KB, four accents     parse 7.4s -> 0.8s     format 7.9s -> 1.5s
+ *     568KB, two accents      parse 23.3s -> 2.8s    format 24.1s -> 3.6s
+ *     317KB, ASCII control    parse 0.5s             format 1.2s
+ *
+ * The control is the first file with its four characters replaced by ASCII
+ * ones - identical in characters and in shape - and it is what the numbers are
+ * for: patched, the accented file parses at about what the control costs, so
+ * the term the accents were adding is gone. The rest is not. Formatting a large
+ * file is still superlinear in its size, and still somewhat slower with a
+ * multi-byte character in it than without.
  *
  * The patch is deliberately confined to `on_comment`. The parser indexes
  * `source` in a handful of other places, and every one of them is O(file size)
  * on a multi-byte source for the same reason - but they are reached per node
- * rather than per indented character. Over the file above they come to 178ms of
- * the 1.3s that parse now takes under the same profiler, against `on_comment`'s
+ * rather than per indented character. Over the 317KB file they come to 178ms of
+ * the 1.3s that parse takes under the same profiler, against `on_comment`'s
  * 5.4s before this. One file is thin evidence for a general claim, but it is
  * two orders of magnitude of headroom, and nothing else here is worth diverging
  * from the gem for on less.

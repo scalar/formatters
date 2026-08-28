@@ -172,9 +172,10 @@ lighter build to be had by dropping one — and the snapshot makes that literal:
 Per-call cost grows faster than file size, so a very large file is worse per KB
 than the ~9 ms row above suggests. It used to be far worse again for a file
 carrying any multi-byte character at all — one accented letter made
-syntax_tree's parser quadratic in the file's size. That term is
-[gone](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source); the
-superlinearity that remains is the gems' own, and stays.
+syntax_tree's parser quadratic in the file's size. The dominant term of that is
+[gone](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source). What
+remains is superlinear in size, and still somewhat worse with a multi-byte
+character than without.
 
 ### When it gives up
 
@@ -455,14 +456,16 @@ number of characters, so an offset means the same thing in both, and pure ASCII,
 so it indexes in constant time. Built once per parse, and not at all for a
 source that is already ASCII.
 
-Output is unchanged, which is the whole claim. Run `bun run ruby:bench` over 879
-files of generated Ruby — 12 MB, the `.rb` half through syntax_tree and RuboCop
-and the `.rbi` half through syntax_tree alone — and `--compare` the before and
-after snapshots: every file hashes the same, in 126 s against the 211 s they
-used to take. The worst file in that corpus, 568 KB carrying two accented
-characters, goes from 17.4 s to 2.7 s with the RuboCop pass off. What comes out
-is the dominant quadratic term, not every one: formatting a large file is still
-superlinear in its size.
+Output is unchanged, which is the whole claim. Two `bun run ruby:bench
+--only corpus` comparisons over one generated Ruby SDK, each snapshotted before
+and after and `--compare`d — 441 `.rb` files (5.2 MB) with the RuboCop pass on,
+and its 438 `.rbi` files (6.7 MB, copied under `.rb` names because the harness
+globs for those) with `--no-rubocop`, which is how this SDK's signatures are
+formatted. Every one of the 879 hashes the same, in 126 s against the 211 s the
+two runs used to take. The worst file in them, 568 KB carrying two accented
+characters, goes from 24.1 s to 3.6 s. What comes out is the dominant quadratic
+term, not every one: formatting a large file is still superlinear in its size,
+and still somewhat slower with a multi-byte character in it than without.
 
 ### How narrow the divergence is
 
@@ -475,7 +478,9 @@ error.
 `test/native-conformance.test.ts` pins that in both directions: byte-identity
 with native syntax_tree everywhere else — including on a source shaped to run
 through the comment walk above — plus a test asserting that native output for
-each of the three shapes still fails to parse while ours does not. When
+each of the five shapes the three fixes cover still fails to parse while ours
+does not, and a sixth checked against the bytes because it is the one whose
+native output parses and means something else. When
 syntax_tree releases a fix, that test fails and the patch behind it comes out.
 
 Separately, `format()` parses everything it returns and raises instead of

@@ -206,7 +206,8 @@ does not cover.
 See [`packages/ruby`](packages/ruby). It runs the real syntax_tree gem on real
 CRuby compiled to wasm, so output is byte-identical to a native Ruby; a
 conformance test asserts that against a native `ruby` across classes, endless
-methods, `case`/`when`, blocks and heredocs.
+methods, `case`/`when`, blocks, heredocs, and comments reached across multi-byte
+text.
 
 It is also the one package that runs two tools, because neither does the whole
 job. syntax_tree reprints a file - it throws away the input's line breaking and
