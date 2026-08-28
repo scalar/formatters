@@ -81,7 +81,7 @@ import { fileURLToPath } from 'node:url'
 
 import { WORK_DIR, createBootVm } from '../../packages/ruby/src/boot-vm'
 import { createFormat } from '../../packages/ruby/src/format'
-import { RUBOCOP_SETUP } from '../../packages/ruby/src/rubocop'
+import { RUBOCOP_SETUP, buildRuboCopConfig } from '../../packages/ruby/src/rubocop'
 import { SHIM_FILES, SHIM_MOUNT_PATH } from '../../packages/ruby/src/wasi-shims'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -120,11 +120,31 @@ const RUBY_INIT_ARGV = ['ruby.wasm', '-EUTF-8', '-rrubygems', '-r/bundle/setup',
  * `RUBOCOP_SETUP` is imported rather than restated - it is the definition of the
  * pass `format.ts` calls into, and a second copy here would be free to drift
  * from the one the package documents and tests.
+ *
+ * `ScalarRubyFmt.warm` is the last thing it does, and it is why the snapshot is
+ * worth more than a loaded VM: requiring RuboCop is not the only cost that is
+ * identical in every VM. Parsing and validating RuboCop's own default.yml is
+ * another second, and it depends on nothing a caller can vary, so it is done
+ * here once rather than on the first RuboCop format of every VM and again after
+ * every recycle. See `warm` in `packages/ruby/src/rubocop.ts`.
+ *
+ * The config it warms against is `buildRuboCopConfig()`'s own output, imported
+ * for the same no-drift reason as `RUBOCOP_SETUP`: `TargetRubyVersion` decides
+ * whether RuboCop parses with prism or with the `parser` gem, so warming on a
+ * config the package would never emit would warm a parser no caller reaches.
+ * It is deleted afterwards - the snapshot needs what the call left on the Ruby
+ * heap, not the file, and /work belongs to the consumer at runtime.
  */
+const PREINIT_WARM_CONFIG_PATH = `${WORK_DIR}/warm.yml`
+
 const PREINIT_PROGRAM = `$LOAD_PATH.push(${JSON.stringify(SHIM_MOUNT_PATH)})
 require "syntax_tree"
 
 ${RUBOCOP_SETUP}
+
+File.write(${JSON.stringify(PREINIT_WARM_CONFIG_PATH)}, ${JSON.stringify(buildRuboCopConfig())})
+ScalarRubyFmt.warm(${JSON.stringify(WORK_DIR)}, ${JSON.stringify(PREINIT_WARM_CONFIG_PATH)})
+File.delete(${JSON.stringify(PREINIT_WARM_CONFIG_PATH)})
 `
 
 /** A sample only the RuboCop pass changes, used to prove the snapshot carries it. */
@@ -244,7 +264,28 @@ const materializeShims = (destination: string): void => {
  */
 const verify = async (wasmPath: string): Promise<void> => {
   const bytes = readFileSync(wasmPath)
-  const { format } = createFormat(createBootVm(() => WebAssembly.compile(bytes)))
+  const bootVm = createBootVm(() => WebAssembly.compile(bytes))
+  const { format } = createFormat(bootVm)
+
+  // The warm is the one thing here that a working artifact and a broken one
+  // agree about: a snapshot that lost it still boots, still formats and still
+  // produces the right bytes - it is only about a second slower per VM, which
+  // is exactly the kind of regression that goes unnoticed until someone
+  // benchmarks it months later. So it is asserted rather than assumed.
+  // `default_configuration` memoizes onto RuboCop's own ConfigLoader, and
+  // `ScalarRubyFmt.setup` - which `boot-vm.ts` has already run by this point -
+  // deliberately does not clear it, so a warm that survived wizer is still
+  // there to be seen.
+  const booted = await bootVm.boot()
+  const warmed = booted.vm
+    .eval('RuboCop::ConfigLoader.instance_variable_get(:@default_configuration).nil? ? "no" : "yes"')
+    .toString()
+  if (warmed !== 'yes') {
+    fail(
+      "the snapshot did not keep ScalarRubyFmt.warm's parsed default config, so every VM restored " +
+        "from it would reparse RuboCop's default.yml on its first format",
+    )
+  }
 
   const withRuboCop = await format(RUBOCOP_SAMPLE)
   if (withRuboCop !== RUBOCOP_SAMPLE_FORMATTED) {
