@@ -29,6 +29,11 @@ BUILD_ID="ruby-${RUBY_VERSION}-wasm32-unknown-wasip1-full"
 # as load-bearing here as the Ruby version is.
 WIZER_VERSION="7.0.5"
 
+# The binaryen that supplies wasm-merge. Pinned like wizer, and separate from the
+# one rbwasm fetches for wasm-opt: that one is version 108, which has no
+# wasm-merge at all. Any release from 111 on carries the tool.
+BINARYEN_VERSION="116"
+
 # The stdlib directory CRuby installs into, which is the x.y.0 of the release
 # rather than the release itself - 4.0.6 would still be 4.0.0 here. Derived from
 # RUBY_VERSION so that a bump has one place to change rather than three.
@@ -96,10 +101,38 @@ bundle exec rbwasm build \
   --build-profile full \
   -o ruby_fmt.raw.wasm
 
-# rbwasm downloads binaryen for its own use; reuse that copy rather than making
-# contributors install one and version-match it.
+# rbwasm downloads binaryen for its own use; reuse that copy for wasm-opt rather
+# than making contributors install one and version-match it.
 WASM_OPT="build/toolchain/binaryen/bin/wasm-opt"
 "$WASM_OPT" -Os --strip-debug --strip-producers ruby_fmt.raw.wasm -o ruby_fmt.opt.wasm
+
+# wasm-merge, on the other hand, has to be fetched: the binaryen rbwasm brings
+# is version 108, which predates the tool entirely, so `preinit.ts` fell over on
+# an ENOENT naming a path that simply has no wasm-merge in it. Pinned and fetched
+# beside wizer, on the same reasoning and with the same interrupted-download
+# guard - and pinned for a second reason, which is that the two tools have to
+# agree about the module they hand each other.
+BINARYEN_DIR="build/toolchain/binaryen-merge"
+if [ ! -x "$BINARYEN_DIR/bin/wasm-merge" ]; then
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) BINARYEN_TARGET="x86_64-linux" ;;
+    Linux-aarch64 | Linux-arm64) BINARYEN_TARGET="aarch64-linux" ;;
+    Darwin-x86_64) BINARYEN_TARGET="x86_64-macos" ;;
+    Darwin-arm64) BINARYEN_TARGET="arm64-macos" ;;
+    *)
+      echo "binaryen publishes no build for $(uname -s)-$(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+
+  rm -rf "$BINARYEN_DIR.incoming"
+  mkdir -p "$BINARYEN_DIR.incoming"
+  curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-${BINARYEN_TARGET}.tar.gz" |
+    tar -xz -C "$BINARYEN_DIR.incoming" --strip-components 1
+  rm -rf "$BINARYEN_DIR"
+  mv "$BINARYEN_DIR.incoming" "$BINARYEN_DIR"
+fi
+export WASM_MERGE="$PWD/$BINARYEN_DIR/bin/wasm-merge"
 
 # Fetch wizer beside binaryen, for the same reason: a contributor rebuilding this
 # artifact should not also have to install a pre-initializer and match its

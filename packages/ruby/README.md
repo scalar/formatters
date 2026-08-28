@@ -129,23 +129,38 @@ corrections — over those same 397 files, in 116 of them.
 
 | | `rubocop: false` | default |
 |:---|:---|:---|
-| cold start, one fresh process | ~1.0 s | ~2.1 s |
-| every call after | ~9 ms | 2–3× that |
-| one VM recycle, over an ordinary call | ~0.1 s | ~0.5 s |
-| artifact | 12.2 MB either way | |
+| cold start, one fresh process | ~0.70 s | ~0.86 s |
+| every call after | ~7 ms | 2–4× that |
+| one VM recycle, over an ordinary call | ~0.03 s | ~0.06 s |
+| artifact | 12.7 MB either way | |
 
-Cold start is the artifact plus one VM: expanding and compiling 12.2 MB of
-brotli into 67 MB of wasm takes ~0.9 s, and instantiating a VM from it takes
-~0.2 s. That ~1.1 s is the whole of the `rubocop: false` column, within
-measurement noise. The default column adds ~1 s on top, and it is not RuboCop
-being loaded — it is the config being merged over RuboCop's own `default.yml`,
-which happens once per VM and is cached by path after that.
+Cold start is the artifact plus one VM: expanding and compiling the brotli into
+71 MB of wasm takes ~0.6 s and instantiating a VM from it ~0.12 s, which is the
+whole of the `rubocop: false` column. The default column adds ~0.16 s, and that
+is the RuboCop pass itself — mobilizing the Layout department and correcting for
+the first time.
 
-Recycling the VM is 91 ms of that instantiation — less than the 196 ms a cold
-process pays, because by then the engine has the module in hand and warm. The
-row is larger because it prices what a caller feels: the recycle *plus* what the
-next format costs over an ordinary one, which is that per-VM config merge
-landing again.
+What it no longer adds is the config. Merging a `.rubocop.yml` over RuboCop's own
+`default.yml` costs about half a second, it is the same work whatever a caller
+asks for, and it used to happen once per VM: on the first RuboCop format, and
+again after every [recycle](#known-bug-the-vm-leaks-and-recycles-itself-to-survive-it).
+The artifact now ships with it already parsed, so a restored VM starts holding
+the answer. Measured on one machine, against the artifact this replaces:
+
+| | before | after |
+|:---|---:|---:|
+| first RuboCop format on a fresh VM | 492 ms | **124 ms** |
+| of which is RuboCop's share | 471 ms | **101 ms** |
+| cold start, default | 1,181 ms | **857 ms** |
+| one VM recycle | 359 ms | **60 ms** |
+| cold start, `rubocop: false` | 695 ms | 698 ms |
+
+The last row is the control: nothing about the syntax_tree path changed, and it
+did not move. Neither did steady-state formatting — 502 real files came out in
+44.6 s against 44.9 s — because the config was only ever parsed once per VM, so
+what this removes is a fixed cost per VM rather than a cost per call. The artifact
+grew 12.2 MB → 12.7 MB carrying the parsed config, and a VM starts ~6 MB nearer
+its recycle ceiling for the same reason.
 
 **Loading is not on this table any more, and that is the change worth knowing
 about.** RuboCop's 698 cop files used to be read and evaluated by a Ruby running
@@ -167,7 +182,8 @@ it existed to decline that load, and there is no longer a load to decline.
 
 The artifact carries both tools whichever way you call it, so there was never a
 lighter build to be had by dropping one — and the snapshot makes that literal:
-7 MB of the 12.2 MB is a Ruby heap with both gems already in it.
+7 MB of the 12.7 MB is a Ruby heap with both gems already in it, and the
+config they are configured by.
 
 ### When it gives up
 
@@ -231,7 +247,7 @@ ceiling picked for a Node process, and one a pre-initialized VM starts within
 less room to absorb that than a server does, so keep large files off the main
 thread.
 
-The browser reads the same brotli artifact as Node (12.2 MB over the wire) and
+The browser reads the same brotli artifact as Node (12.7 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder

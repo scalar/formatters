@@ -74,7 +74,7 @@
 // nothing here should be written as though it could.
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -169,14 +169,35 @@ const fail: (message: string) => never = (message) => {
 
 /** Runs a build tool, failing loudly rather than leaving a half-made artifact behind. */
 const run = (label: string, command: string, args: string[], env?: NodeJS.ProcessEnv): string => {
-  const result = spawnSync(command, args, { encoding: 'utf8', env })
+  // Output goes to files rather than pipes, and is read back afterwards. One of these tools is
+  // chatty enough that it matters: wasm-merge warns per import it resolves when it fuses the shim,
+  // which on a module this size runs to megabytes. A piped `spawnSync` gives up on that with
+  // ENOBUFS and reports it in `result.error`, so the build failed claiming wasm-merge "could not be
+  // run" while naming a binary that had in fact run and succeeded - and `maxBuffer` does not help,
+  // because Bun's `spawnSync` does not honour it. A file has no such ceiling.
+  const outPath = path.join(tmpdir(), `scalar-ruby-fmt-${label}-${process.pid}.out`)
+  const errPath = path.join(tmpdir(), `scalar-ruby-fmt-${label}-${process.pid}.err`)
+  const outFd = openSync(outPath, 'w')
+  const errFd = openSync(errPath, 'w')
 
-  if (result.error) fail(`${label} could not be run (${command}): ${result.error.message}`)
-  if (result.status !== 0) {
-    fail(`${label} exited ${String(result.status)}\n${result.stdout ?? ''}${result.stderr ?? ''}`)
+  let result: ReturnType<typeof spawnSync>
+  let stdout = ''
+  let stderr = ''
+  try {
+    result = spawnSync(command, args, { env, stdio: ['ignore', outFd, errFd] })
+  } finally {
+    closeSync(outFd)
+    closeSync(errFd)
+    stdout = readFileSync(outPath, 'utf8')
+    stderr = readFileSync(errPath, 'utf8')
+    rmSync(outPath, { force: true })
+    rmSync(errPath, { force: true })
   }
 
-  return `${result.stdout ?? ''}${result.stderr ?? ''}`
+  if (result.error) fail(`${label} could not be run (${command}): ${result.error.message}`)
+  if (result.status !== 0) fail(`${label} exited ${String(result.status)}\n${stdout}${stderr}`)
+
+  return `${stdout}${stderr}`
 }
 
 /**
@@ -341,6 +362,11 @@ try {
   // changes nothing else.
   console.log('preinit: merging the wizer entry point')
   run('wasm-merge', wasmMerge, [
+    // The shim imports the artifact's memory, so the merged module ends up with one - but
+    // wasm-merge validates the intermediate, where the import is still a second memory, and
+    // refuses without this. It is enabled for the merge, not present in the result: the check
+    // below counts the memories in what comes out.
+    '--enable-multimemory',
     '--enable-bulk-memory',
     '--enable-nontrapping-float-to-int',
     '--enable-sign-ext',
