@@ -55,10 +55,10 @@
  *
  * The control is the first file with its four characters replaced by ASCII
  * ones - identical in characters and in shape - and it is what the numbers are
- * for: patched, the accented file parses at about what the control costs, so
- * the term the accents were adding is gone. The rest is not. Formatting a large
- * file is still superlinear in its size, and still somewhat slower with a
- * multi-byte character in it than without.
+ * for. What the accents cost that file's parse goes from 6.9s to 0.3s: nearly
+ * all of it, and not all of it. Formatting a large file stays superlinear in
+ * its size, and stays somewhat slower with a multi-byte character in it than
+ * without.
  *
  * The patch is deliberately confined to `on_comment`. The parser indexes
  * `source` in a handful of other places, and every one of them is O(file size)
@@ -71,15 +71,42 @@
  */
 
 /**
+ * The syntax_tree whose `on_comment` the patch below was copied from.
+ *
+ * This is the retirement signal, and this file needs one where `stree-patch.ts`
+ * does not. Those patches are guarded by a test asserting the gem still gets
+ * their inputs wrong, so an upstream fix fails the suite by itself. This one
+ * replaces a whole method with a frozen copy and produces identical output, so
+ * an upstream rewrite of `on_comment` - including one that fixes this very cost
+ * - would be silently overridden and nothing would say so.
+ *
+ * The gem inside the artifact can only change when `build/ruby_fmt/Gemfile`'s
+ * pin does, so `stree-perf-patch.test.ts` asserts the VM still reports this
+ * version. Bumping the pin fails that test, which is the point: the copy then
+ * has to be re-derived from the new gem, or dropped because the new gem no
+ * longer needs it.
+ */
+export const DERIVED_FROM_SYNTAX_TREE = '6.3.0'
+
+/**
  * How `on_comment` tells an inline comment from a standalone one.
  *
  * The body is stock syntax_tree 6.3.0's, with its three reads of `source`
- * pointed at the string `whitespace_scan_source` returns and its comments
+ * pointed at the string `scalar_whitespace_scan_source` returns and its comments
  * shortened - the long ones are re-told above rather than repeated here.
  * Comment classification is unchanged by construction: the replacement
  * preserves every space, tab and newline, and the loop asks about nothing else.
  * Every other character stops the backward walk in both, and is not a newline
- * in either, so `inline` comes out the same.
+ * in either, so `inline` comes out the same. A `\\r` is one of those others -
+ * it becomes `x` - and it cannot matter, because a `\\r` either sits before the
+ * `\\n` that already stopped the walk, or stops the walk itself, and `x` is no
+ * more a newline than `\\r` is.
+ *
+ * The claim is also smaller than it looks. The walk stops at the first
+ * character that is not a space or a tab, and going backwards from a `#` that
+ * is either the newline ending the line before or the start of the file - so
+ * the stand-in only has to be faithful within one line's leading whitespace,
+ * never across the file.
  *
  * `rindex` and a regular expression are still avoided inside the loop, for the
  * reason the gem gives where it wrote it: both refuse a string carrying invalid
@@ -110,7 +137,7 @@ module SyntaxTree
       # Loop backward from the beginning of the comment and find the first
       # character that is not a space or a tab. If index is -1, this comment is
       # at the very beginning of the file.
-      scan = whitespace_scan_source
+      scan = scalar_whitespace_scan_source
       index = char - 1
       while index > -1 && (scan[index] == "\\t" || scan[index] == " ")
         index -= 1
@@ -133,16 +160,16 @@ module SyntaxTree
     # Built once per parse and only when it would help. An ASCII source is
     # already such a string; a source whose encoding is invalid is handed back
     # untouched because tr refuses one, which is the fallback the constant's
-    # documentation explains. ASCII is not the only encoding that would index in
-    # constant time - a single-byte one such as ISO-8859-1 does too, and builds
-    # a copy here for nothing - but Ruby exposes no predicate for that, and
-    # those encodings do not reach this package.
+    # documentation explains. A single-byte encoding such as ISO-8859-1 would
+    # index in constant time too and still builds a copy here for nothing, which
+    # is left alone rather than tested for: those encodings do not reach this
+    # package, since format.ts hands the guest UTF-8 it encoded itself.
     #
     # The copy costs one more source-sized string, live for as long as the parse
     # is. That is far below the granularity of the VM's linear-memory leak,
     # which format.ts recycles at 400MB after roughly every 140KB of input.
-    def whitespace_scan_source
-      @whitespace_scan_source ||=
+    def scalar_whitespace_scan_source
+      @scalar_whitespace_scan_source ||=
         if source.ascii_only? || !source.valid_encoding?
           source
         else

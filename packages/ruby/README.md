@@ -462,8 +462,11 @@ and after and `--compare`d — 441 `.rb` files (5.2 MB) with the RuboCop pass on
 and its 438 `.rbi` files (6.7 MB, copied under `.rb` names because the harness
 globs for those) with `--no-rubocop`, which is how this SDK's signatures are
 formatted. Every one of the 879 hashes the same, in 126 s against the 211 s the
-two runs used to take. The worst file in them, 568 KB carrying two accented
-characters, goes from 24.1 s to 3.6 s. What comes out is the dominant quadratic
+two runs used to take. Only 51 of them carry a multi-byte character and so take
+the stand-in at all — but those 51 are around 60% of the bytes, which is the
+shape of the problem. The worst file in them — 568 KB carrying two accented
+characters — goes from 24.1 s to 3.6 s formatted on its own with the RuboCop
+pass off, which is the second row of the table in `src/stree-perf-patch.ts`. What comes out is the dominant quadratic
 term, not every one: formatting a large file is still superlinear in its size,
 and still somewhat slower with a multi-byte character in it than without.
 

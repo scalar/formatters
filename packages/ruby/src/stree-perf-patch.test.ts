@@ -10,6 +10,7 @@
 
 import { format, init } from './index'
 import { nodeVm } from './node-vm'
+import { DERIVED_FROM_SYNTAX_TREE } from './stree-perf-patch'
 import { beforeAll, describe, expect, it } from 'bun:test'
 
 /** Generous for the same reason format.test.ts's is: this boots the artifact. */
@@ -45,6 +46,19 @@ end
 `
 
 describe('stree-perf-patch', () => {
+  // The retirement signal. `on_comment` here is a frozen copy of one gem
+  // version's, and unlike the correctness patches nothing about a *newer* gem
+  // would fail on its own - the copy would just keep overriding whatever
+  // upstream wrote, output-identically, including an upstream fix for this very
+  // cost. So the version is asserted directly: bump the pin in
+  // build/ruby_fmt/Gemfile, rebuild the artifact, and this is what tells you the
+  // copy has to be re-derived or dropped.
+  it('still runs the syntax_tree the patch was copied from', async () => {
+    const { vm } = await nodeVm.boot()
+
+    expect(vm.eval('SyntaxTree::VERSION').toString()).toBe(DERIVED_FROM_SYNTAX_TREE)
+  })
+
   // `rubocop: false` throughout: the claim is about syntax_tree's parser, and
   // the Layout pass would be a second thing deciding where a comment lands.
   it('classifies comments the same with and without multi-byte characters', async () => {
@@ -80,13 +94,13 @@ describe('stree-perf-patch', () => {
           source = "# a comment\\n  # indented after caf\\u00E9\\nx = 1 # inline\\n"
           parser = SyntaxTree::Parser.new(source)
           parser.parse
-          scan = parser.instance_variable_get(:@whitespace_scan_source)
+          scan = parser.instance_variable_get(:@scalar_whitespace_scan_source)
 
           [
             !scan.nil?,
             scan.ascii_only?,
             scan.length == source.length,
-            parser.send(:whitespace_scan_source).equal?(scan)
+            parser.send(:scalar_whitespace_scan_source).equal?(scan)
           ].inspect
         end.call
       `)
@@ -95,21 +109,51 @@ describe('stree-perf-patch', () => {
     expect(result).toBe('[true, true, true, true]')
   })
 
+  // The other half of "built once per parse, and not at all for a source that
+  // is already ASCII", which three places claim and nothing else checks. Its
+  // loss is completely silent: drop the guard and every ASCII format pays a
+  // source-sized `tr` and its allocation for a copy identical to what it
+  // copied, with every other test still green. Identity rather than equality is
+  // the whole assertion - an equal copy is exactly the failure.
+  it('does not copy a source that already indexes in constant time', async () => {
+    const { vm } = await nodeVm.boot()
+
+    const result = vm
+      .eval(`
+        lambda do
+          source = "# a comment\\n  # indented\\nx = 1 # inline\\n"
+          parser = SyntaxTree::Parser.new(source)
+          parser.parse
+
+          parser.instance_variable_get(:@scalar_whitespace_scan_source).equal?(source).inspect
+        end.call
+      `)
+      .toString()
+
+    expect(result).toBe('true')
+  })
+
   // The negative control for the test above. A scan source that answers "not
-  // whitespace" everywhere has to reclassify every comment as inline; if the
-  // walk were reading `source` instead, swapping this one out would change
-  // nothing. Overridden per parser rather than on the class, so the swap cannot
-  // outlive the test and reach another one through the shared VM.
+  // whitespace" everywhere reclassifies every comment as inline, so if the walk
+  // were reading `source` instead, swapping this one out would change nothing.
+  // Overridden per parser rather than on the class, so the swap cannot outlive
+  // the test and reach another one through the shared VM.
+  //
+  // Two things about the fixture. Nothing sits at character 0, where `index`
+  // starts at -1 and `inline` is false before the scan source is read at all.
+  // And `parser.comments` keeps only what the tree did not absorb - `Statements`
+  // adopts standalone comments and deletes them from the list as it binds - so
+  // a walk reading `source` leaves one entry here, not three.
   it('reads the scan source rather than the source when it classifies', async () => {
     const { vm } = await nodeVm.boot()
 
     const result = vm
       .eval(`
         lambda do
-          source = "# standalone\\n  # indented standalone\\nx = 1 # inline\\n"
+          source = "x = 0\\n# standalone\\n  # indented standalone\\ny = 1 # inline\\n"
           parser = SyntaxTree::Parser.new(source)
           filler = "x" * source.length
-          parser.define_singleton_method(:whitespace_scan_source) { filler }
+          parser.define_singleton_method(:scalar_whitespace_scan_source) { filler }
           parser.parse
 
           parser.comments.map { |comment| comment.inline? }.inspect
@@ -117,7 +161,7 @@ describe('stree-perf-patch', () => {
       `)
       .toString()
 
-    expect(result).toBe('[true, true]')
+    expect(result).toBe('[true, true, true]')
   })
 
   // `format` cannot reach this: it writes the source into the guest as UTF-8 it
