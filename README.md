@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 12.2 MB | ✅ exact +3 fixes | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 12.7 MB | ✅ exact +3 fixes | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -46,7 +46,7 @@ each held to the exactness rule below by its own conformance test.
 
 Ruby is the second largest artifact, behind Swift, and 7 MB of that is a
 deliberate trade: it ships a Ruby VM that has *already* loaded both gems, so the
-first `format` call costs ~2.1 s rather than ~11.1 s. See
+first `format` call costs under a second rather than ~11.1 s. See
 [`packages/ruby`](packages/ruby#what-it-costs).
 
 Exactness is only meaningful against a named reference tool, so the reference is
@@ -225,7 +225,7 @@ RuboCop either way. See
 [`packages/ruby`](packages/ruby#two-tools-and-why-both) for the rest of what it
 costs.
 
-It ships as one 12.2 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
+It ships as one 12.7 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
 formatter never loads is stripped, then `wasm-opt -Os`, then
 [wizer](https://github.com/bytecodealliance/wizer), then brotli. The wizer step
