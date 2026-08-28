@@ -45,23 +45,28 @@ Options: `{ style }` (`'google'` default, or `'aosp'`), and the three steps the
 CLI runs by default, each of which can be turned off — `{ sortImports }`,
 `{ removeUnusedImports }`, `{ reflowLongStrings }`.
 
-**Node 24.15 or newer.** Two separate things set that floor, and neither is
-WasmGC — Node 22 has WasmGC and formats correctly.
+**Node 24.15 or newer**, and it is a hard floor rather than a soft one: below
+it V8 does not compile the module at all. It is not a WasmGC floor — Node 22 has
+WasmGC — it is about how V8 types wasm exception handling.
 
-The major is V8's wasm optimizer: on Node 22, once the module is warm it grows
-without bound on it, roughly 100MB/s, until the process is killed. The answers
-are right; the process just never exits, which reads as a hang. V8 13 (Node 24)
-does not do it, and neither does JavaScriptCore, so bun is fine.
+TeaVM emits the final exception-handling proposal, `try_table` over `exnref`,
+and `wasm-opt` leaves `catch_ref` branching to a block typed with a
+*non-nullable* `(ref exn)`. That is what the spec calls for: the reference
+interpreter sends `RefT (NoNull, ExnHT)` to a `catch_ref` label. V8 used to type
+it as a nullable `exnref` and reject the module — `type error in branch[0]
+(expected (ref exn), got exnref)` — which is why Node 22 and Node 24.0 through
+24.14 both refuse it. 24.15.0 is where V8 accepts it, and JavaScriptCore accepts
+it throughout, so bun is fine.
 
-The minor is the wasm exception-handling opcodes. TeaVM emits the final
-proposal — `try_table` over `exnref` — which V8 accepts unflagged on Node 22,
-rejects on Node 24.0 through 24.14, and accepts again from 24.15.0. On those
-releases the module fails to compile rather than misbehaving, and
-`--experimental-wasm-exnref` is enough to run it.
+Node 22 additionally had V8's wasm optimizer grow without bound on this module,
+roughly 100MB/s until the process was killed. That no longer decides anything —
+the module does not compile there — but it is why running an older build on
+Node 22 reads as a hang rather than an error.
 
-The package checks for both and says all this rather than hanging or throwing a
-raw `CompileError`. The second check compiles a 28-byte probe module instead of
-reading a version number, so bun — which reports a Node version of its own,
+The package checks for this and says so rather than throwing a raw
+`CompileError`. The check compiles a 52-byte probe module — the same
+`catch_ref`-into-`(ref exn)` shape the artifact uses — instead of reading a
+version number, so bun — which reports a Node version of its own,
 below this floor — is judged on what its engine actually does.
 
 ## The version it carries
@@ -126,7 +131,7 @@ The engine floor is checked at boot and is real: the module uses the final wasm
 exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
 earliest.
 
-The browser reads the same brotli artifact as Node (0.83 MB over the wire) and
+The browser reads the same brotli artifact as Node (0.77 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -197,7 +202,7 @@ replicates all four, in that order.
 
 `build/java_fmt_teavm/build.sh` produces two files, both committed:
 
-- `java_fmt.wasm.br` — the module, 0.82MB brotli-compressed (3.3MB raw)
+- `java_fmt.wasm.br` — the module, 0.77MB brotli-compressed (3.3MB raw)
 - `java_fmt.runtime.mjs` — TeaVM's generated runtime, which supplies the
   module's imports and the string and exception bridges
 
@@ -244,10 +249,15 @@ and then produces wrong answers or none:
 back as a string, which is all this package needs, but it rules out shipping the
 CLI itself.
 
-**There is no `wasm-opt` pass.** Binaryen 123 rewrites TeaVM's exception handling
-into a form V8 rejects — `type error in branch[0] (expected (ref exn), got
-exnref)` — at every optimisation level, so the artifact is TeaVM's `ADVANCED`
-output as emitted. It is a quarter the size of the Web Image build anyway.
+**There is a `wasm-opt` pass, and there did not used to be.** Binaryen was long
+skipped here because its output was rejected by V8 — `type error in branch[0]
+(expected (ref exn), got exnref)` — at every optimisation level. That was never
+Binaryen's bug. The reference interpreter sends a *non-nullable* `(ref exn)` to a
+`catch_ref` label (`RefT (NoNull, ExnHT)` in `valid.ml`), which is exactly what
+Binaryen models; V8 was the side typing it as a nullable `exnref`, and V8 has
+since been fixed. So the artifact is now TeaVM's `ADVANCED` output put through
+`wasm-opt -O3`, which takes it from 0.83MB to 0.77MB and formats about 14%
+faster. The conformance corpus is what says it changed no output.
 
 **google-java-format is not idempotent in `aosp` style.** Reflowing a long
 string literal writes the `+` continuation at a hardcoded four columns, and a

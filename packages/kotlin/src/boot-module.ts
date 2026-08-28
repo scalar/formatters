@@ -30,25 +30,35 @@ const MINIMUM_NODE_MAJOR = 24
 const MINIMUM_NODE_FOR_EXNREF = '24.15.0'
 
 /**
- * A whole wasm module in 28 bytes: one function whose body is an empty
- * `try_table`. Compiling it asks the *engine* whether the artifact's opcodes
- * will be accepted, which is the question that actually matters - the Node
- * version is only a proxy for it, and a wrong one under bun, whose
- * JavaScriptCore takes the opcode while it reports a Node version below the
- * floor above.
+ * A whole wasm module in 52 bytes: a `try_table` whose `catch_ref` branches to a
+ * block typed with a *non-nullable* `(ref exn)`.
+ *
+ * That is the shape `wasm-opt` leaves in the artifact, and it is the one an
+ * engine can get wrong. The reference interpreter sends a non-nullable
+ * `(ref exn)` to a `catch_ref` label - `RefT (NoNull, ExnHT)` in `valid.ml` -
+ * and V8 used to type it as a nullable `exnref` and reject the module with
+ * "type error in branch[0] (expected (ref exn), got exnref)".
+ *
+ * It replaces a 28-byte probe that compiled a bare `try_table`, which no longer
+ * asks the right question: Node 22 accepts that one and rejects the artifact,
+ * so the probe passed and the module then failed with the raw `CompileError`
+ * this file exists to prevent.
  */
 // biome-ignore format: the sections of a wasm module, one per line - reflowing this loses the whole point
-const EXNREF_PROBE = Uint8Array.from([
+const CATCH_REF_PROBE = Uint8Array.from([
   0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, // magic and version
-  0x01, 0x04, 0x01, 0x60, 0x00, 0x00, // types: one, () -> ()
-  0x03, 0x02, 0x01, 0x00, // functions: one, of that type
-  0x0a, 0x08, 0x01, 0x06, 0x00, 0x1f, 0x40, 0x00, 0x0b, 0x0b, // code: try_table, no catches
+  0x01, 0x08, 0x02, 0x60, 0x00, 0x00, 0x60, 0x00, 0x01, 0x69, // types: () -> (), and () -> (ref exn)
+  0x03, 0x03, 0x02, 0x00, 0x01, // functions: one of each type
+  0x0d, 0x03, 0x01, 0x00, 0x00, // tags: one, of type 0
+  0x0a, 0x16, 0x02, // code
+  0x03, 0x00, 0x01, 0x0b, // $g: empty
+  0x10, 0x00, 0x02, 0x64, 0x69, 0x1f, 0x40, 0x01, 0x01, 0x00, 0x00, 0x10, 0x00, 0x0b, 0x00, 0x0b, 0x0b,
 ])
 
-/** Whether this engine compiles `try_table`, and so this package's artifact. */
+/** Whether this engine compiles the artifact's exception handling. */
 const supportsExnref = (): boolean => {
   try {
-    new WebAssembly.Module(EXNREF_PROBE)
+    new WebAssembly.Module(CATCH_REF_PROBE)
     return true
   } catch {
     return false
@@ -73,8 +83,8 @@ const checkRuntime = (): void => {
   if (version !== undefined && Number.parseInt(version, 10) < MINIMUM_NODE_MAJOR) {
     throw new Error(
       `@scalar/kotlin-fmt needs Node ${MINIMUM_NODE_FOR_EXNREF} or newer (this is v${version}). ` +
-        "Older versions format correctly but V8's wasm optimizer then consumes memory until the " +
-        'process is killed, so it would never exit.',
+        'V8 rejects the module before then, and on Node 22 it also consumes memory until the ' +
+        'process is killed.',
     )
   }
 
@@ -84,8 +94,9 @@ const checkRuntime = (): void => {
     // name and the engine floor is the useful thing to say instead.
     throw new Error(
       version === undefined
-        ? '@scalar/kotlin-fmt needs an engine that accepts the final wasm exception-handling ' +
-            'opcodes. Chrome 137, Firefox 131 and Safari 18.4 accept them; older browsers do not.'
+        ? '@scalar/kotlin-fmt needs an engine that types a `catch_ref` label as the wasm spec does, ' +
+            'sending a non-nullable `(ref exn)`. Chrome 137 and Safari 18.4 do; older browsers ' +
+            'may compile the opcodes and still reject the module.'
         : `@scalar/kotlin-fmt needs Node ${MINIMUM_NODE_FOR_EXNREF} or newer (this is v${version}). ` +
             'The module uses the final wasm exception-handling opcodes, which V8 rejects on earlier ' +
             'Node 24 releases; running this one with --experimental-wasm-exnref also works.',
