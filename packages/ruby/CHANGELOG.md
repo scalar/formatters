@@ -1,5 +1,41 @@
 # @scalar/ruby-fmt
 
+## 0.6.2
+
+### Patch Changes
+
+- 19daa55: Ship the rebuilt artifact carrying RuboCop's pre-parsed default configuration
+
+  0.6.1 added `ScalarRubyFmt.warm` but shipped the artifact unchanged, so the work it saves was still being done at runtime — the source said the config was baked in, and the wasm said otherwise. This rebuilds it, and the change takes effect.
+
+  Merging a `.rubocop.yml` over RuboCop's own ~600-cop `default.yml` costs about half a second, is identical whatever a caller asks for, and used to happen once per VM: on the first RuboCop format and again after every recycle. Measured on one machine against the artifact this replaces:
+
+  |                                    |   before |      after |
+  | :--------------------------------- | -------: | ---------: |
+  | first RuboCop format on a fresh VM |   492 ms | **124 ms** |
+  | cold start, default                | 1,181 ms | **857 ms** |
+  | one VM recycle                     |   359 ms |  **60 ms** |
+  | cold start, `rubocop: false`       |   695 ms |     698 ms |
+
+  That last row is the control — the syntax_tree path is untouched and did not move. Steady-state formatting did not move either (502 real files in 44.6 s against 44.9 s): the config was only ever parsed once per VM, so what this removes is a fixed cost per VM, not a cost per call. The artifact grows 12.2 MB → 12.7 MB, and a VM starts ~6 MB nearer its recycle ceiling.
+
+  Output is unchanged, checked rather than asserted: the corpus comparison `CONTRIBUTING.md` asks for reports 502 of 502 files byte-identical between the old artifact and this one.
+
+  Two build fixes were needed to produce it, both of which stopped `bun run ruby:build` from completing at all:
+
+  - `build.sh` now fetches its own pinned binaryen for `wasm-merge`. It had been reaching for the copy `rbwasm` downloads, which is version 108 — predating the tool entirely — so the build died on an ENOENT naming a path with no `wasm-merge` in it.
+  - `preinit.ts` sends each tool's output to a file rather than a pipe, and enables multimemory for the merge. `wasm-merge` warns per import it resolves, which overflowed `spawnSync`'s buffer and surfaced as ENOBUFS reported as "wasm-merge could not be run" — naming a binary that had run and succeeded. `maxBuffer` does not help, because Bun's `spawnSync` ignores it.
+
+- bec5cd6: The dominant quadratic term that made formatting a file with a multi-byte character in it cost so much more than the same file without one is gone.
+
+  syntax_tree decides whether a comment is inline or stands on its own by walking backwards from the `#` over spaces and tabs, indexing the source string one character at a time. `String#[]` is constant time only while CRuby can treat a string as one byte per character, so a single accented letter anywhere in a file makes every one of those indexes count characters from the start of the string — and a file with a comment above most of its lines does that a great many times: 104,172 of them in one 317 KB file of generated Ruby.
+
+  The parser now walks a copy of the source with everything that is not a space, a tab or a newline replaced by `x`. It answers the same three questions the loop asks — tab, space, newline — has the same number of characters so an offset means the same thing in both, and indexes in constant time. It is built once per parse, and not at all for a source that is already ASCII or one whose encoding is invalid.
+
+  Like the three `case`/`in` fixes this package already carries, it is applied by reopening the class at boot — it lives in `src/stree-perf-patch.ts`, so the artifact stays stock syntax_tree 6.3.0. Output is unchanged, and two things say so. `test/native-conformance.test.ts` asserts byte-identity against a native syntax_tree 6.3.0 on a source shaped to run through the comment walk. And two corpus comparisons over one generated Ruby SDK — its 441 `.rb` files (5.2 MB) with the RuboCop pass on, its 438 `.rbi` files (6.7 MB) with it off — hash all 879 the same, in 126 s against the 211 s they used to take. 51 of those files carry a multi-byte character and so actually exercise the stand-in, but they are around 60% of the bytes, which is the shape of the problem: it is the large files that have an accent somewhere in a description. The worst file in them, 568 KB carrying two accented characters, goes from 24.1 s to 3.6 s formatted on its own with the RuboCop pass off.
+
+  This removes the dominant term, not every one. Formatting a large file is still superlinear in its size, and still somewhat slower with a multi-byte character in it than without.
+
 ## 0.6.1
 
 ### Patch Changes
