@@ -12,6 +12,11 @@ updates:
       actions:
         patterns:
           - '*'
+    # Five days between a release and the pull request that takes it. Long enough for a
+    # bad action release to be yanked or fixed upstream before it reaches this repo's CI.
+    # `github-actions` supports only the flat `default-days`, not the per-bump variants.
+    cooldown:
+      default-days: 5
     commit-message:
       prefix: chore
 
@@ -25,6 +30,11 @@ updates:
       dependencies:
         patterns:
           - '*'
+    # Same five days, for the same reason. A version released inside the window is held
+    # back rather than delayed - with a monthly schedule that means it waits for the next
+    # run, so a release in the five days before one lands here a month later.
+    cooldown:
+      default-days: 5
     commit-message:
       prefix: chore
     ignore:
