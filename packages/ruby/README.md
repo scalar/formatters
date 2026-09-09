@@ -520,6 +520,10 @@ gem's own method restored for the first run and nothing else changed, goes from
 121.0 s to 101.3 s. A file without a heredoc never reaches the sort and does
 not move.
 
+rubocop-ast's master already carries the same fold, unreleased as of 1.50.0, so
+this patch retires with the next release: bump the pin, rebuild the artifact,
+delete the constant.
+
 ### 6. The line table that is quadratic on a multi-byte source
 
 The same bug as [the comment walk](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source),
@@ -539,7 +543,9 @@ of the 51 s the file took to format.
 adding each line's character length to a running position — linear whatever
 the encoding, and the same table entry for entry, sentinel included. An ASCII
 source keeps the gem's own loop, which is already linear there. The same table
-builds in ~25 ms, and the file formats in 27.4 s instead of 52.1 s.
+builds in ~25 ms, and the file formats in 27.4 s instead of 52.1 s. parser's
+master still has the quadratic walk as of 3.3.12.0, so unlike the sort above
+this one has no retirement date yet — it is the fix worth proposing upstream.
 
 With both patches in place, the 206-file corpus above goes from 120.5 s to
 79.2 s under Node, again with the gems' own methods restored for the first run

@@ -43,6 +43,13 @@
  * product misbehaves - a large one merely turns fixnum comparisons into bignum
  * ones. The same file sorts in ~9 ms.
  *
+ * Upstream has this one already. rubocop-ast's master carries the same fold,
+ * `(token.begin_pos * size) + i`, in a `sort_tokens` helper, unreleased as of
+ * 1.50.0 - so this patch retires with the next rubocop-ast release: bump the
+ * pin, rebuild the artifact, delete `SORTED_TOKENS_PATCH`. It is kept in the
+ * meantime rather than pointed at a git ref, because the artifact is built
+ * from the pin and the conformance tests activate the same version natively.
+ *
  * ## 2. The line table, on every file with a multi-byte character in it
  *
  * The same bug the syntax_tree patch fixes, one layer down. Every `.line` and
@@ -70,6 +77,13 @@
  * it goes on reading the way stock reads it - though `Buffer#source=` raises on
  * one before `line_begins` could see it, so that branch is belt and braces.
  * The same table builds in ~25 ms.
+ *
+ * Upstream does not have this one: parser's master still walks with `index`,
+ * as of 3.3.12.0. It is the patch worth proposing there, and the gem already
+ * concedes the point elsewhere - `raw_source=` keeps a UTF-32LE copy in
+ * `@slice_source` precisely so that `slice` indexes a non-ASCII source in
+ * constant time; `line_begins` never got the same treatment. Until a release
+ * carries a fix, this stays.
  */
 
 /**
