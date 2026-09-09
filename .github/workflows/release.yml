@@ -62,15 +62,17 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
+      # No NPM_TOKEN anywhere in this job on purpose - its absence is what selects the OIDC
+      # path, in both changesets/action and npm itself. Setting it, even to an empty string,
+      # puts an auth line in ~/.npmrc and takes trusted publishing back out of the picture.
+      #
+      # No GITHUB_TOKEN in the environment either: v2 reads the token from the `github-token`
+      # input, which already defaults to the job's `github.token`, and *errors* if the
+      # environment variable is set to anything else.
       - name: Create the release pull request, or publish
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
-          version: bun run release:version
-          publish: bun run release:publish
-          title: 'chore: release'
-          commit: 'chore: release'
-        env:
-          # No NPM_TOKEN on purpose - its absence is what selects the OIDC path, in both
-          # changesets/action and npm itself. Setting it, even to an empty string, puts an
-          # auth line in ~/.npmrc and takes trusted publishing back out of the picture.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          version-script: bun run release:version
+          publish-script: bun run release:publish
+          pr-title: 'chore: release'
+          commit-message: 'chore: release'
