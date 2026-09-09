@@ -225,6 +225,30 @@ end
   TEXT
 end
 `,
+  // Two heredocs on one line, with arguments after them and interpolation in
+  // one body: the token list arrives out of position order here, so this is the
+  // sample that runs the sort src/rubocop-perf-patch.ts replaces - through the
+  // real binary on the native side, and through the patched method on ours.
+  'heredocs interleaving the token stream': `def render(name)
+  template(<<~HTML,<<~CSS, name)
+    <p>#{name}</p>
+  HTML
+    p { color: red }
+  CSS
+end
+`,
+  // An accented character ahead of the line the correction lands on: the
+  // sample for the second patch in src/rubocop-perf-patch.ts, which builds the
+  // line table every cop's `.line` reads from by a different walk when the
+  // source is not ASCII. The native side builds it the gem's way.
+  'multi-byte characters ahead of a correction': `class Client
+  LABEL = "café"
+  attr_reader :base_url
+  def to_s
+    @base_url
+  end
+end
+`,
   'client class': `# frozen_string_literal: true
 require "json"
 module Scalar

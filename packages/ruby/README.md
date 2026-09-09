@@ -342,7 +342,7 @@ why the RuboCop this ships and the CRuby it runs on move together.
 
 ---
 
-## What is not stock: three fixes for `case`/`in`, and one for speed
+## What is not stock: three fixes for `case`/`in`, and three for speed
 
 syntax_tree 6.3.0 has a family of bugs in pattern matching, and they all end the
 same way — source that parsed on the way in comes back out as source Ruby cannot
@@ -353,9 +353,10 @@ files. `src/stree-patch.ts` carries the fixes, applied by reopening the classes
 at boot: the artifact stays stock syntax_tree 6.3.0, and retiring a fix once it
 lands upstream is deleting a constant.
 
-A fourth patch, in `src/stree-perf-patch.ts`, is applied the same way and is
-listed separately below because it changes no output at all — only how long the
-gem takes to produce it.
+Three more patches — one in `src/stree-perf-patch.ts`, two in
+`src/rubocop-perf-patch.ts` — are applied the same way and are listed separately
+below because they change no output at all — only how long a gem takes to
+produce it.
 
 ### 1. A pattern that *ends* in an endless range
 
@@ -487,6 +488,70 @@ pass off, which is the second row of the table in
 term, not every one: formatting a large file is still superlinear in its size,
 and still somewhat slower with a multi-byte character in it than without.
 
+### 5. The token sort that runs on every file with a heredoc in it
+
+The other patch that is not a bug fix, and the only one applied to RuboCop
+rather than to syntax_tree. Every Layout cop that works from tokens asks
+`ProcessedSource#sorted_tokens` for them, and the first to ask pays for the
+sort. Usually there is nothing to sort: the tokens arrive in position order and
+a linear check hands them straight back. A heredoc breaks that — its body is
+lexed where it sits, after the tokens for the rest of the line that opened it —
+so any file with one takes the other branch, which is a stable sort keyed on a
+two-element array, `[begin_pos, index]`. `sort_by` compares Integers inline and
+Arrays through a method call into `Array#<=>`, which is the difference between
+~9 ms and ~150 ms on one 49 KB file with 4,738 tokens. RuboCop parses once per
+correction round and sorts once per parse, so over a 545 KB corpus of 60 files
+that sort was 16.5% of everything the formatter did.
+
+`src/rubocop-perf-patch.ts` folds the pair into one Integer, `begin_pos * count
++ index`, which orders the same way key for key — position first, index among
+equals, no ties — and compares as an Integer. Everything else in the method,
+the check that decides whether to sort and the memoisation around it, is the
+gem's own. `src/rubocop-perf-patch.test.ts` asserts the tokens come out object
+for object in the order the gem's expression puts them, on five heredoc shapes
+that each reach the sort, and `test/rubocop-conformance.test.ts` runs one of
+them through the real `rubocop` binary.
+
+Output is unchanged, checked the same way as the patch above: a `bun run
+ruby:bench --only corpus` comparison over 206 files of real Ruby (2.0 MB, from
+rubygems, bundler and the standard library, 135 of them with a heredoc) hashes
+every one the same. Formatting them all in one process under Node, with the
+gem's own method restored for the first run and nothing else changed, goes from
+121.0 s to 101.3 s. A file without a heredoc never reaches the sort and does
+not move.
+
+rubocop-ast's master already carries the same fold, unreleased as of 1.50.0, so
+this patch retires with the next release: bump the pin, rebuild the artifact,
+delete the constant.
+
+### 6. The line table that is quadratic on a multi-byte source
+
+The same bug as [the comment walk](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source),
+one layer down. Every `.line` and `.column` a cop asks of a node, a token or a
+comment goes through `Parser::Source::Buffer#line_begins`, the table of
+character offsets at which each line starts. The gem builds it once per buffer
+by walking the source with `String#index("\n", from)`, and `index` with a
+starting offset is constant time only while CRuby can treat the string as one
+byte per character — so one accented letter anywhere in the file makes the
+table cost O(size × lines) to build. RuboCop builds it again on every
+correction round, because each round parses the corrected source into a new
+buffer. On one 589 KB file with 17,401 lines and an accent on 729 of them, the
+table took 9.0 s to build, four rounds paid for it four times, and that was most
+of the 51 s the file took to format.
+
+`src/rubocop-perf-patch.ts` walks the source once with `each_line` instead,
+adding each line's character length to a running position — linear whatever
+the encoding, and the same table entry for entry, sentinel included. An ASCII
+source keeps the gem's own loop, which is already linear there. The same table
+builds in ~25 ms, and the file formats in 27.4 s instead of 52.1 s. parser's
+master still has the quadratic walk as of 3.3.12.0, so unlike the sort above
+this one has no retirement date yet — it is the fix worth proposing upstream.
+
+With both patches in place, the 206-file corpus above goes from 120.5 s to
+79.2 s under Node, again with the gems' own methods restored for the first run
+and every output hash the same. Four of its files carry a multi-byte character
+and 135 a heredoc; a file with neither does not move.
+
 ### How narrow the divergence is
 
 Measured rather than asserted: formatting the rubocop (1.74 and 1.81),
@@ -555,7 +620,8 @@ is a cached module-level value rather than an object you have to construct.
 | `src/format.ts` | `createFormat` | The public entry point: recycle if needed, validate options, write input, format. |
 | `src/boot-vm.ts` | `createBootVm`, `WORK_DIR` | Instantiates the pre-initialized CRuby, patches syntax_tree, and caches the result. |
 | `src/stree-patch.ts` | `STREE_PATCHES` | The fixes applied on top of the gem, and why each is safe. |
-| `src/stree-perf-patch.ts` | `STREE_PERF_PATCHES` | The one patch that changes what the gem costs rather than what it writes, and the evidence that output is unchanged. |
+| `src/stree-perf-patch.ts` | `STREE_PERF_PATCHES` | The syntax_tree patch that changes what the gem costs rather than what it writes, and the evidence that output is unchanged. |
+| `src/rubocop-perf-patch.ts` | `RUBOCOP_PERF_PATCHES` | The same for the RuboCop pass: rubocop-ast's token sort, keyed so it compares Integers rather than Arrays, and parser's line table, built in one walk on a multi-byte source. |
 | `src/rubocop.ts` | `RUBOCOP_SETUP`, `buildRuboCopConfig` | The Layout pass: how RuboCop is driven, and which of its parts are used. `RUBOCOP_SETUP` is evaluated at build time, into the artifact. |
 | `src/wasi-shims.ts` | `SHIM_MOUNT_PATH`, `SHIM_FILES`, `createShimDirectory` | Stand-ins for the two stdlib extensions wasip1 cannot provide. |
 | `src/compile-artifact.ts` | `compileArtifact` | Locates, decompresses and compiles `ruby_fmt.wasm.br`, at most once per process. |
