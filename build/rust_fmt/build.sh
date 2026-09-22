@@ -20,9 +20,9 @@ cd "$(dirname "$0")"
 # move together and neither moves alone. RUST_COMMIT must be the commit the
 # nightly was built from - `rustc +nightly-<date> -vV` prints it - because the
 # rustc_private crates are built from that source and loaded by that compiler.
-RUST_NIGHTLY="${RUST_NIGHTLY:-nightly-2026-07-19}"
-RUST_COMMIT="${RUST_COMMIT:-eff8269f797067c30555e77f160ec84c0ed15cd9}"
-RUST_VERSION="${RUST_VERSION:-1.99.0}"
+RUST_NIGHTLY="${RUST_NIGHTLY:-nightly-2026-09-22}"
+RUST_COMMIT="${RUST_COMMIT:-1303417c416e1595173d9689e7394c31e136ae95}"
+RUST_VERSION="${RUST_VERSION:-1.100.0}"
 
 TARGET="wasm32-wasip1"
 CHECKOUT="$PWD/rust"
@@ -106,8 +106,8 @@ cargo build -p rustc_parse -p rustc_expand -p rustc_ast_pretty \
   --target "$TARGET" --release
 
 echo "==> collecting externs"
-WASM_DEPS="$CHECKOUT/target/$TARGET/release/deps"
-HOST_DEPS="$CHECKOUT/target/release/deps"
+WASM_DEPS="$(python3 "$OLDPWD/collect-artifacts.py" deps "$CHECKOUT/target/$TARGET/release" "$CHECKOUT/target/wasm-deps")"
+HOST_DEPS="$(python3 "$OLDPWD/collect-artifacts.py" deps "$CHECKOUT/target/release" "$CHECKOUT/target/host-deps")"
 PROC_MACROS="$CHECKOUT/target/proc-macros"
 
 EXTERNS="$(python3 "$OLDPWD/collect-artifacts.py" externs "$WASM_DEPS")"

@@ -8,9 +8,9 @@ Built by `build/rust_fmt/build.sh`; the versions are pinned there.
 
 | Component | Version | License | Text |
 |---|---|---|---|
-| rustfmt | 1.9.0-nightly, from the pinned rust commit | MIT OR Apache-2.0 | `rust-LICENSE-MIT`, `rust-LICENSE-APACHE` |
+| rustfmt | 1.10.0-nightly, from the pinned rust commit | MIT OR Apache-2.0 | `rust-LICENSE-MIT`, `rust-LICENSE-APACHE` |
 | `rustc_parse`, `rustc_expand`, `rustc_ast`, `rustc_span`, `rustc_errors`, `rustc_session`, `rustc_data_structures` and the rest of the compiler crates they pull in | same commit | MIT OR Apache-2.0 | same text |
-| Rust standard library | 1.99.0-nightly | MIT OR Apache-2.0 | same text |
+| Rust standard library | 1.100.0-nightly | MIT OR Apache-2.0 | same text |
 | ~85 crates.io dependencies of the above | pinned by the rust checkout's `Cargo.lock` | MIT OR Apache-2.0, or MIT, or Unlicense OR MIT | same text |
 | `option-ext` | 0.2.0 | MPL-2.0 | `option-ext-LICENSE-MPL-2.0` |
 
