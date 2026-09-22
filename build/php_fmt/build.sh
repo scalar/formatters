@@ -17,7 +17,7 @@ cd "$(dirname "$0")"
 # Pinned rather than "latest" so a rebuild is reproducible and a version bump is
 # a reviewable diff. The conformance test resolves this same version from the
 # artifact, so the native side and the wasm side can never silently disagree.
-PCF_VERSION="${PCF_VERSION:-3.95.18}"
+PCF_VERSION="${PCF_VERSION:-3.95.27}"
 OUT="../../packages/php/php_fmt.phar.br"
 URL="https://github.com/PHP-CS-Fixer/PHP-CS-Fixer/releases/download/v${PCF_VERSION}/php-cs-fixer.phar"
 

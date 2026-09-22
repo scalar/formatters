@@ -519,7 +519,7 @@ Exception, so a paid product may ship a copy.
 
 Reference: **PHP CS Fixer**. Status: exact.
 
-Runs the official php-cs-fixer 3.95.18 phar, unmodified, on actual PHP 8.4
+Runs the official php-cs-fixer 3.95.27 phar, unmodified, on actual PHP 8.4
 compiled to WebAssembly. It works because PHP CS Fixer is pure PHP and a
 maintained wasm PHP already exists, so there is nothing to compile.
 

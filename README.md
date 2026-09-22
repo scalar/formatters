@@ -370,7 +370,7 @@ ship a copy.
 
 ## PHP
 
-See [`packages/php`](packages/php). It runs the real PHP CS Fixer 3.95.18 - the
+See [`packages/php`](packages/php). It runs the real PHP CS Fixer 3.95.27 - the
 official phar, unmodified - on real PHP 8.4 compiled to WebAssembly, so output
 is byte-identical to the same phar on a native PHP. A conformance test asserts
 that, and the build was checked against 1117 real PHP files (PHP CS Fixer's own
