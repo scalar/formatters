@@ -30,7 +30,7 @@ Composer, no native binaries, no postinstall downloads.
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
-| [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.4 MB | ✅ exact | ✅ |
+| [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.5 MB | ✅ exact | ✅ |
 | [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact | — |
 | [`@scalar/rust-fmt`](packages/rust) | rustfmt | 1.3 MB | ✅ exact | ✅ |
 
@@ -338,8 +338,8 @@ traps under AOT, so the error text is assembled from its parts instead.
 
 ## Swift
 
-See [`packages/swift`](packages/swift). It runs the real swift-format 603.0.0 -
-the release that pairs with Swift 6.3, swift-syntax's parser included - compiled
+See [`packages/swift`](packages/swift). It runs the real swift-format 604.0.0 -
+the release that pairs with Swift 6.4, swift-syntax's parser included - compiled
 by the **official** [Swift SDK for WebAssembly](https://www.swift.org/documentation/articles/wasm-getting-started.html)
 from swift.org rather than the SwiftWasm fork. A conformance test asserts
 byte-identical output against a native `swift-format`, and the build was checked

@@ -12,15 +12,15 @@
 #
 # Linux x86_64/aarch64 only. The Swift SDK for WebAssembly is cross-platform,
 # but the *host* toolchain URL below is a Linux tarball; on macOS install a
-# matching Swift 6.3.3 toolchain and set SWIFT_BIN to its bin directory.
+# matching Swift 6.4.0 toolchain and set SWIFT_BIN to its bin directory.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# swift-format's release tags track Swift's own: 603.0.0 is the Swift 6.3 one.
+# swift-format's release tags track Swift's own: 604.0.0 is the Swift 6.4 one.
 # The toolchain, the Swift SDK and swift-format all have to agree - from Swift
 # 6.1 the SDK's version must match the toolchain's exactly.
-SWIFT_VERSION="${SWIFT_VERSION:-6.3.3}"
-SWIFT_FORMAT_VERSION="${SWIFT_FORMAT_VERSION:-603.0.0}"
+SWIFT_VERSION="${SWIFT_VERSION:-6.4.0}"
+SWIFT_FORMAT_VERSION="${SWIFT_FORMAT_VERSION:-604.0.0}"
 BINARYEN_VERSION="${BINARYEN_VERSION:-123}"
 
 TOOLCHAIN="$PWD/toolchain"
@@ -96,16 +96,21 @@ fi
 # -Xlinker gets "invalid target architecture: exec-model=reactor". It makes the
 # module export `_initialize` rather than `_start`, so the host instantiates
 # once and calls `run` per format instead of rebuilding the memory image.
-swift build \
-  --swift-sdk "$SDK_ID" \
-  -c release \
-  -Xswiftc -Osize \
-  -Xswiftc -gnone \
-  -Xlinker -z -Xlinker stack-size=16777216 \
-  -Xswiftc -Xclang-linker -Xswiftc -mexec-model=reactor \
+SWIFT_BUILD_FLAGS=(
+  --swift-sdk "$SDK_ID"
+  -c release
+  -Xswiftc -Osize
+  -Xswiftc -gnone
+  -Xlinker -z -Xlinker stack-size=16777216
+  -Xswiftc -Xclang-linker -Xswiftc -mexec-model=reactor
   -Xlinker --export=run
+)
+swift build "${SWIFT_BUILD_FLAGS[@]}"
 
-RAW=".build/wasm32-unknown-wasip1/release/swift_fmt.wasm"
+# Asked for rather than spelled out: Swift 6.4 made swift-build the default
+# build system, and it lays products out under .build/out/Products/ where the
+# native one used .build/wasm32-unknown-wasip1/release/.
+RAW="$(swift build "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)/swift_fmt.wasm"
 
 # -Os here is worth ~24MB on top of what -Osize and -gnone already save, mostly
 # by stripping the debug sections SwiftPM emits regardless.

@@ -8,11 +8,11 @@ Built by `build/swift_fmt/build.sh`; the versions are pinned there.
 
 | Component | Version | License | Text |
 |---|---|---|---|
-| swift-format | 603.0.0 | Apache-2.0 with Runtime Library Exception | `swift-format-LICENSE` |
+| swift-format | 604.0.0 | Apache-2.0 with Runtime Library Exception | `swift-format-LICENSE` |
 | swift-syntax | pinned by swift-format's `Package.resolved` | Apache-2.0 with Runtime Library Exception | same text |
 | swift-markdown | pinned by swift-format's `Package.resolved` | Apache-2.0 with Runtime Library Exception | same text |
 | swift-cmark | pinned by swift-format's `Package.resolved` | BSD-2-Clause | `swift-cmark-LICENSE` |
-| Swift standard library and Foundation | 6.3.3 | Apache-2.0 with Runtime Library Exception | `swift-runtime-LICENSE` |
+| Swift standard library and Foundation | 6.4.0 | Apache-2.0 with Runtime Library Exception | `swift-runtime-LICENSE` |
 
 Every one of these is permissive and asks only for attribution.
 
