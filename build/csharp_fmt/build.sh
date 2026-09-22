@@ -15,7 +15,7 @@ DOTNET_VERSION="${DOTNET_VERSION:-10.0}"
 CSHARPIER_VERSION="${CSHARPIER_VERSION:-1.3.0}"
 # Ships the wasmconsole template. The templates are not part of the SDK or the
 # workload; they are a separate NuGet package, versioned per TFM.
-TEMPLATES_VERSION="${TEMPLATES_VERSION:-10.0.10}"
+TEMPLATES_VERSION="${TEMPLATES_VERSION:-10.0.12}"
 
 TOOLCHAIN="$PWD/toolchain"
 OUT_DIR="../../packages/csharp"

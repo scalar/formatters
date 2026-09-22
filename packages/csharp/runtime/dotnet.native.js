@@ -30,11 +30,11 @@ Module['ready'] = new Promise((resolve, reject) => {
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: /tmp/claude-0/-home-user-formatters/7f25f6f1-5402-59e5-bf40-370ba0c4ab3e/scratchpad/dotnet/packs/Microsoft.NETCore.App.Runtime.Mono.browser-wasm/10.0.10/runtimes/browser-wasm/native/src/es6/dotnet.es6.pre.js
+// include: /home/user/formatters/build/csharp_fmt/toolchain/dotnet/packs/Microsoft.NETCore.App.Runtime.Mono.browser-wasm/10.0.12/runtimes/browser-wasm/native/src/es6/dotnet.es6.pre.js
 if (_nativeModuleLoaded) throw new Error("Native module already loaded");
 _nativeModuleLoaded = true;
 createDotnetRuntime = Module = moduleArg(Module);
-// end include: /tmp/claude-0/-home-user-formatters/7f25f6f1-5402-59e5-bf40-370ba0c4ab3e/scratchpad/dotnet/packs/Microsoft.NETCore.App.Runtime.Mono.browser-wasm/10.0.10/runtimes/browser-wasm/native/src/es6/dotnet.es6.pre.js
+// end include: /home/user/formatters/build/csharp_fmt/toolchain/dotnet/packs/Microsoft.NETCore.App.Runtime.Mono.browser-wasm/10.0.12/runtimes/browser-wasm/native/src/es6/dotnet.es6.pre.js
 
 
 // Sometimes an existing Module object exists with properties
@@ -5073,7 +5073,7 @@ function createWasm() {
 
   FS.createPreloadedFile = FS_createPreloadedFile;
   FS.staticInit();Module["FS_createPath"] = FS.createPath;Module["FS_createDataFile"] = FS.createDataFile;Module["FS_createPath"] = FS.createPath;Module["FS_createDataFile"] = FS.createDataFile;Module["FS_createPreloadedFile"] = FS.createPreloadedFile;Module["FS_unlink"] = FS.unlink;Module["FS_createLazyFile"] = FS.createLazyFile;Module["FS_createDevice"] = FS.createDevice;;
-DOTNET.setup({ wasmEnableSIMD: true,wasmEnableEH: true,enableAotProfiler: false, enableDevToolsProfiler: false, enableLogProfiler: false, enableEventPipe: false, runAOTCompilation: true, wasmEnableThreads: false, gitHash: "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd", });;
+DOTNET.setup({ wasmEnableSIMD: true,wasmEnableEH: true,enableAotProfiler: false, enableDevToolsProfiler: false, enableLogProfiler: false, enableEventPipe: false, runAOTCompilation: true, wasmEnableThreads: false, gitHash: "95017c711e6afc1085133d440e42b4bd78155701", });;
 var wasmImports = {
   /** @export */
   __assert_fail: ___assert_fail,
