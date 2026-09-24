@@ -30,7 +30,7 @@ Composer, no native binaries, no postinstall downloads.
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
-| [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.4 MB | ✅ exact | ✅ |
+| [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.5 MB | ✅ exact | ✅ |
 | [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact | — |
 | [`@scalar/rust-fmt`](packages/rust) | rustfmt | 1.3 MB | ✅ exact | ✅ |
 
@@ -131,7 +131,7 @@ arrives: fetched rather than read from disk.
 
 **Run it in a worker.** Every one of these compiles multi-megabyte wasm and holds
 tens to hundreds of megabytes of linear memory. On the main thread that is a
-frozen tab, and Swift — 12.4 MB over the wire, 48.7 MB of wasm — is one you want
+frozen tab, and Swift — 12.5 MB over the wire, 49.4 MB of wasm — is one you want
 behind an explicit user action rather than on page load.
 
 ### Where the bytes come from
@@ -354,12 +354,13 @@ calls. The behaviour that is genuinely missing is `.swift-format` discovery,
 since there is no filesystem to search, so a project's configuration has to be
 read and passed in.
 
-It ships as a 12.4 MB `swift_fmt.wasm.br`, built by
+It ships as a 12.5 MB `swift_fmt.wasm.br`, built by
 [`build/swift_fmt/build.sh`](build/swift_fmt/build.sh), which downloads its own
 Swift toolchain and SDK. It is committed, so a fresh clone needs nothing extra;
 `bun run swift:build` rebuilds it. Three times the size of the other packages,
 almost all of it swift-syntax - `-Osize` and `wasm-opt -Oz` were both tried and
-moved the compressed total by under 50KB.
+moved the compressed total by under 60KB, so it is built with `-O` instead, which
+spends about 20% less time formatting.
 
 Two caveats worth knowing. The module is a **WASI reactor**: instantiated once,
 then `run` per format, which measured 2.5x faster than a fresh instance each

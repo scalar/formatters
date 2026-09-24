@@ -42,8 +42,8 @@ const init = async (options?: InitOptions): Promise<void> => {
  * `formatSync` is here too, for callers whose seams cannot await. It needs
  * `await init()` first, which is the one thing booting can never avoid.
  *
- * This is the largest artifact in the repo by a wide margin: 12.4MB over the
- * wire, 48.7MB of wasm to compile, and ~75MB of linear memory once warm. Run it
+ * This is the largest artifact in the repo by a wide margin: 12.5MB over the
+ * wire, 49.4MB of wasm to compile, and ~75MB of linear memory once warm. Run it
  * in a worker, and load it behind an explicit user action rather than on page
  * load - `init` exists partly so that download can be scheduled deliberately.
  */

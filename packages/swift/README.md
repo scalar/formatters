@@ -86,14 +86,14 @@ await init({ url: '/assets/swift_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 48.7 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 49.4 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 This is the largest artifact in the repo by a wide margin. Load it behind an
 explicit user action rather than on page load, and give it a worker — `init`
 exists partly so that download can be scheduled deliberately.
 
-The browser reads the same brotli artifact as Node (12.4 MB over the wire) and
+The browser reads the same brotli artifact as Node (12.5 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -163,7 +163,11 @@ nor consumers ever need one.
 
 It is larger than the other packages here (Ruby 3.8MB, Java 4.4MB) and that is
 mostly swift-syntax, which is a full Swift parser. `-Osize` and `wasm-opt -Oz`
-were both tried; neither moved the compressed size by more than 50KB.
+were both tried; neither moved the compressed size by more than 60KB. So it is
+built for speed instead, with `-O` and `wasm-opt -O3`: formatting 1,296 files of
+real Swift (12.4MB of source, from swift-format, swift-syntax, swift-markdown and
+swift-argument-parser) in one process takes 27.1s rather than the 33.7s it took
+under `-Osize`, for 60KB more over the wire and byte-identical output.
 
 Two things about the build are load-bearing rather than incidental:
 
