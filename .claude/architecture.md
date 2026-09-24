@@ -509,7 +509,9 @@ swift-syntax with "unavailable in embedded Swift".
 
 **It is 13MB, and that is mostly swift-syntax.** Three times the other
 packages. `-Osize` and `wasm-opt -Oz` were both tried and neither moved the
-compressed size by more than 50KB.
+compressed size by more than 60KB, so the build optimises for speed instead:
+`-O` and `wasm-opt -O3` spend about 20% less time formatting than `-Osize` did,
+for 60KB more.
 
 **Licensing is unrestricted,** unlike the Java package: swift-format, the Swift
 standard library and Foundation are all Apache-2.0 with the Runtime Library

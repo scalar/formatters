@@ -96,10 +96,17 @@ fi
 # -Xlinker gets "invalid target architecture: exec-model=reactor". It makes the
 # module export `_initialize` rather than `_start`, so the host instantiates
 # once and calls `run` per format instead of rebuilding the memory image.
+#
+# -O rather than -Osize: 1,296 files of real Swift format in 27.1s rather than
+# 33.7s, for 60KB more compressed artifact, with byte-identical output against
+# native swift-format. Almost all of a format's time is spent inside
+# swift-syntax and SwiftFormat rather than in the host, so this is the knob that
+# moves it. It also leaves more stack: a chain of `||` operands traps at ~1,500
+# rather than ~1,200.
 SWIFT_BUILD_FLAGS=(
   --swift-sdk "$SDK_ID"
   -c release
-  -Xswiftc -Osize
+  -Xswiftc -O
   -Xswiftc -gnone
   -Xlinker -z -Xlinker stack-size=16777216
   -Xswiftc -Xclang-linker -Xswiftc -mexec-model=reactor
@@ -112,9 +119,11 @@ swift build "${SWIFT_BUILD_FLAGS[@]}"
 # native one used .build/wasm32-unknown-wasip1/release/.
 RAW="$(swift build "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)/swift_fmt.wasm"
 
-# -Os here is worth ~24MB on top of what -Osize and -gnone already save, mostly
-# by stripping the debug sections SwiftPM emits regardless.
-"$BINARYEN_HOME/bin/wasm-opt" -Os --strip-debug --strip-producers "$RAW" -o swift_fmt.opt.wasm
+# This pass is worth ~24MB on top of what -gnone already saves, mostly by
+# stripping the debug sections SwiftPM emits regardless. -O3 rather than -Os
+# because it is no larger once compressed and never slower; the level matters
+# far less here than swiftc's does.
+"$BINARYEN_HOME/bin/wasm-opt" -O3 --strip-debug --strip-producers "$RAW" -o swift_fmt.opt.wasm
 
 # Ship it brotli-compressed: 51MB of wasm packs to ~13MB. Quality 11 takes a few
 # minutes here and costs the consumer ~300ms of decompression once per process.
