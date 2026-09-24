@@ -21,7 +21,7 @@ gem "syntax_tree", "6.3.0"
 # carries prism 1.2.0, so on that build the whole 1.75+ line simply fails to
 # load; Ruby 4.0.0 carries 1.7.0, which is why the bump was the price of
 # admission for a rubocop newer than 1.74.0.
-gem "rubocop", "1.81.6"
+gem "rubocop", "1.91.0"
 gem "rubocop-ast", "1.50.0"
 
 # Two gems CRuby already carries, kept out of the bundle by placeholder

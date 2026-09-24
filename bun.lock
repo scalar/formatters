@@ -42,16 +42,16 @@
       "name": "@scalar/php-fmt",
       "version": "0.4.0",
       "dependencies": {
-        "@php-wasm/node-8-4": "3.1.47",
-        "@php-wasm/universal": "3.1.47",
+        "@php-wasm/node-8-4": "3.1.55",
+        "@php-wasm/universal": "3.1.55",
       },
     },
     "packages/ruby": {
       "name": "@scalar/ruby-fmt",
-      "version": "0.6.2",
+      "version": "0.6.3",
       "dependencies": {
         "@bjorn3/browser_wasi_shim": "^0.4.2",
-        "@ruby/wasm-wasi": "^2.8.1",
+        "@ruby/wasm-wasi": "^2.10.1",
         "brotli-dec-wasm": "^2.3.2",
       },
     },
@@ -139,21 +139,21 @@
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
-    "@php-wasm/logger": ["@php-wasm/logger@3.1.47", "", {}, "sha512-iPY70KxsxrVvPClIBcSO9bPXXtzPNVQQDtAPVhs9yGVHTt8QgFNIX6QDSBw9PZU8Ce2MfJPqiz4+ZfhKx0UMUw=="],
+    "@php-wasm/logger": ["@php-wasm/logger@3.1.55", "", {}, "sha512-IQ5pArAe71zmd4VOzzO3wO9fC3xr/HGvfQK35plLOInFxCmxXCc0wD6rK17HqyUyMekijjTnvci4Iv7yBtz/KA=="],
 
-    "@php-wasm/node-8-4": ["@php-wasm/node-8-4@3.1.47", "", { "dependencies": { "@php-wasm/universal": "3.1.47", "wasm-feature-detect": "1.8.0" } }, "sha512-w7z53feuE3HmBWyx0d5KNj2CvA3ZxPdy2s6Xp7xhFSlPjLnKuZiHH5rrvkzj9EIcKBwPWq8ZBjioqu4wob6NLw=="],
+    "@php-wasm/node-8-4": ["@php-wasm/node-8-4@3.1.55", "", { "dependencies": { "@php-wasm/universal": "3.1.55", "wasm-feature-detect": "1.8.0" } }, "sha512-TRha7zpYGEhuB9YxXq4ChAtSmAAUcSYJ3ubQoGLsE4k5VonMN8tgyougAqd5ds3hZ9V3uEHZg+Bg1R3duURqVg=="],
 
-    "@php-wasm/progress": ["@php-wasm/progress@3.1.47", "", { "dependencies": { "@php-wasm/logger": "3.1.47" } }, "sha512-Q/9amG/KyaYtfxCp4XLBI4s8d1ucx9Js0c/m+yo3ToOLkdpo3gZJq9J+JGJm7aRebNpErorXlbhD2yzNQqekZg=="],
+    "@php-wasm/progress": ["@php-wasm/progress@3.1.55", "", { "dependencies": { "@php-wasm/logger": "3.1.55" } }, "sha512-vLcUcz2suLUEoCuKkoBpkQyn2I5O0S4vr6dwrq/7Ne7UN0bY3zjtg0VUCV+3ktzIo3IBVV980H3xig7wQsOGYQ=="],
 
-    "@php-wasm/stream-compression": ["@php-wasm/stream-compression@3.1.47", "", { "dependencies": { "@php-wasm/util": "3.1.47" } }, "sha512-aOJpzBiM2OGUhG2mRAmBUXvc2tDAqv7RnZ8lGq50zrh4T9pw9IJ80AuszXmaXH5FYg8LLPg30/P2+DGBhnCoAw=="],
+    "@php-wasm/stream-compression": ["@php-wasm/stream-compression@3.1.55", "", { "dependencies": { "@php-wasm/util": "3.1.55" } }, "sha512-LwBbLWD98ZKghUUh8elTu0/IzW7MJuBvE8nxAjqT8TCnE5xQ23XG3a15p8GtDdzeNtSyrMIg6AwHQCBSA0fHjQ=="],
 
-    "@php-wasm/universal": ["@php-wasm/universal@3.1.47", "", { "dependencies": { "@php-wasm/logger": "3.1.47", "@php-wasm/progress": "3.1.47", "@php-wasm/stream-compression": "3.1.47", "@php-wasm/util": "3.1.47", "ini": "4.1.2" } }, "sha512-YftaPLpYV7BetrG7aKp38g9QOLLp85GHX7yA3t2V+IDyt8T3Fmkv4bxhBFS88Oyz0hTVSORZTZWIZVxYrgSjjw=="],
+    "@php-wasm/universal": ["@php-wasm/universal@3.1.55", "", { "dependencies": { "@php-wasm/logger": "3.1.55", "@php-wasm/progress": "3.1.55", "@php-wasm/stream-compression": "3.1.55", "@php-wasm/util": "3.1.55", "ini": "4.1.2" } }, "sha512-Ogk8uPEgI9/isVBX9p0kgUzh6RVJgX77qw2XaEKvjuiSlg5pmjVGAXzeizKKHpII2M6fRginheZpRixOTTiT4Q=="],
 
-    "@php-wasm/util": ["@php-wasm/util@3.1.47", "", {}, "sha512-3Nkpkuz0bdPpfU4CVl9wOe73qfT3hxdj8/4Q46E+um0D69CQaaWhyBsWtx0U4fuL6AIvnpitw50CsrL+2E7Dlg=="],
+    "@php-wasm/util": ["@php-wasm/util@3.1.55", "", {}, "sha512-gJGWbaownFzbJiBBTaEU0voZ79sQ/oPL7XLEvtqEAtv+mP0DLcxReZHiHTon6Ry0ta1GK477VV6uPweseiXucg=="],
 
     "@pnpm/deps.graph-sequencer": ["@pnpm/deps.graph-sequencer@1100.0.1", "", {}, "sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A=="],
 
-    "@ruby/wasm-wasi": ["@ruby/wasm-wasi@2.8.1", "", { "dependencies": { "@bjorn3/browser_wasi_shim": "^0.3.0", "tslib": "^2.8.1" } }, "sha512-xtisFn9V2U45nE2goni9UAd8LERHAzwFEsQk3+mG6+hXf4imYfDRRXnBqX6jERR0rysCH15IDzEkxjMQmIZ3qA=="],
+    "@ruby/wasm-wasi": ["@ruby/wasm-wasi@2.10.1", "", { "dependencies": { "@bjorn3/browser_wasi_shim": "^0.4.2", "tslib": "^2.8.1" } }, "sha512-OGSxxDraRq8alWQsWqDJQsaAavQwhwIVRkDozpPucjD1tUofMF6n99Y8Ia1bpDhOAXCwiNIHqhumfqFw0H0DZw=="],
 
     "@scalar/csharp-fmt": ["@scalar/csharp-fmt@workspace:packages/csharp"],
 
@@ -358,8 +358,6 @@
     "wasm-feature-detect": ["wasm-feature-detect@1.8.0", "", {}, "sha512-zksaLKM2fVlnB5jQQDqKXXwYHLQUVH9es+5TOOHwGOVJOCeRBCiPjwSg+3tN2AdTCzjgli4jijCH290kXb/zWQ=="],
 
     "yaml": ["yaml@2.9.0", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA=="],
-
-    "@ruby/wasm-wasi/@bjorn3/browser_wasi_shim": ["@bjorn3/browser_wasi_shim@0.3.0", "", {}, "sha512-FlRBYttPRLcWORzBe6g8nmYTafBkOEFeOqMYM4tAHJzFsQy4+xJA94z85a9BCs8S+Uzfh9LrkpII7DXr2iUVFg=="],
 
     "anymatch/picomatch": ["picomatch@2.3.2", "", {}, "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA=="],
 

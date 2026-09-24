@@ -52,7 +52,7 @@
     "prepack": "node ../../scripts/check-publishable.ts"
   },
   "dependencies": {
-    "@php-wasm/node-8-4": "3.1.47",
-    "@php-wasm/universal": "3.1.47"
+    "@php-wasm/node-8-4": "3.1.55",
+    "@php-wasm/universal": "3.1.55"
   }
 }

@@ -124,7 +124,7 @@ changes between versions, so a `rustfmt` from another toolchain is skipped
 rather than compared — comparing it would fail for the wrong reason. To run it:
 
 ```bash
-RUSTFMT=$(rustup which --toolchain nightly-2026-07-19 rustfmt) bun test packages/rust
+RUSTFMT=$(rustup which --toolchain nightly-2026-09-22 rustfmt) bun test packages/rust
 ```
 
 ## The one behaviour left out is configuration discovery

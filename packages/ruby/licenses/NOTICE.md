@@ -12,16 +12,16 @@ Built by `build/ruby_fmt/build.sh`; the gem versions are pinned in
 | CRuby | 4.0.0 | Ruby License / BSD-2-Clause | `cruby-COPYING`, `cruby-BSDL`, `cruby-LEGAL` |
 | syntax_tree | 6.3.0 | MIT | `syntax_tree-LICENSE` |
 | prettier_print | 1.2.1 | MIT | `prettier_print-LICENSE` |
-| rubocop | 1.81.6 | MIT | `rubocop-LICENSE.txt` |
+| rubocop | 1.91.0 | MIT | `rubocop-LICENSE.txt` |
 | rubocop-ast | 1.50.0 | MIT | `rubocop-ast-LICENSE.txt` |
 | parser | 3.3.12.0 | MIT | `parser-LICENSE.txt` |
 | ast | 2.4.3 | MIT | `ast-LICENSE.MIT` |
 | racc | 1.8.1 | Ruby License / BSD-2-Clause | `racc-COPYING` |
-| regexp_parser | 2.12.0 | MIT | `regexp_parser-LICENSE` |
-| unicode-display_width | 3.2.0 | MIT | `unicode-display_width-MIT-LICENSE.txt` |
-| unicode-emoji | 4.2.0 | MIT | `unicode-emoji-MIT-LICENSE.txt` |
+| regexp_parser | 2.13.0 | MIT | `regexp_parser-LICENSE` |
+| unicode-display_width | 3.3.0 | MIT | `unicode-display_width-MIT-LICENSE.txt` |
+| unicode-emoji | 4.3.0 | MIT | `unicode-emoji-MIT-LICENSE.txt` |
 | rainbow | 3.1.1 | MIT | `rainbow-LICENSE` |
-| parallel | 1.28.0 | MIT | `parallel-MIT-LICENSE.txt` |
+| parallel | 2.2.0 | MIT | `parallel-MIT-LICENSE.txt` |
 | lint_roller | 1.1.0 | MIT | `lint_roller-LICENSE.txt` |
 | ruby-progressbar | 1.13.0 | MIT | `ruby-progressbar-LICENSE.txt` |
 | language_server-protocol | 3.17.0.6 | MIT | `language_server-protocol-LICENSE.txt` |

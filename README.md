@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 12.7 MB | ✅ exact +3 fixes | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 13.2 MB | ✅ exact +3 fixes | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -131,7 +131,7 @@ arrives: fetched rather than read from disk.
 
 **Run it in a worker.** Every one of these compiles multi-megabyte wasm and holds
 tens to hundreds of megabytes of linear memory. On the main thread that is a
-frozen tab, and Swift — 12.5 MB over the wire, 49.4 MB of wasm — is one you want
+frozen tab, and Swift — 12.5 MB over the wire, 49.5 MB of wasm — is one you want
 behind an explicit user action rather than on page load.
 
 ### Where the bytes come from
@@ -225,7 +225,7 @@ RuboCop either way. See
 [`packages/ruby`](packages/ruby#two-tools-and-why-both) for the rest of what it
 costs.
 
-It ships as one 12.7 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
+It ships as one 13.2 MB `ruby_fmt.wasm.br` with CRuby and the gems baked in,
 built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib the
 formatter never loads is stripped, then `wasm-opt -Os`, then
 [wizer](https://github.com/bytecodealliance/wizer), then brotli. The wizer step
@@ -338,8 +338,8 @@ traps under AOT, so the error text is assembled from its parts instead.
 
 ## Swift
 
-See [`packages/swift`](packages/swift). It runs the real swift-format 603.0.0 -
-the release that pairs with Swift 6.3, swift-syntax's parser included - compiled
+See [`packages/swift`](packages/swift). It runs the real swift-format 604.0.0 -
+the release that pairs with Swift 6.4, swift-syntax's parser included - compiled
 by the **official** [Swift SDK for WebAssembly](https://www.swift.org/documentation/articles/wasm-getting-started.html)
 from swift.org rather than the SwiftWasm fork. A conformance test asserts
 byte-identical output against a native `swift-format`, and the build was checked
@@ -371,7 +371,7 @@ ship a copy.
 
 ## PHP
 
-See [`packages/php`](packages/php). It runs the real PHP CS Fixer 3.95.18 - the
+See [`packages/php`](packages/php). It runs the real PHP CS Fixer 3.95.27 - the
 official phar, unmodified - on real PHP 8.4 compiled to WebAssembly, so output
 is byte-identical to the same phar on a native PHP. A conformance test asserts
 that, and the build was checked against 1117 real PHP files (PHP CS Fixer's own

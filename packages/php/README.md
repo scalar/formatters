@@ -161,7 +161,7 @@ Prefer `format()` wherever you can await. This is for where you cannot.
 ## This is the real PHP CS Fixer, and the output is exact
 
 This is **actual [PHP CS Fixer](https://github.com/PHP-CS-Fixer/PHP-CS-Fixer)
-3.95.18** — the official phar, unmodified — running on **actual PHP 8.4**
+3.95.27** — the official phar, unmodified — running on **actual PHP 8.4**
 compiled to WebAssembly. It is not a reimplementation, so it does not drift.
 
 `test/native-conformance.test.ts` asserts byte-identical output against a native

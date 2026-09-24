@@ -11,7 +11,7 @@ Built by `build/csharp_fmt/build.sh`; the versions are pinned at the top of it.
 |---|---|---|---|
 | CSharpier | 1.3.0 | MIT | `csharpier-LICENSE` |
 | Roslyn (`Microsoft.CodeAnalysis.CSharp`) | 5.3.0 | MIT | `dotnet-LICENSE` |
-| .NET runtime and class library | 10.0.10 | MIT | `dotnet-LICENSE` |
+| .NET runtime and class library | 10.0.12 | MIT | `dotnet-LICENSE` |
 | Emscripten | 3.1.56 | MIT / NCSA | `emscripten-LICENSE` |
 | Unicode ICU data (`icudt.dat`) | ships with the above | Unicode-3.0 | `dotnet-ThirdPartyNotices` |
 

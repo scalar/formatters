@@ -86,7 +86,7 @@ await init({ url: '/assets/swift_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 49.4 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 49.5 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 This is the largest artifact in the repo by a wide margin. Load it behind an
@@ -106,7 +106,7 @@ await init({ url: '/assets/swift_fmt.wasm', encoding: 'none' })
 ## This is the real swift-format, and the output is exact
 
 This is **actual [swift-format](https://github.com/swiftlang/swift-format)
-603.0.0** — the same version that ships with Swift 6.3, swift-syntax and all —
+604.0.0** — the same version that ships with Swift 6.4, swift-syntax and all —
 compiled to WebAssembly by the official
 [Swift SDK for WebAssembly](https://www.swift.org/documentation/articles/wasm-getting-started.html).
 It is not a reimplementation, so it does not drift.

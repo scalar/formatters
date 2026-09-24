@@ -57,7 +57,7 @@
   },
   "dependencies": {
     "@bjorn3/browser_wasi_shim": "^0.4.2",
-    "@ruby/wasm-wasi": "^2.8.1",
+    "@ruby/wasm-wasi": "^2.10.1",
     "brotli-dec-wasm": "^2.3.2"
   }
 }

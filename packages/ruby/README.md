@@ -132,10 +132,10 @@ corrections — over those same 397 files, in 116 of them.
 | cold start, one fresh process | ~0.70 s | ~0.86 s |
 | every call after | ~7 ms | 2–4× that |
 | one VM recycle, over an ordinary call | ~0.03 s | ~0.06 s |
-| artifact | 12.7 MB either way | |
+| artifact | 13.2 MB either way | |
 
 Cold start is the artifact plus one VM: expanding and compiling the brotli into
-71 MB of wasm takes ~0.6 s and instantiating a VM from it ~0.12 s, which is the
+74 MB of wasm takes ~0.6 s and instantiating a VM from it ~0.12 s, which is the
 whole of the `rubocop: false` column. The default column adds ~0.16 s, and that
 is the RuboCop pass itself — mobilizing the Layout department and correcting for
 the first time.
@@ -182,7 +182,7 @@ it existed to decline that load, and there is no longer a load to decline.
 
 The artifact carries both tools whichever way you call it, so there was never a
 lighter build to be had by dropping one — and the snapshot makes that literal:
-7 MB of the 12.7 MB is a Ruby heap with both gems already in it, and the
+7 MB of the 13.2 MB is a Ruby heap with both gems already in it, and the
 config they are configured by.
 
 Per-call cost grows faster than file size, so a very large file is worse per KB
@@ -255,7 +255,7 @@ ceiling picked for a Node process, and one a pre-initialized VM starts within
 less room to absorb that than a server does, so keep large files off the main
 thread.
 
-The browser reads the same brotli artifact as Node (12.7 MB over the wire) and
+The browser reads the same brotli artifact as Node (13.2 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder

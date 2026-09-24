@@ -460,7 +460,7 @@ packed by hand in `build/csharp_fmt/build.sh`.
 
 Reference: **swift-format**. Status: exact.
 
-Runs actual swift-format 603.0.0 — the release that pairs with Swift 6.3 — with
+Runs actual swift-format 604.0.0 — the release that pairs with Swift 6.4 — with
 swift-syntax's real parser, compiled by the official Swift SDK for WebAssembly
 from swift.org. Not the SwiftWasm fork, and not a reimplementation.
 
@@ -502,7 +502,7 @@ Swift global.
 default wasm stack overflows on ordinary Swift — swift-syntax's own
 `UnicodeScalarExtensions.swift` is 10KB and chains ~70 `||` operators into one
 expression, and walking a tree that deep traps with `memory access out of
-bounds`. And the SDK must be named by **id** (`swift-6.3.3-RELEASE_wasm`), not
+bounds`. And the SDK must be named by **id** (`swift-6.4.0-RELEASE_wasm`), not
 by triple: the normal and embedded SDKs both declare `wasm32-unknown-wasip1`,
 and the ambiguity resolves to the embedded one, which fails deep inside
 swift-syntax with "unavailable in embedded Swift".
@@ -521,7 +521,7 @@ Exception, so a paid product may ship a copy.
 
 Reference: **PHP CS Fixer**. Status: exact.
 
-Runs the official php-cs-fixer 3.95.18 phar, unmodified, on actual PHP 8.4
+Runs the official php-cs-fixer 3.95.27 phar, unmodified, on actual PHP 8.4
 compiled to WebAssembly. It works because PHP CS Fixer is pure PHP and a
 maintained wasm PHP already exists, so there is nothing to compile.
 
