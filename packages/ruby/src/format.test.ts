@@ -278,7 +278,7 @@ describe('format', () => {
     )
   })
 
-  // RuboCop 1.84 through 1.91 flatten a chain like this against its receiver,
+  // RuboCop 1.84.1 through 1.91 flatten a chain like this against its receiver,
   // because the cop mistakes the chain inside the lambda for the value of the
   // enclosing `run:` pair. The indent syntax_tree gives it is the one it had
   // before, and the one this package keeps (see src/rubocop-patch.ts).

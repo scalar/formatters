@@ -354,7 +354,7 @@ at boot: the artifact stays stock syntax_tree 6.3.0, and retiring a fix once it
 lands upstream is deleting a constant.
 
 RuboCop gets the same treatment for one regression of its own, in
-`src/rubocop-patch.ts`: since 1.84 it flattens a method chain that sits inside a
+`src/rubocop-patch.ts`: since 1.84.1 it flattens a method chain that sits inside a
 block nested in a hash value, which is the commonest shape in generated test
 suites.
 
@@ -463,21 +463,21 @@ becomes `in **`, which parses, but `in {}` matches only an empty hash while
 
 ### 4. A method chain inside a block that is a hash value loses its indent
 
-RuboCop 1.84 taught `Layout/MultilineMethodCallIndentation` to align a chain
+RuboCop 1.84.1 taught `Layout/MultilineMethodCallIndentation` to align a chain
 that is the value of a hash pair. It finds that pair by walking up from the
 call, and nothing stops the walk at a block — so a chain *inside* a lambda,
 `proc` or `do` block that is itself a hash value is taken for the value, and its
 dots are aligned with the receiver:
 
 ```ruby
-# syntax_tree's output, and what RuboCop 1.82 left alone
+# syntax_tree's output, and what RuboCop 1.84.0 left alone
 run: -> do
   client
     .beta
     .messages
 end
 
-# out of stock RuboCop 1.84 through 1.91
+# out of stock RuboCop 1.84.1 through 1.91
 run: -> do
   client
   .beta
@@ -487,7 +487,7 @@ end
 
 `begin`, `if`/`else` and the loops lead the walk out the same way. The fix stops
 it where one of those bodies starts, so the chain goes down the cop's ordinary
-path and keeps the indent it had before 1.84. The walk still passes through a
+path and keeps the indent it had before 1.84.1. The walk still passes through a
 block's *call*, so a chain that really is the hash value — `key: items.map { }
 .select` — is aligned exactly as stock aligns it.
 

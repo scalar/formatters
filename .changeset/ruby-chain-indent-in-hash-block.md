@@ -2,7 +2,7 @@
 "@scalar/ruby-fmt": patch
 ---
 
-A wrapped method chain inside a block that is a hash value keeps its indentation again. RuboCop 1.84 through 1.91 mistake such a chain for the hash value itself and align every continuation line with the receiver, so this, from a lambda per test case:
+A wrapped method chain inside a block that is a hash value keeps its indentation again. RuboCop 1.84.1 through 1.91 mistake such a chain for the hash value itself and align every continuation line with the receiver, so this, from a lambda per test case:
 
 ```ruby
 run: -> do

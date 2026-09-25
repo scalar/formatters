@@ -249,7 +249,7 @@ of that shape can never again return a broken file quietly. Formatting the
 rubocop, rubocop-ast, syntax_tree, parser and regexp_parser gems both ways —
 2,076 files — the three fixes change none of them.
 
-RuboCop carries one fix of its own. Since 1.84 its
+RuboCop carries one fix of its own. Since 1.84.1 its
 `Layout/MultilineMethodCallIndentation` mistakes a method chain inside a lambda,
 `proc`, `do` block, `begin`, `if` or loop that is a hash value for the value
 itself, and aligns its dots with the receiver — so `run: -> do client.beta.messages

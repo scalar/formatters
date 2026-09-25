@@ -13,7 +13,7 @@
  *
  * ## A method chain inside a block that is a hash value loses its indentation
  *
- * RuboCop 1.84 taught `Layout/MultilineMethodCallIndentation` to align a chain
+ * RuboCop 1.84.1 taught `Layout/MultilineMethodCallIndentation` to align a chain
  * that is the value of a hash pair:
  *
  *     { key: client.foo
@@ -25,14 +25,14 @@
  * and with nothing on `client`'s line to align with, the cop aligns the dots
  * with `client` and every continuation line loses its indentation:
  *
- *     # syntax_tree's output, and what RuboCop 1.82 left alone
+ *     # syntax_tree's output, and what RuboCop 1.84.0 left alone
  *     run: -> do
  *       client
  *         .beta
  *         .messages
  *     end
  *
- *     # what RuboCop 1.84 through 1.91 correct it to
+ *     # what RuboCop 1.84.1 through 1.91 correct it to
  *     run: -> do
  *       client
  *       .beta
@@ -47,10 +47,10 @@
  * The fix stops the walk where one of those bodies starts. A body is its own
  * run of statements, indented from its own opening line; a chain in it is not
  * the hash value, whatever pair the body happens to be nested in. Everything
- * the 1.84 change set out to do still happens - the walk passes through a
+ * the 1.84.1 change set out to do still happens - the walk passes through a
  * block's *call*, so `key: items.map do ... end.size` is still aligned as the
  * value it is - and a chain that is stopped short goes down the cop's ordinary
- * path, which is the one it took before 1.84 and which indents it again.
+ * path, which is the one it took before 1.84.1 and which indents it again.
  *
  * Two bodies are deliberately left out. Inside a `case` branch or a `def` the
  * ordinary path has an older bug of its own - it aligns the chain with the

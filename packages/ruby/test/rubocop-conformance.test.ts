@@ -274,7 +274,7 @@ end
   'nested hash argument': `configure(retries: 3, backoff: 1.5, on: [Timeout::Error, IOError], logger: Logger.new($stdout))
 `,
   // The shape src/rubocop-patch.ts must leave alone: a chain that is itself the
-  // value of a hash pair, which RuboCop 1.84 learned to align and aligns here
+  // value of a hash pair, which RuboCop 1.84.1 learned to align and aligns here
   // exactly as the binary does. The second one reaches the pair through a
   // block's call rather than its body, which is the one block the patched walk
   // goes on through.
