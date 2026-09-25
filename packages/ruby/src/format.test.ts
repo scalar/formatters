@@ -278,6 +278,61 @@ describe('format', () => {
     )
   })
 
+  // RuboCop 1.84 through 1.91 flatten a chain like this against its receiver,
+  // because the cop mistakes the chain inside the lambda for the value of the
+  // enclosing `run:` pair. The indent syntax_tree gives it is the one it had
+  // before, and the one this package keeps (see src/rubocop-patch.ts).
+  it('keeps a wrapped chain indented inside a block that is a hash value', async () => {
+    const source =
+      'CASES = [\n  {\n    label: "all params",\n    run: -> do\n      client.beta.messages.batches.results_streaming("message_batch_id", {betas: ["beta"]}).each { |_event| break }\n    end\n  }\n]\n'
+
+    expect(await format(source)).toBe(
+      [
+        'CASES = [',
+        '  {',
+        '    label: "all params",',
+        '    run: -> do',
+        '      client',
+        '        .beta',
+        '        .messages',
+        '        .batches',
+        '        .results_streaming("message_batch_id", { betas: ["beta"] })',
+        '        .each { |_event| break }',
+        '    end',
+        '  }',
+        ']',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  // The same walk leaves a `proc` block and a `begin` body the same way, so
+  // each gets the indent syntax_tree gave it too.
+  it('keeps a wrapped chain indented inside any body that is a hash value', async () => {
+    const block =
+      'ROUTES = { index: proc { |request| request.params.fetch(:page).to_i.clamp(1, 100).then { |page| paginate(page) } } }\n'
+    const kwbegin =
+      'CONFIG = { value: begin\n  settings.fetch(:connection).fetch(:retries).fetch(:backoff).fetch(:multiplier)\nend }\n'
+
+    expect(await format(block)).toBe(
+      'ROUTES = {\n  index:\n    proc do |request|\n      request\n        .params\n        .fetch(:page)\n        .to_i\n        .clamp(1, 100)\n        .then { |page| paginate(page) }\n    end\n}\n',
+    )
+    expect(await format(kwbegin)).toBe(
+      'CONFIG = {\n  value:\n    begin\n      settings\n        .fetch(:connection)\n        .fetch(:retries)\n        .fetch(:backoff)\n        .fetch(:multiplier)\n    end\n}\n',
+    )
+  })
+
+  // What the patch must not undo: a chain that *is* the hash value is still
+  // aligned the way stock RuboCop 1.91 aligns it.
+  it('still aligns a wrapped chain that is itself the hash value', async () => {
+    const source =
+      'CONFIG = { value: some_receiver.method_one.method_two(argument_one, argument_two).method_three(argument_four) }\n'
+
+    expect(await format(source)).toBe(
+      'CONFIG = {\n  value:\n    some_receiver\n    .method_one\n    .method_two(argument_one, argument_two)\n    .method_three(argument_four)\n}\n',
+    )
+  })
+
   // The pipeline has to reach a fixed point, or a consumer formatting on save
   // would see the file change on every keystroke.
   it('is idempotent', async () => {

@@ -189,7 +189,7 @@ Per-call cost grows faster than file size, so a very large file is worse per KB
 than the ~9 ms row above suggests. It used to be far worse again for a file
 carrying any multi-byte character at all — one accented letter made
 syntax_tree's parser quadratic in the file's size. The dominant term of that is
-[gone](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source). What
+[gone](#5-the-comment-walk-that-is-quadratic-on-a-multi-byte-source). What
 remains is superlinear in size, and still somewhat worse with a multi-byte
 character than without.
 
@@ -342,7 +342,7 @@ why the RuboCop this ships and the CRuby it runs on move together.
 
 ---
 
-## What is not stock: three fixes for `case`/`in`, and three for speed
+## What is not stock: three fixes for `case`/`in`, one for RuboCop, and three for speed
 
 syntax_tree 6.3.0 has a family of bugs in pattern matching, and they all end the
 same way — source that parsed on the way in comes back out as source Ruby cannot
@@ -352,6 +352,11 @@ file, so what these cost a consumer today is a formatter that refuses whole
 files. `src/stree-patch.ts` carries the fixes, applied by reopening the classes
 at boot: the artifact stays stock syntax_tree 6.3.0, and retiring a fix once it
 lands upstream is deleting a constant.
+
+RuboCop gets the same treatment for one regression of its own, in
+`src/rubocop-patch.ts`: since 1.84 it flattens a method chain that sits inside a
+block nested in a hash value, which is the commonest shape in generated test
+suites.
 
 Three more patches — one in `src/stree-perf-patch.ts`, two in
 `src/rubocop-perf-patch.ts` — are applied the same way and are listed separately
@@ -456,7 +461,42 @@ returns on the next run. And `in {}` after an exponent is the quiet one — it
 becomes `in **`, which parses, but `in {}` matches only an empty hash while
 `in **` matches any hash at all.
 
-### 4. The comment walk that is quadratic on a multi-byte source
+### 4. A method chain inside a block that is a hash value loses its indent
+
+RuboCop 1.84 taught `Layout/MultilineMethodCallIndentation` to align a chain
+that is the value of a hash pair. It finds that pair by walking up from the
+call, and nothing stops the walk at a block — so a chain *inside* a lambda,
+`proc` or `do` block that is itself a hash value is taken for the value, and its
+dots are aligned with the receiver:
+
+```ruby
+# syntax_tree's output, and what RuboCop 1.82 left alone
+run: -> do
+  client
+    .beta
+    .messages
+end
+
+# out of stock RuboCop 1.84 through 1.91
+run: -> do
+  client
+  .beta
+  .messages
+end
+```
+
+`begin`, `if`/`else` and the loops lead the walk out the same way. The fix stops
+it where one of those bodies starts, so the chain goes down the cop's ordinary
+path and keeps the indent it had before 1.84. The walk still passes through a
+block's *call*, so a chain that really is the hash value — `key: items.map { }
+.select` — is aligned exactly as stock aligns it.
+
+`case` branches and a `def` are left to stock on purpose. On the ordinary path
+RuboCop has an older bug there — it lines the chain up under `case` or `def`
+rather than under its receiver, in 1.82 as in 1.91 — and that would be worse
+than what stock 1.91 does.
+
+### 5. The comment walk that is quadratic on a multi-byte source
 
 The one patch here that is not a bug fix. `SyntaxTree::Parser#on_comment` tells
 an inline comment from a standalone one by walking backwards from the `#` over
@@ -488,7 +528,7 @@ pass off, which is the second row of the table in
 term, not every one: formatting a large file is still superlinear in its size,
 and still somewhat slower with a multi-byte character in it than without.
 
-### 5. The token sort that runs on every file with a heredoc in it
+### 6. The token sort that runs on every file with a heredoc in it
 
 The other patch that is not a bug fix, and the only one applied to RuboCop
 rather than to syntax_tree. Every Layout cop that works from tokens asks
@@ -524,9 +564,9 @@ rubocop-ast's master already carries the same fold, unreleased as of 1.50.0, so
 this patch retires with the next release: bump the pin, rebuild the artifact,
 delete the constant.
 
-### 6. The line table that is quadratic on a multi-byte source
+### 7. The line table that is quadratic on a multi-byte source
 
-The same bug as [the comment walk](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source),
+The same bug as [the comment walk](#5-the-comment-walk-that-is-quadratic-on-a-multi-byte-source),
 one layer down. Every `.line` and `.column` a cop asks of a node, a token or a
 comment goes through `Parser::Source::Buffer#line_begins`, the table of
 character offsets at which each line starts. The gem builds it once per buffer
@@ -560,6 +600,12 @@ rubocop-ast, syntax_tree, parser and regexp_parser gems both ways — 2,076 file
 failing to format. They fire only where stock syntax_tree emits a syntax
 error.
 
+The RuboCop fix is measured the same way: running syntax_tree's output of the
+rubocop 1.91 gem and its specs, rubocop-ast, syntax_tree, parser and
+regexp_parser — 1,238 files — through `rubocop --autocorrect --only Layout`
+with and without it, it changes none of them. It fires only on a chain inside
+one of the bodies above that is itself nested in a hash value.
+
 `test/native-conformance.test.ts` pins that in both directions: byte-identity
 with native syntax_tree everywhere else — including on a source shaped to run
 through the comment walk above — plus a test asserting that native output for
@@ -567,6 +613,15 @@ each of the five shapes the three fixes cover still fails to parse while ours
 does not, and a sixth checked against the bytes because it is the one whose
 native output parses and means something else. When syntax_tree releases a fix,
 that test fails and the patch behind it comes out.
+
+`test/rubocop-conformance.test.ts` holds the RuboCop fix to the same
+bargain: byte-identity with the real `rubocop` binary everywhere else —
+including a chain that is itself a hash value, which the fix must leave alone —
+plus a test asserting that native RuboCop still flattens each shape the fix
+covers, and that ours differs from it in nothing but that indentation.
+`src/rubocop-patch.test.ts` fails the moment the pinned RuboCop moves off
+1.91.0, so the patch is re-derived or dropped rather than left overriding a
+newer gem.
 
 Separately, `format()` parses everything it returns and raises instead of
 handing back source Ruby cannot read. It costs about 2.7ms on a 28ms format,
@@ -618,8 +673,9 @@ is a cached module-level value rather than an object you have to construct.
 | File | Exports | Purpose |
 |:---|:---|:---|
 | `src/format.ts` | `createFormat` | The public entry point: recycle if needed, validate options, write input, format. |
-| `src/boot-vm.ts` | `createBootVm`, `WORK_DIR` | Instantiates the pre-initialized CRuby, patches syntax_tree, and caches the result. |
+| `src/boot-vm.ts` | `createBootVm`, `WORK_DIR` | Instantiates the pre-initialized CRuby, patches syntax_tree and RuboCop, and caches the result. |
 | `src/stree-patch.ts` | `STREE_PATCHES` | The fixes applied on top of the gem, and why each is safe. |
+| `src/rubocop-patch.ts` | `RUBOCOP_PATCHES` | The same for RuboCop: the fix for a chain inside a block nested in a hash value. |
 | `src/stree-perf-patch.ts` | `STREE_PERF_PATCHES` | The syntax_tree patch that changes what the gem costs rather than what it writes, and the evidence that output is unchanged. |
 | `src/rubocop-perf-patch.ts` | `RUBOCOP_PERF_PATCHES` | The same for the RuboCop pass: rubocop-ast's token sort, keyed so it compares Integers rather than Arrays, and parser's line table, built in one walk on a multi-byte source. |
 | `src/rubocop.ts` | `RUBOCOP_SETUP`, `buildRuboCopConfig` | The Layout pass: how RuboCop is driven, and which of its parts are used. `RUBOCOP_SETUP` is evaluated at build time, into the artifact. |
