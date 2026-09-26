@@ -13,6 +13,9 @@
  *
  * ## A method chain inside a block that is a hash value loses its indentation
  *
+ * Reported upstream as https://github.com/rubocop/rubocop/issues/15761, with
+ * the same fix proposed there.
+ *
  * RuboCop 1.84.1 taught `Layout/MultilineMethodCallIndentation` to align a chain
  * that is the value of a hash pair:
  *

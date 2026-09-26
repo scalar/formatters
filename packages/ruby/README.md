@@ -356,7 +356,8 @@ lands upstream is deleting a constant.
 RuboCop gets the same treatment for one regression of its own, in
 `src/rubocop-patch.ts`: since 1.84.1 it flattens a method chain that sits inside a
 block nested in a hash value, which is the commonest shape in generated test
-suites.
+suites. It is reported upstream as
+[rubocop/rubocop#15761](https://github.com/rubocop/rubocop/issues/15761).
 
 Three more patches — one in `src/stree-perf-patch.ts`, two in
 `src/rubocop-perf-patch.ts` — are applied the same way and are listed separately
