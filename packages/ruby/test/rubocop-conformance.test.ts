@@ -273,9 +273,57 @@ end
 `,
   'nested hash argument': `configure(retries: 3, backoff: 1.5, on: [Timeout::Error, IOError], logger: Logger.new($stdout))
 `,
+  // The shape src/rubocop-patch.ts must leave alone: a chain that is itself the
+  // value of a hash pair, which RuboCop 1.84.1 learned to align and aligns here
+  // exactly as the binary does. The second one reaches the pair through a
+  // block's call rather than its body, which is the one block the patched walk
+  // goes on through.
+  'a wrapped chain that is itself a hash value': `CONFIG = { value: some_receiver.method_one.method_two(argument_one, argument_two).method_three(argument_four) }
+`,
+  'a wrapped chain through a block call as a hash value': `CONFIG = { value: items.map do |i|
+  i
+end.select(&:present?).group_by(&:category).transform_values(&:count).sort }
+`,
   'already clean': `x = 1
 `,
 }
+
+/**
+ * The inputs where this package deliberately differs from the `rubocop` binary
+ * it ships (see src/rubocop-patch.ts), with the line each side writes for the
+ * first link of the chain after its receiver.
+ *
+ * Native RuboCop flattens every one of these against the chain's receiver, and
+ * asserting that it still does is the point: when RuboCop releases a fix, the
+ * native line changes, this fails, and the patch has done its job and can go.
+ */
+const DIVERGENCES: Record<string, { source: string; native: string; ours: string }> = {
+  'a chain inside a lambda that is a hash value': {
+    source: `CASES = [{ label: "all params", run: -> do
+  client.beta.messages.batches.results_streaming("message_batch_id", {betas: ["beta"]}).each { |_event| break }
+end }]
+`,
+    native: '\n      client\n      .beta\n',
+    ours: '\n      client\n        .beta\n',
+  },
+  'a chain inside a proc block that is a hash value': {
+    source: `ROUTES = { index: proc { |request| request.params.fetch(:page).to_i.clamp(1, 100).then { |page| paginate(page) } } }
+`,
+    native: '\n      request\n      .params\n',
+    ours: '\n      request\n        .params\n',
+  },
+  'a chain inside a begin that is a hash value': {
+    source: `CONFIG = { value: begin
+  settings.fetch(:connection).fetch(:retries).fetch(:backoff).fetch(:multiplier)
+end }
+`,
+    native: '\n      settings\n      .fetch(:connection)\n',
+    ours: '\n      settings\n        .fetch(:connection)\n',
+  },
+}
+
+/** Every line with its leading whitespace removed. */
+const dedent = (source: string): string => source.replace(/^ +/gm, '')
 
 describe('rubocop-conformance', () => {
   const names = Object.keys(SAMPLES)
@@ -291,6 +339,26 @@ describe('rubocop-conformance', () => {
       // report names every sample that diverged instead of only the first.
       const divergent = names.filter((_, index) => actual[index] !== expected[index])
       expect(divergent).toEqual([])
+    },
+    120_000,
+  )
+
+  it.skipIf(!matchesPins)(
+    'diverges from native only where native flattens a chain inside a block',
+    async () => {
+      const shapes = Object.entries(DIVERGENCES)
+      const native = nativeRuboCopLayout(nativeSyntaxTree(shapes.map(([, { source }]) => source)))
+
+      for (const [index, [name, { source, native: nativeLine, ours: ourLine }]] of shapes.entries()) {
+        expect(native[index], `native rubocop now handles: ${name}`).toContain(nativeLine)
+
+        const ours = await format(source, { rubocop: true })
+        expect(ours, `did not diverge on: ${name}`).toContain(ourLine)
+
+        // Indentation is the whole of the difference: the same lines, broken
+        // in the same places, with only the chain's continuation moved.
+        expect(dedent(ours), `diverged beyond indentation on: ${name}`).toBe(dedent(native[index] ?? ''))
+      }
     },
     120_000,
   )

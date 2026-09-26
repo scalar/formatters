@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 13.2 MB | ✅ exact +3 fixes | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 13.2 MB | ✅ exact +4 fixes | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -55,13 +55,14 @@ not a reimplementation of it. A reimplementation drifts, because a formatter's
 line-breaking heuristics are emergent from its implementation rather than
 specified anywhere, and the drift stays invisible until a consumer's CI fails.
 
-Ruby reads `exact +3 fixes` because it carries three deviations from the gem it
-ships that change its output, all of them fixes for syntax_tree bugs that turn
-valid `case`/`in` code into a syntax error. Each is tested against native
-syntax_tree so it cannot drift quietly, and each goes away when the fix lands
-upstream — [details below](#ruby). A fourth patch takes a quadratic term out of
-the same parser; it is not in the count because the count is about output, and
-that one changes none of it.
+Ruby reads `exact +4 fixes` because it carries four deviations from the gems it
+ships that change their output: three fixes for syntax_tree bugs that turn
+valid `case`/`in` code into a syntax error, and one for a RuboCop regression
+that flattens a method chain inside a block nested in a hash value. Each is
+tested against the native tool so it cannot drift quietly, and each goes away
+when the fix lands upstream — [details below](#ruby). Three more patches take
+superlinear costs out of the same gems; they are not in the count because the
+count is about output, and those change none of it.
 
 Browser is the same claim held to the same standard: ✅ means the package has a
 `browser` export condition and `bun run test:browser` loads that build in real
@@ -248,7 +249,15 @@ of that shape can never again return a broken file quietly. Formatting the
 rubocop, rubocop-ast, syntax_tree, parser and regexp_parser gems both ways —
 2,076 files — the three fixes change none of them.
 
-A fourth patch reopens the gem's parser for a different reason: its comment
+RuboCop carries one fix of its own. Since 1.84.1 its
+`Layout/MultilineMethodCallIndentation` mistakes a method chain inside a lambda,
+`proc`, `do` block, `begin`, `if` or loop that is a hash value for the value
+itself, and aligns its dots with the receiver — so `run: -> do client.beta.messages
+end`, wrapped, loses the indent on every continuation line. The patch stops the
+cop's walk where the body starts, which restores the indent the chain had under
+RuboCop 1.82; over 1,238 files of real Ruby it changes none of them.
+
+A further patch reopens syntax_tree's parser for a different reason: its comment
 classification indexes the source by character offset, which CRuby answers in
 constant time only on a one-byte-per-character string, so a single accented
 letter anywhere in a file makes the parse quadratic in the file's size. That one
