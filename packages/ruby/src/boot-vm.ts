@@ -1,6 +1,7 @@
 import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/browser_wasi_shim'
 import { RubyVM } from '@ruby/wasm-wasi'
 
+import { RUBOCOP_PATCHES } from './rubocop-patch'
 import { RUBOCOP_PERF_PATCHES } from './rubocop-perf-patch'
 import { STREE_PATCHES } from './stree-patch'
 import { STREE_PERF_PATCHES } from './stree-perf-patch'
@@ -117,11 +118,12 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       wasi.initialize(instance as unknown as Parameters<typeof wasi.initialize>[0])
 
       // A handful of fixes on top of the stock gems, applied here rather than
-      // in the artifact so they stay reviewable. See stree-patch.ts for the
-      // correctness ones and the evidence that they change nothing else, and
-      // stree-perf-patch.ts and rubocop-perf-patch.ts for the ones that change
-      // only what a gem costs.
-      for (const patch of [...STREE_PATCHES, ...STREE_PERF_PATCHES, ...RUBOCOP_PERF_PATCHES]) vm.eval(patch)
+      // in the artifact so they stay reviewable. See stree-patch.ts and
+      // rubocop-patch.ts for the correctness ones and the evidence that they
+      // change nothing else, and stree-perf-patch.ts and rubocop-perf-patch.ts
+      // for the ones that change only what a gem costs.
+      const patches = [...STREE_PATCHES, ...RUBOCOP_PATCHES, ...STREE_PERF_PATCHES, ...RUBOCOP_PERF_PATCHES]
+      for (const patch of patches) vm.eval(patch)
 
       // The one part of the RuboCop setup that cannot be baked in. `ScalarRubyFmt`
       // itself is in the snapshot (see `RUBOCOP_SETUP` in rubocop.ts), but `setup`
