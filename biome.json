@@ -36,6 +36,16 @@
     "lineWidth": 120,
     "lineEnding": "lf"
   },
+  "markdown": {
+    "formatter": {
+      "enabled": false
+    }
+  },
+  "yaml": {
+    "formatter": {
+      "enabled": false
+    }
+  },
   "javascript": {
     "formatter": {
       "enabled": true,
