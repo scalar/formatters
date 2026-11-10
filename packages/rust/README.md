@@ -42,6 +42,12 @@ Options are rustfmt's own configuration keys, in camelCase — `{ maxWidth }`,
 leave out keeps rustfmt's default, because they are applied through rustfmt's
 own `Config::override_value`, the same code path as `rustfmt --config`.
 
+The typed options are rustfmt's stable ones only, because the bundled rustfmt is
+the one from a stable Rust release. Unstable options such as `wrap_comments` or
+`imports_granularity` can still be set through `config`, exactly as
+`rustfmt --config` sets them on stable, but this package makes no promises about
+how they behave.
+
 ```js
 await format(source, { maxWidth: 120, tabSpaces: 2 })
 await format(source, { styleEdition: '2024', edition: '2021' })
@@ -102,8 +108,11 @@ await init({ url: '/assets/rust_fmt.wasm', encoding: 'none' })
 ## This is the real rustfmt, and the output is exact
 
 This is **actual [rustfmt](https://github.com/rust-lang/rustfmt)**, the same
-build that ships with the pinned nightly, compiled to WebAssembly. It is not a
-reimplementation, so it does not drift.
+build that ships with a stable Rust release, compiled to WebAssembly. It is not a
+reimplementation, so it does not drift. The release is the one pinned in the
+repo's [`rust-toolchain.toml`](../../rust-toolchain.toml), currently Rust 1.99.1
+with rustfmt 1.10.0, so `cargo fmt` on that stable toolchain gives the same
+output.
 
 `test/native-conformance.test.ts` asserts byte-identical output against a native
 `rustfmt`, across functions, structs, traits, generics, lifetimes, closures,
@@ -124,7 +133,7 @@ changes between versions, so a `rustfmt` from another toolchain is skipped
 rather than compared — comparing it would fail for the wrong reason. To run it:
 
 ```bash
-RUSTFMT=$(rustup which --toolchain nightly-2026-11-10 rustfmt) bun test packages/rust
+RUSTFMT=$(rustup which --toolchain 1.99.1 rustfmt) bun test packages/rust
 ```
 
 ## The one behaviour left out is configuration discovery
@@ -138,6 +147,11 @@ import { parse } from 'smol-toml' // or any TOML parser
 
 await format(source, { config: parse(readFileSync('rustfmt.toml', 'utf8')) })
 ```
+
+One difference from the CLI here. Stable rustfmt warns about and *ignores*
+unstable options it finds in a `rustfmt.toml`, while `config` applies them the
+way `--config` does. If your `rustfmt.toml` has unstable keys, remove them
+before passing it in, or the output will not match `cargo fmt`.
 
 Worth knowing if you compare this package against your project's CLI output and
 see a difference: check that both are using the same configuration, and the same

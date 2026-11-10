@@ -8,9 +8,10 @@
  * rather than one we picked - there is no second copy of the defaults on this
  * side to fall out of step.
  *
- * This is the stable, widely useful part of rustfmt's configuration, not all of
- * it. `config` is the escape hatch for the rest, including the nightly-only
- * options.
+ * These are rustfmt's stable options - the ones a stable `rustfmt` honours in a
+ * `rustfmt.toml` - not all of them. `config` is the escape hatch for the rest,
+ * unstable options included: like `rustfmt --config`, it sets them without
+ * checking, but nothing here promises how they behave.
  */
 export type FormatOptions = {
   /** Maximum width of each line. rustfmt's default is 100. */
@@ -35,18 +36,6 @@ export type FormatOptions = {
   reorderModules?: boolean
   /** Remove nested parens. Default true. */
   removeNestedParens?: boolean
-  /** Merge or split imports. Default "Preserve". */
-  importsGranularity?: 'Preserve' | 'Crate' | 'Module' | 'Item' | 'One'
-  /** Where to put the `where` clause. Default "Default". */
-  whereSingleLine?: boolean
-  /** Convert `#[doc]` attributes to `///` doc comments. Default false. */
-  normalizeDocAttributes?: boolean
-  /** Break comments to fit within `maxWidth`. Default false (nightly-only in rustfmt). */
-  wrapComments?: boolean
-  /** Format code snippets inside doc comments. Default false (nightly-only in rustfmt). */
-  formatCodeInDocComments?: boolean
-  /** Format string literals that exceed the width. Default false (nightly-only in rustfmt). */
-  formatStrings?: boolean
   /**
    * Any rustfmt configuration key, by its own snake_case name, for options this
    * type does not name - `{ 'fn_call_width': 80 }`. Values are stringified the

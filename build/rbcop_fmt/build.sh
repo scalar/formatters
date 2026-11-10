@@ -7,11 +7,11 @@
 # `rubocop --autocorrect --only Layout`. See SPIKE.md beside this file for how
 # the build is shaped and what was measured.
 #
-# Requires rustup, curl, git, node and python3. The wasm target and wasi-sdk are fetched
-# here; rbcop is cloned into ./rbcop, which is gitignored. Expect ~3 minutes
-# cold. The artifact is committed, so this only needs rerunning when a pin
-# below, the patch or entry/ changes. Commit the result: the bytes in git are
-# the bytes the tests run against.
+# Requires rustup, curl, git, node and python3. The repo's Rust toolchain, the
+# wasm target and wasi-sdk are fetched here; rbcop is cloned into ./rbcop, which
+# is gitignored. Expect ~3 minutes cold. The artifact is committed, so this
+# only needs rerunning when a pin below, the patch or entry/ changes. Commit the
+# result: the bytes in git are the bytes the tests run against.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -31,8 +31,13 @@ if ! command -v rustup > /dev/null; then
   exit 1
 fi
 
-echo "==> rust target $TARGET"
-rustup target add "$TARGET"
+# The repo's one Rust toolchain, pinned in rust-toolchain.toml and shared with
+# build/rust_fmt, so building every artifact needs a single Rust install.
+RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-$(sed -n 's/^channel = "\(.*\)"$/\1/p' ../../rust-toolchain.toml)}"
+
+echo "==> rust $RUST_TOOLCHAIN, target $TARGET"
+rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target "$TARGET"
+export RUSTUP_TOOLCHAIN="$RUST_TOOLCHAIN"
 
 echo "==> wasi-sdk $WASI_SDK_VERSION"
 # Prism and RBS are C parsers under their Rust crates, so the C side needs a

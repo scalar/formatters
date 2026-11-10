@@ -210,7 +210,14 @@ library does not implement on `wasm32-wasip1`, so configuration goes through
 `Config::override_value` instead - the `rustfmt --config key=value` path.
 
 **The standing cost is unchanged.** rustfmt's output is welded to a specific
-nightly, and the sysroot has to be rebuilt against that nightly on every rustfmt
-bump. That is a recurring obligation, and it is the reason `RUST_NIGHTLY` and
-`RUST_COMMIT` in `build.sh` are pinned together and the conformance test refuses
-to compare against anything else.
+compiler, and the sysroot has to be rebuilt against that compiler on every
+rustfmt bump. That is a recurring obligation, and it is the reason the toolchain
+and `RUST_COMMIT` in `build.sh` are pinned together and the conformance test
+refuses to compare against anything else.
+
+**Since then: stable, not nightly.** The recipe above pins a nightly because
+rustfmt's own `rust-toolchain` does. Nothing in it needs one. `RUSTC_BOOTSTRAP=1`
+unlocks the feature gates on any channel, and a stable release ships `rustc-dev`
+for the same hosts. So the build now uses the stable release pinned in the
+repo's `rust-toolchain.toml`, with `CFG_RELEASE_CHANNEL=stable` to match the
+rustfmt that release ships, and the repo needs only one Rust toolchain.

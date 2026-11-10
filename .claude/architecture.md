@@ -627,9 +627,12 @@ Cargo probes rustc with `--print=file-names` to learn target details, and an
 cause nor cure. The wrapper skips probes and host builds and adds the flags
 only to real wasm compilations.
 
-**The version pin is two values that move together.** rustfmt's output is welded
-to the compiler it parses with, so `RUST_NIGHTLY` and `RUST_COMMIT` in
-`build.sh` must agree, and the conformance test reads `RUST_COMMIT` back and
+**The version pin is values that move together.** rustfmt's output is welded
+to the compiler it parses with, so the stable release in the root
+`rust-toolchain.toml` and `RUST_COMMIT` in `build.sh` must agree. The toolchain
+file is the repo's only Rust pin, shared with `build/rbcop_fmt`, and the
+compiler's feature gates are unlocked with `RUSTC_BOOTSTRAP=1` rather than by
+using a nightly. The conformance test reads `RUST_COMMIT` back and
 skips unless the native `rustfmt` on hand reports that same commit. Comparing
 against a different rustfmt would fail for the wrong reason, which is worse than
 not comparing.

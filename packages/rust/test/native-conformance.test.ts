@@ -43,7 +43,7 @@ const pinnedCommit = (): string => {
 
 const RUSTFMT = process.env['RUSTFMT'] ?? 'rustfmt'
 
-/** `rustfmt 1.9.0-nightly (eff8269f79 2026-07-18)` -> `eff8269f79`, or undefined. */
+/** `rustfmt 1.10.0-stable (58cf8f9c35 2026-10-13)` -> `58cf8f9c35`, or undefined. */
 const nativeCommit = (): { version: string; commit: string } | undefined => {
   try {
     const version = execFileSync(RUSTFMT, ['--version'], { encoding: 'utf8' }).trim()
@@ -150,5 +150,12 @@ describe('native-conformance', () => {
 
   it.skipIf(!matchesPin)('matches native rustfmt on hard tabs and a narrow width', async () => {
     await compareAll({ hard_tabs: 'true', max_width: '50' })
+  })
+
+  // The artifact is built as the stable channel, which is what gates rustfmt's
+  // unstable options. `--config` sets them regardless, so the two builds have to
+  // agree here too - a channel mismatch would show up first.
+  it.skipIf(!matchesPin)('matches native rustfmt on unstable options set through config', async () => {
+    await compareAll({ wrap_comments: 'true', imports_granularity: 'Crate', max_width: '40' })
   })
 })
