@@ -20,6 +20,8 @@
     "test:browser": "bun run build && bun run scripts/test-browser.ts",
     "types:check": "tsc -p tsconfig.scripts.json --noEmit && bun run --filter='*' types:check",
     "ruby:build": "build/ruby_fmt/build.sh",
+    "rbcop:build": "build/rbcop_fmt/build.sh",
+    "licenses:collect": "python3 build/licenses/collect.py build/rbcop_fmt/entry build/rbcop_fmt/rbcop packages/ruby/licenses/NOTICE.md",
     "ruby:bench": "bun run scripts/ruby-bench.ts",
     "java:build": "build/java_fmt/build.sh",
     "java:build:teavm": "build/java_fmt_teavm/build.sh",

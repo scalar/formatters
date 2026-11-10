@@ -4,33 +4,6 @@ source "https://rubygems.org"
 # and the version it was built from has to be recoverable from the source tree.
 gem "syntax_tree", "6.3.0"
 
-# The linter whose Layout department runs as a second pass, so that the output
-# is not merely canonical but also clean under `rubocop --only Layout`. See
-# packages/ruby/src/rubocop.ts for what is and is not enabled.
-#
-# rubocop-ast is pinned alongside rubocop rather than left to resolve, because
-# it decides which parser produces the token stream the Layout cops see: a newer
-# one changes the output with rubocop itself unchanged. The conformance test
-# reads both pins from here.
-#
-# This pair is what decides the CRuby build.sh bakes in. rubocop >= 1.75.0 needs
-# rubocop-ast >= 1.43.0, which requires prism and subclasses its parser
-# translation at load time - `Prism::Translation::Parser::Builder` has to exist
-# before the first cop is even registered. That translation arrived in prism
-# 1.4, and rubocop-ast 1.49.0 raised its floor again to `~> 1.7`. Ruby 3.4.1
-# carries prism 1.2.0, so on that build the whole 1.75+ line simply fails to
-# load; Ruby 4.0.0 carries 1.7.0, which is why the bump was the price of
-# admission for a rubocop newer than 1.74.0.
-gem "rubocop", "1.91.0"
-gem "rubocop-ast", "1.50.0"
-
-# Two gems CRuby already carries, kept out of the bundle by placeholder
-# gemspecs that ship no files. Each directory's gemspec explains why the real
-# gem cannot be used here and what the guest loads instead. (Not under vendor/,
-# which is gitignored as rbwasm build scratch - these have to be committed.)
-gem "json", path: "json_placeholder"
-gem "prism", path: "prism_placeholder"
-
 # Links the JS ABI into the wasm build (rb-eval-string-protect and friends).
 # Without it rbwasm emits a standalone WASI command exporting only _start, which
 # @ruby/wasm-wasi cannot bind to - so every format would cost a fresh VM boot.

@@ -1,0 +1,25 @@
+[package]
+name = "rbcop_fmt"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# A WASI reactor rather than a command: the module is instantiated once and its
+# exports are called per format, so the parsed config survives between calls.
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+rbcop = { path = "../rbcop" }
+ruby-prism = "1.9.0"
+
+# rbcop builds against a patched ruby-prism (it adds parse_with_version), and so
+# must anything that links it.
+[patch.crates-io]
+ruby-prism = { path = "../rbcop/vendor/ruby-prism" }
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+strip = true

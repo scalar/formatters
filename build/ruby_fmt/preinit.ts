@@ -1,5 +1,5 @@
 // Pre-initializes the Ruby artifact: takes a wasm module that boots CRuby and
-// returns one that has already booted it, with syntax_tree and RuboCop loaded.
+// returns one that has already booted it, with syntax_tree loaded.
 //
 // usage: bun preinit.ts <in.wasm> <out.wasm>          ($WIZER, $WASM_MERGE override the tools)
 //
@@ -10,15 +10,17 @@
 //
 // ## Why this exists
 //
-// The first `format` call used to cost ~11s: ~1.8s for `ruby-init`, rubygems,
-// /bundle/setup and syntax_tree, then ~8.9s more for `require "rubocop"` and
-// its 698 cop files. Formatting leaks the VM's linear memory, so `format()`
-// recycles the VM every so often (see
-// `packages/ruby/src/format.ts`) and paid all of it again each time - about a
-// quarter of the wall-clock of formatting a large tree, spent re-reading gems
-// that had not changed. wizer runs that boot at build time and serializes the
-// resulting linear memory back into the module, so the runtime instantiates a
-// VM that is already up.
+// Booting CRuby is ~1.8s of `ruby-init`, rubygems, /bundle/setup and
+// syntax_tree, and formatting leaks the VM's linear memory, so `format()`
+// recycles the VM every so often (see `packages/ruby/src/format.ts`) and would
+// pay all of it again each time. wizer runs that boot at build time and
+// serializes the resulting linear memory back into the module, so the runtime
+// instantiates a VM that is already up.
+//
+// The artifact used to carry RuboCop as well, which was most of the reason this
+// step existed: requiring its 698 cop files was another ~8.9s per VM. RuboCop
+// now runs as rbcop, a separate wasm module (see build/rbcop_fmt), so this
+// snapshot holds syntax_tree alone.
 //
 // ## The three things that make this more than a flag
 //
@@ -37,10 +39,9 @@
 // delivered as `-r/work/preinit.rb` rather than as a `-e` script or an eval.
 //
 // **The snapshot captures the guest's preopen table.** Snapshot with no
-// preopened directories and the restored VM boots, syntax_tree works, and the
-// first RuboCop call dies with `Errno::ENOENT @ dir_s_mkdir - /work`. So wizer
-// is given the same two directories `boot-vm.ts` gives the runtime, under the
-// same names, from the same constants.
+// preopened directories and the restored VM cannot see /work, which is where
+// every format writes its input. So wizer is given the same directory
+// `boot-vm.ts` gives the runtime, under the same name, from the same constant.
 //
 // A note on failure: wizer does not fail when the guest does. A Ruby error
 // inside the snapshotted boot is printed and the snapshot is still written, so
@@ -57,8 +58,8 @@
 // the corpus comparison CONTRIBUTING.md asks for is what checks that rather
 // than assuming it. What it does give up is the reason Ruby randomizes that
 // seed at all: hash-flooding becomes precomputable, and this package does parse
-// caller-supplied Ruby into hashes on the way through prism, parser and
-// RuboCop. The exposure is judged acceptable here - a formatter's input is
+// caller-supplied Ruby into hashes on the way through Ripper and
+// syntax_tree. The exposure is judged acceptable here - a formatter's input is
 // source its caller already chose to format, the pathological case is slow
 // rather than unsafe, and the same input is equally slow on the native gems -
 // but it is a real property of a pre-initialized artifact and not a detail of
@@ -80,9 +81,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { WORK_DIR, createBootVm } from '../../packages/ruby/src/boot-vm'
-import { createFormat } from '../../packages/ruby/src/format'
-import { RUBOCOP_SETUP, buildRuboCopConfig } from '../../packages/ruby/src/rubocop'
-import { SHIM_FILES, SHIM_MOUNT_PATH } from '../../packages/ruby/src/wasi-shims'
+import { reprint } from '../../packages/ruby/src/format'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
@@ -111,45 +110,11 @@ const PREINIT_GUEST_PATH = `${WORK_DIR}/preinit.rb`
 const RUBY_INIT_ARGV = ['ruby.wasm', '-EUTF-8', '-rrubygems', '-r/bundle/setup', `-r${PREINIT_GUEST_PATH}`, '-e_=0']
 
 /**
- * The Ruby that runs inside the snapshot.
- *
- * The shims go on the end of `$LOAD_PATH`, never the front: the real stdlib is
- * searched first, so they answer only for the two extensions this build
- * genuinely does not have. See `wasi-shims.ts`.
- *
- * `RUBOCOP_SETUP` is imported rather than restated - it is the definition of the
- * pass `format.ts` calls into, and a second copy here would be free to drift
- * from the one the package documents and tests.
- *
- * `ScalarRubyFmt.warm` is the last thing it does, and it is why the snapshot is
- * worth more than a loaded VM: requiring RuboCop is not the only cost that is
- * identical in every VM. Parsing and validating RuboCop's own default.yml is
- * another second, and it depends on nothing a caller can vary, so it is done
- * here once rather than on the first RuboCop format of every VM and again after
- * every recycle. See `warm` in `packages/ruby/src/rubocop.ts`.
- *
- * The config it warms against is `buildRuboCopConfig()`'s own output, imported
- * for the same no-drift reason as `RUBOCOP_SETUP`: `TargetRubyVersion` decides
- * whether RuboCop parses with prism or with the `parser` gem, so warming on a
- * config the package would never emit would warm a parser no caller reaches.
- * It is deleted afterwards - the snapshot needs what the call left on the Ruby
- * heap, not the file, and /work belongs to the consumer at runtime.
+ * The Ruby that runs inside the snapshot: syntax_tree, required once so that
+ * no VM restored from the snapshot requires it again.
  */
-const PREINIT_WARM_CONFIG_PATH = `${WORK_DIR}/warm.yml`
-
-const PREINIT_PROGRAM = `$LOAD_PATH.push(${JSON.stringify(SHIM_MOUNT_PATH)})
-require "syntax_tree"
-
-${RUBOCOP_SETUP}
-
-File.write(${JSON.stringify(PREINIT_WARM_CONFIG_PATH)}, ${JSON.stringify(buildRuboCopConfig())})
-ScalarRubyFmt.warm(${JSON.stringify(WORK_DIR)}, ${JSON.stringify(PREINIT_WARM_CONFIG_PATH)})
-File.delete(${JSON.stringify(PREINIT_WARM_CONFIG_PATH)})
+const PREINIT_PROGRAM = `require "syntax_tree"
 `
-
-/** A sample only the RuboCop pass changes, used to prove the snapshot carries it. */
-const RUBOCOP_SAMPLE = 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n'
-const RUBOCOP_SAMPLE_FORMATTED = 'class Client\n  attr_reader :base_url\n\n  def to_s\n    @base_url\n  end\nend\n'
 
 /**
  * Stops, with a reason.
@@ -264,58 +229,28 @@ ${entryStores.join('\n')}
 `
 }
 
-/** Writes the guest's shim files out as real files, for wizer to map. */
-const materializeShims = (destination: string): void => {
-  for (const [shimPath, source] of SHIM_FILES) {
-    const target = path.join(destination, shimPath)
-    mkdirSync(path.dirname(target), { recursive: true })
-    writeFileSync(target, source)
-  }
-}
-
 /**
  * Boots the finished artifact and formats through it.
  *
  * The check that matters, and the reason it is here rather than left to the test
  * suite: wizer reports success whether or not the Ruby it ran raised, so an
- * artifact whose `require "rubocop"` blew up is written out looking fine. This
- * runs the package's own boot and format over the bytes just produced - if the
- * snapshot is missing either gem, `boot-vm.ts` fails on `ScalarRubyFmt.setup`
- * and the build stops instead of committing it.
+ * artifact whose `require "syntax_tree"` blew up is written out looking fine.
+ * This runs the package's own boot and syntax_tree pass over the bytes just
+ * produced, and stops the build instead of committing a broken snapshot.
  */
 const verify = async (wasmPath: string): Promise<void> => {
   const bytes = readFileSync(wasmPath)
-  const bootVm = createBootVm(() => WebAssembly.compile(bytes))
-  const { format } = createFormat(bootVm)
+  const booted = await createBootVm(() => WebAssembly.compile(bytes)).boot()
 
-  // The warm is the one thing here that a working artifact and a broken one
-  // agree about: a snapshot that lost it still boots, still formats and still
-  // produces the right bytes - it is only about a second slower per VM, which
-  // is exactly the kind of regression that goes unnoticed until someone
-  // benchmarks it months later. So it is asserted rather than assumed.
-  // `default_configuration` memoizes onto RuboCop's own ConfigLoader, and
-  // `ScalarRubyFmt.setup` - which `boot-vm.ts` has already run by this point -
-  // deliberately does not clear it, so a warm that survived wizer is still
-  // there to be seen.
-  const booted = await bootVm.boot()
-  const warmed = booted.vm
-    .eval('RuboCop::ConfigLoader.instance_variable_get(:@default_configuration).nil? ? "no" : "yes"')
-    .toString()
-  if (warmed !== 'yes') {
-    fail(
-      "the snapshot did not keep ScalarRubyFmt.warm's parsed default config, so every VM restored " +
-        "from it would reparse RuboCop's default.yml on its first format",
-    )
+  const reprinted = reprint(booted, 'x=[1,2].map{|n| n*2}', 80)
+  if (reprinted !== 'x = [1, 2].map { |n| n * 2 }\n') {
+    fail(`the snapshot's syntax_tree produced ${JSON.stringify(reprinted)}`)
   }
 
-  const withRuboCop = await format(RUBOCOP_SAMPLE)
-  if (withRuboCop !== RUBOCOP_SAMPLE_FORMATTED) {
-    fail(`the snapshot's RuboCop pass produced ${JSON.stringify(withRuboCop)}`)
-  }
-
-  const streeOnly = await format('x=[1,2].map{|n| n*2}', { rubocop: false })
-  if (streeOnly !== 'x = [1, 2].map { |n| n * 2 }\n') {
-    fail(`the snapshot's syntax_tree produced ${JSON.stringify(streeOnly)}`)
+  // RuboCop is not in this artifact any more, and a snapshot that still had it
+  // would be ~7MB of dead Ruby heap shipped to every consumer.
+  if (booted.vm.eval('defined?(RuboCop) ? "yes" : "no"').toString() !== 'no') {
+    fail('the snapshot still has RuboCop loaded; the Layout pass is rbcop now')
   }
 }
 
@@ -340,17 +275,13 @@ const wasmMerge = process.env['WASM_MERGE'] ?? path.join(here, 'build', 'toolcha
 const scratch = mkdtempSync(path.join(tmpdir(), 'ruby-fmt-preinit-'))
 
 try {
-  // The two directories the snapshot's preopen table has to match, laid out as
-  // real files so wizer can map them. `/work` holds only the program being
-  // required: the runtime's /work starts empty and everything written into it
-  // during the snapshot - the gemspecs `RUBOCOP_SETUP` writes, among others -
-  // has already done its work by the time the snapshot is taken.
+  // The directory the snapshot's preopen table has to match, laid out as a real
+  // one so wizer can map it. It holds only the program being required: the
+  // runtime's /work starts empty.
   const workDirectory = path.join(scratch, 'work')
-  const shimDirectory = path.join(scratch, 'shims')
 
   mkdirSync(workDirectory, { recursive: true })
   writeFileSync(path.join(workDirectory, path.basename(PREINIT_GUEST_PATH)), PREINIT_PROGRAM)
-  materializeShims(shimDirectory)
 
   const shimPath = path.join(scratch, 'wizer-shim.wat')
   const mergedPath = path.join(scratch, 'merged.wasm')
@@ -383,8 +314,8 @@ try {
   // `env` is set rather than inherited, and that is the point of passing it at
   // all: Ruby reads ENV once, during `ruby-init`, so whatever the build machine
   // happens to have exported would be baked into every VM a consumer boots.
-  // HOME is the one variable the runtime sets, and RuboCop needs it - `Dir.home`
-  // backs its cache root and raises rather than falling back.
+  // HOME is the one variable the runtime sets: `Dir.home` raises rather than
+  // falling back without it, and rubygems asks for it while it loads.
   console.log('preinit: snapshotting the initialized VM')
   const wizerOutput = run(
     'wizer',
@@ -399,8 +330,6 @@ try {
       'wizer-initialize',
       '--mapdir',
       `${WORK_DIR}::${workDirectory}`,
-      '--mapdir',
-      `${SHIM_MOUNT_PATH}::${shimDirectory}`,
       '-o',
       output,
       mergedPath,

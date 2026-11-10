@@ -1,29 +1,42 @@
 import { decompressBrotli } from './decompress-brotli'
 import { toArtifactBytes } from './to-artifact-bytes'
-import type { ArtifactSource, InitOptions } from './types'
+import type { ArtifactOptions, ArtifactSource } from './types'
 
 /**
- * The artifact source for the browser build: fetches the wasm instead of
+ * An artifact source for the browser build: fetches the wasm instead of
  * reading it, and expands it with the platform rather than with `node:zlib`.
+ * The browser build makes one per artifact - `ruby_fmt.wasm.br` and
+ * `rbcop_fmt.wasm.br`.
  *
- * The default URL is resolved against this module, so `new URL(..., import.meta.url)`
- * is what a bundler sees. Vite, Rollup and webpack recognise that form, emit
- * `ruby_fmt.wasm.br` as an asset with a hashed name and rewrite the URL to match;
- * loading the package straight from a CDN resolves it the same way with no build
- * step at all.
+ * `defaultUrl` is a function so that the caller can write the
+ * `new URL('../ruby_fmt.wasm.br', import.meta.url)` form literally, which is
+ * what a bundler looks for. Vite, Rollup and webpack recognise it, emit the
+ * artifact as an asset with a hashed name and rewrite the URL to match; loading
+ * the package straight from a CDN resolves it the same way with no build step
+ * at all. A function also means the default is never resolved for a caller who
+ * hands over `bytes` instead.
  *
  * esbuild is the exception - it leaves `new URL(..., import.meta.url)` alone -
  * so an esbuild build has to copy the artifact next to its output or name it
  * with `init({ url })`. That is what `init` is for.
  */
-export const createArtifactLoader = (
-  compile: (bytes: Uint8Array) => Promise<WebAssembly.Module> = (bytes) => WebAssembly.compile(bytes),
-): {
+export const createArtifactLoader = ({
+  defaultUrl,
+  label,
+  compile = (bytes) => WebAssembly.compile(bytes),
+}: {
+  /** Where the artifact is when `init` names nowhere else. */
+  defaultUrl: () => URL
+  /** What the artifact is, for error messages. */
+  label: string
+  /** Compiles the expanded bytes. A parameter so that tests never touch a real artifact. */
+  compile?: (bytes: Uint8Array) => Promise<WebAssembly.Module>
+}): {
   compileArtifact: ArtifactSource
-  init: (options?: InitOptions) => Promise<void>
+  init: (options?: ArtifactOptions) => Promise<void>
 } => {
   let modulePromise: Promise<WebAssembly.Module> | undefined
-  let options: InitOptions = {}
+  let options: ArtifactOptions = {}
 
   /** Reads the configured source down to raw wasm bytes. */
   const readBytes = async (): Promise<Uint8Array> => {
@@ -31,10 +44,10 @@ export const createArtifactLoader = (
       return toArtifactBytes(options.bytes)
     }
 
-    const url = options.url ?? new URL('../ruby_fmt.wasm.br', import.meta.url)
+    const url = options.url ?? defaultUrl()
     const response = await fetch(url)
     if (!response.ok) {
-      throw new Error(`could not fetch the syntax_tree artifact from ${String(url)} (HTTP ${response.status})`)
+      throw new Error(`could not fetch the ${label} artifact from ${String(url)} (HTTP ${response.status})`)
     }
 
     const body = new Uint8Array(await response.arrayBuffer())
@@ -78,7 +91,7 @@ export const createArtifactLoader = (
    * It must be called before the first `format`, because that is what compiles
    * the module; afterwards it throws rather than silently doing nothing.
    */
-  const init = async (next: InitOptions = {}): Promise<void> => {
+  const init = async (next: ArtifactOptions = {}): Promise<void> => {
     // Calling this again is not only allowed, it is the documented way to
     // recover: `formatSync` asks for another `init` when it cannot rebuild the
     // instance itself. Only *re-pointing* is refused, and only once the artifact

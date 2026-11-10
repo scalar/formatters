@@ -1,0 +1,179 @@
+diff --git a/src/autocorrect/mod.rs b/src/autocorrect/mod.rs
+index 7b6e33f..58cc2e4 100644
+--- a/src/autocorrect/mod.rs
++++ b/src/autocorrect/mod.rs
+@@ -444,6 +444,7 @@ pub fn correct_bytes(
+ /// following symlinks, and every later step works relative to the last one (`openat`, `renameat`),
+ /// so a directory swapped for a symlink after the check fails the write instead of redirecting it.
+ // ponytail: extended attributes and ACLs are not copied to the renamed file.
++#[cfg(unix)]
+ pub fn write_source(path: &Path, new: &str, roots: &[PathBuf]) -> std::io::Result<()> {
+     use std::fs;
+     use std::io::Write;
+@@ -504,6 +505,7 @@ pub fn write_source(path: &Path, new: &str, roots: &[PathBuf]) -> std::io::Resul
+ /// existing file that is not a regular file of the current user with a single link (a hard link
+ /// to a file elsewhere). A replaced file is written to a new file renamed over it. Returns the
+ /// open file.
++#[cfg(unix)]
+ pub fn write_contained(path: &Path, content: &[u8], roots: &[PathBuf], append: bool) -> std::io::Result<std::fs::File> {
+     use std::io::Write;
+     use std::os::unix::fs::MetadataExt;
+@@ -566,6 +568,7 @@ pub fn write_contained(path: &Path, content: &[u8], roots: &[PathBuf], append: b
+ }
+ 
+ /// `openat`, `renameat` and `unlinkat` relative to an open directory.
++#[cfg(unix)]
+ mod at {
+     use std::ffi::{CString, OsStr};
+     use std::fs::File;
+@@ -788,3 +791,17 @@ mod tests {
+         std::fs::remove_dir_all(&dir).unwrap();
+     }
+ }
++
++/// Outside unix (wasm32-wasi) there are no descriptor-relative calls or owners to check: write by path.
++#[cfg(not(unix))]
++pub fn write_source(path: &Path, new: &str, _roots: &[PathBuf]) -> std::io::Result<()> {
++    std::fs::write(path, new)
++}
++
++#[cfg(not(unix))]
++pub fn write_contained(path: &Path, content: &[u8], _roots: &[PathBuf], append: bool) -> std::io::Result<std::fs::File> {
++    use std::io::Write;
++    let mut f = std::fs::OpenOptions::new().create(true).write(true).append(append).truncate(!append).open(path)?;
++    f.write_all(content)?;
++    Ok(f)
++}
+diff --git a/src/cops/layout/multiline_operation_indentation.rs b/src/cops/layout/multiline_operation_indentation.rs
+index c322360..98abff3 100644
+--- a/src/cops/layout/multiline_operation_indentation.rs
++++ b/src/cops/layout/multiline_operation_indentation.rs
+@@ -42,6 +42,10 @@ impl Cop for MultilineOperationIndentation {
+                 if name == "[]" || call.call_operator_loc().is_some() {
+                     return;
+                 }
++                // `/re/ =~ x` is parser's match_with_lvasgn, not a send, so on_send never sees it.
++                if name == "=~" && receiver.as_regular_expression_node().is_some() {
++                    return;
++                }
+                 // unary_operation? (send only): operator whose selector starts the expression.
+                 let start = node.location().start_offset();
+                 if !is_csend(&call)
+diff --git a/src/cops/lint/script_permission.rs b/src/cops/lint/script_permission.rs
+index 5d7a122..5de1540 100644
+--- a/src/cops/lint/script_permission.rs
++++ b/src/cops/lint/script_permission.rs
+@@ -1,4 +1,5 @@
+ use crate::prelude::*;
++#[cfg(unix)]
+ use std::os::unix::fs::PermissionsExt;
+ 
+ pub const NAME: &str = "Lint/ScriptPermission";
+@@ -16,6 +17,10 @@ impl Cop for ScriptPermission {
+         true
+     }
+ 
++    #[cfg(not(unix))]
++    fn on_file(&self, _cx: &mut Cx) {}
++
++    #[cfg(unix)]
+     fn on_file(&self, cx: &mut Cx) {
+         if !cx.src.text.starts_with("#!") || stdin_mode() || crate::helpers::lsp::serving() {
+             return;
+diff --git a/src/formatter.rs b/src/formatter.rs
+index ad3b4bc..f6caa06 100644
+--- a/src/formatter.rs
++++ b/src/formatter.rs
+@@ -650,6 +650,9 @@ pub fn display_width(s: &str) -> usize {
+ 
+ /// Terminal columns of `fd`, if it is a terminal.
+ pub fn winsize(fd: i32) -> Option<usize> {
++    #[cfg(not(unix))]
++    return { let _ = fd; None };
++    #[cfg(unix)]
+     // SAFETY: TIOCGWINSZ fills a winsize struct; we pass a valid pointer to one.
+     unsafe {
+         let mut ws: libc::winsize = std::mem::zeroed();
+diff --git a/src/formatter/report.rs b/src/formatter/report.rs
+index c9a1d1e..730670d 100644
+--- a/src/formatter/report.rs
++++ b/src/formatter/report.rs
+@@ -22,6 +22,9 @@ pub fn ruby_platform() -> String {
+     if std::env::consts::OS != "macos" {
+         return format!("{arch}-{}", std::env::consts::OS);
+     }
++    #[cfg(not(unix))]
++    let release = String::new();
++    #[cfg(unix)]
+     // SAFETY: uname fills the struct we pass; release is NUL-terminated.
+     let release = unsafe {
+         let mut u: libc::utsname = std::mem::zeroed();
+diff --git a/src/project_index.rs b/src/project_index.rs
+index 8d24cc7..b3dabfe 100644
+--- a/src/project_index.rs
++++ b/src/project_index.rs
+@@ -473,7 +473,11 @@ fn shape_for(sig: &[Parameter]) -> Option<(usize, Option<usize>, bool)> {
+ 
+ /// `File.identical?`: both exist and are the same file.
+ pub fn identical(a: &Path, b: &Path) -> bool {
++    #[cfg(not(unix))]
++    return matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y);
++    #[cfg(unix)]
+     use std::os::unix::fs::MetadataExt;
++    #[cfg(unix)]
+     match (std::fs::metadata(a), std::fs::metadata(b)) {
+         (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+         _ => false,
+diff --git a/src/targets.rs b/src/targets.rs
+index ea8b0bb..c52e42b 100644
+--- a/src/targets.rs
++++ b/src/targets.rs
+@@ -3,7 +3,10 @@
+ use crate::config::{Resolved, Store, expand_path, glob};
+ use std::fs;
+ use std::io::{BufRead, BufReader};
++#[cfg(unix)]
+ use std::os::unix::ffi::OsStrExt;
++#[cfg(target_os = "wasi")]
++use std::os::wasi::ffi::OsStrExt;
+ use std::path::{Path, PathBuf};
+ 
+ /// `only_recognized`: `--only-recognized-file-types` (TargetFinder mode :only_recognized_file_types).
+@@ -114,6 +117,7 @@ fn executable(f: &Path, store: &mut Store) -> Result<bool, String> {
+ /// through two links (`a/l -> ../b`, `b/l -> ../a`) and expands them until the OS refuses (ELOOP),
+ /// listing the same files under ever longer paths.
+ fn walk(root: &Path, cfg: &Resolved, out: &mut Vec<PathBuf>) {
++    #[cfg(unix)]
+     use std::os::unix::fs::MetadataExt;
+     let prune: Vec<String> = cfg
+         .all_cops()
+@@ -122,7 +126,11 @@ fn walk(root: &Path, cfg: &Resolved, out: &mut Vec<PathBuf>) {
+         .filter_map(|p| p.strip_suffix("/**/*").map(String::from))
+         .collect();
+     let pruned = |p: &Path| prune.iter().any(|x| glob::fnmatch(x, &p.display().to_string(), true));
++    #[cfg(unix)]
+     let id = |m: &fs::Metadata| (m.dev(), m.ino());
++    // wasi: no stable dev/ino; a constant id means only the literal chain check below applies.
++    #[cfg(not(unix))]
++    let id = |_: &fs::Metadata| (0u64, 0u64);
+     let Ok(root_meta) = fs::metadata(root) else { return };
+     // (directory, (dev, ino) of it and every directory above it in this walk)
+     let mut stack = vec![(root.to_path_buf(), vec![id(&root_meta)])];
+diff --git a/vendor/rubydex/src/compile_assertions.rs b/vendor/rubydex/src/compile_assertions.rs
+index 46c0e3f..5014dfd 100644
+--- a/vendor/rubydex/src/compile_assertions.rs
++++ b/vendor/rubydex/src/compile_assertions.rs
+@@ -2,11 +2,13 @@
+ #[macro_export]
+ macro_rules! assert_mem_size {
+     ($struct:ident, $size:expr) => {
++        #[cfg(target_pointer_width = "64")]
+         // Check struct name on this assert! error
+         const _: () = assert!(
+             std::mem::size_of::<$struct>() == $size,
+             concat!("Incorrect size for `", stringify!($struct), "`")
+         );
++        #[cfg(target_pointer_width = "64")]
+         // Check actual size on this array error
+         const _: [(); $size] = [(); std::mem::size_of::<$struct>()];
+     };

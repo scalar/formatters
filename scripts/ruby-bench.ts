@@ -4,9 +4,9 @@
 // Ruby is the slowest package here to get going, and by some distance: the
 // artifact is the largest in the repo, and instantiating a VM from it is not
 // free. What it no longer pays for is loading gems - the artifact is a wizer
-// snapshot of a VM with syntax_tree and RuboCop already required into it (see
+// snapshot of a VM with syntax_tree already required into it (see
 // build/ruby_fmt/preinit.ts), so neither a cold start nor one of the recycles
-// formatting's linear-memory leak forces reads a cop file. The artifact compile
+// formatting's linear-memory leak forces reads a gem file. The artifact compile
 // is the one part a recycle does not repeat either, because the compiled module
 // is cached for the life of the process.
 //
@@ -403,10 +403,9 @@ const reportBoot = (withRuboCop: BootResult, withoutRuboCop: BootResult): void =
   row('warm format', ms(withRuboCop.warmFormatMs), ms(withoutRuboCop.warmFormatMs))
 
   // The `first format` cells are subtracted rather than the totals: the compile
-  // and boot rows do identical work in both columns, so their difference is
-  // noise between two processes and folding it in would only blur this. What is
-  // left is the per-VM work only a RuboCop run does: merging the config over
-  // RuboCop's own `default.yml`, plus the pass over the snippet itself.
+  // and boot rows differ by the rbcop module, which has rows of its own above.
+  // What is left is the work only a RuboCop run does on its first call: merging
+  // the config over RuboCop's own `default.yml`, plus the pass over the snippet.
   console.log(`\nRuboCop's share of the first format: ${ms(withRuboCop.firstFormatMs - withoutRuboCop.firstFormatMs)}`)
   console.log('cold totals are measured with the artifact already in the page cache')
 }

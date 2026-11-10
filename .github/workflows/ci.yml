@@ -84,16 +84,15 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
-      # packages/ruby's conformance test is what backs the "exact" claim in the README, and it
-      # skips itself when there is no native syntax_tree to compare against - so without these two
-      # steps it has never actually run here. syntax_tree is pure Ruby and installs in seconds,
-      # which makes Ruby the one reference tool cheap enough for CI to carry; the others need a
-      # .NET SDK, a Rust nightly or a JDK and still skip.
+      # packages/ruby's conformance tests are what back the "exact" claim in the README, and they
+      # skip themselves when there is no native tool to compare against - so without these steps
+      # they never actually run here. syntax_tree and RuboCop are pure Ruby and install in
+      # seconds, which makes Ruby the one reference toolchain cheap enough for CI to carry; the
+      # others need a .NET SDK, a Rust nightly or a JDK and still skip.
       #
       # Ruby 4.0 because that is what build/ruby_fmt/build.sh bakes into the artifact. Ripper is
       # part of CRuby rather than the gem, so a different Ruby here could diverge for reasons that
-      # are nothing to do with this package. It is also what makes the pinned rubocop installable:
-      # rubocop-ast needs prism >= 1.7, which arrived as a default gem in Ruby 4.0.
+      # are nothing to do with this package.
       - name: Setup Ruby to match the artifact
         uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
         with:
@@ -105,20 +104,14 @@ jobs:
       - name: Install the pinned syntax_tree
         run: gem install syntax_tree --no-document -v "$(sed -n 's/^gem "syntax_tree", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
 
-      # Same story for the RuboCop pass, and rubocop-ast has to be pinned alongside rubocop rather
-      # than left to resolve: it decides which parser produces the token stream the Layout cops
-      # see, so a newer one can change the output without rubocop itself changing at all. That is
-      # also why the Gemfile pins it - see the comment there.
-      - name: Install the pinned rubocop
+      # The RuboCop pass is rbcop, a reimplementation, so the real RuboCop is the oracle it is held
+      # to. build/rbcop_fmt/Gemfile pins the four gems rbcop's own parity gates ran against; each
+      # one is load-bearing (see the comment there), and the test reads the same pins.
+      - name: Install the RuboCop that rbcop is held to
         run: |
-          gem install rubocop --no-document -v "$(sed -n 's/^gem "rubocop", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
-          gem install rubocop-ast --no-document -v "$(sed -n 's/^gem "rubocop-ast", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
-          # parser is not named in the Gemfile - it arrives as a dependency - so its version comes
-          # from the lockfile instead. It has to be pinned all the same: it produces the token
-          # stream the Layout cops see, the artifact is frozen at whatever the lockfile resolved,
-          # and a newer parser on the native side would fail the byte-identity assertion (or worse,
-          # quietly mask a real divergence) with nothing in this repo having changed.
-          gem install parser --no-document -v "$(sed -n 's/^    parser (\(.*\))$/\1/p' build/ruby_fmt/Gemfile.lock)"
+          for gem in rubocop rubocop-ast parser prism; do
+            gem install "$gem" --no-document -v "$(sed -n "s/^gem \"$gem\", \"\(.*\)\"$/\1/p" build/rbcop_fmt/Gemfile)"
+          done
 
       - name: Run unit tests
         run: bun run test

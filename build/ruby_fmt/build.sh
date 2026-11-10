@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Bakes CRuby + syntax_tree + RuboCop into the single compressed wasm artifact
-# shipped by @scalar/ruby-fmt.
+# Bakes CRuby + syntax_tree into the compressed wasm artifact shipped by
+# @scalar/ruby-fmt.
 #
-# One artifact rather than two: both tools are Ruby, and a second artifact would
-# mean a second copy of CRuby (~20MB expanded) and a second VM in any process
-# that used both.
+# RuboCop used to be baked in here too. Its Layout pass now runs as rbcop, a
+# separate Rust module built by ../rbcop_fmt/build.sh, so this artifact carries
+# syntax_tree alone.
 #
 # Requires Ruby, bundler and Bun (build time only) - consumers of the package
 # need nothing but Node. Bun is here for ./preinit.ts, which imports the
@@ -65,8 +65,7 @@ bundle exec rbwasm build \
 # byte-identical, which is a confusing way to lose an hour.
 #
 # The list came from dumping $LOADED_FEATURES after a real format - 72 files for
-# syntax_tree alone, 618 once RuboCop is loaded - none of them in these
-# directories. `rubygems` stays because Ruby loads it during
+# syntax_tree - none of them in these directories. `rubygems` stays because Ruby loads it during
 # startup; `specifications/` stays because the default-gem specs under it back
 # did_you_mean, error_highlight and syntax_suggest, which do load. The bundled
 # gems (rake, minitest, rexml, net-imap, typeprof...) are unreachable from a
@@ -74,18 +73,9 @@ bundle exec rbwasm build \
 # generated /bundle/setup.rb is nothing but `$:.unshift` lines, so it needs
 # neither bundler nor an installed-gem tree.
 #
-# Two consequences of that last point are worth knowing before editing this
-# list. `racc` is in the bundled-gem tree and RuboCop's parser does need it,
-# which is why the Gemfile pulls it from rubygems instead: as a bundle gem it
-# lands in /bundle and survives this. And a load-path-only bundle has no
-# gemspecs, so any `gem "name", ">= x"` in gem code raises - which prism's
-# parser translation does, so the VM writes a spec per packaged gem before it
-# loads RuboCop. See `src/rubocop.ts`.
-#
-# `prism` is *not* stripped, though it used to be. rubocop-ast requires it and
-# subclasses its parser translation at load time, so `require "prism"` has to
-# find the default gem's Ruby files here - the C extension is compiled in
-# either way. See prism_placeholder/prism.gemspec.
+# `prism` is not stripped. syntax_tree parses with Ripper, but CRuby 4.0 compiles
+# with prism, and error_highlight requires it to annotate an exception raised
+# from prism-compiled code - including the one syntax_tree raises on bad input.
 RUBY_LIB="build/wasm32-unknown-wasip1/${BUILD_ID}-"*/install/usr/local/lib/ruby
 for dir in $RUBY_LIB; do
   rm -rf "$dir"/"$RUBY_LIB_VERSION"/{rdoc,bundler,irb,reline} \
@@ -164,23 +154,17 @@ if [ ! -x "$WIZER_DIR/wizer" ]; then
   mv "$WIZER_DIR.incoming" "$WIZER_DIR"
 fi
 
-# Boot CRuby, load syntax_tree and RuboCop, and serialize the resulting linear
-# memory back into the module - so that the runtime instantiates a VM that is
-# already up instead of paying ~9s to require both gems, and paying it again
-# every time formatting's memory leak forces a recycle.
+# Boot CRuby, load syntax_tree, and serialize the resulting linear memory back
+# into the module - so that the runtime instantiates a VM that is already up
+# instead of paying for the boot, and paying it again every time formatting's
+# memory leak forces a recycle.
 #
-# The step is its own script because it needs the package's own sources: the
-# program it runs inside the VM is `RUBOCOP_SETUP` from src/rubocop.ts, and the
-# directories it hands wizer are the ones src/boot-vm.ts and src/wasi-shims.ts
-# name. Those preopens are the part that is easy to get wrong - the guest's
-# preopen table is captured in the snapshot, so mapping them differently here
-# produces an artifact that boots, formats with syntax_tree, and then dies on
-# the first RuboCop call with `Errno::ENOENT @ dir_s_mkdir - /work`. See the
+# The step is its own script because it needs the package's own sources: it
+# verifies the snapshot through src/format.ts, and the directory it hands wizer
+# is the one src/boot-vm.ts names. That preopen is the part that is easy to get
+# wrong - the guest's preopen table is captured in the snapshot, so mapping it
+# differently here produces an artifact that cannot see its own input. See the
 # header of ./preinit.ts.
-#
-# It costs the artifact size: ~37MB expanded becomes ~67MB, and ~5.2MB
-# compressed becomes ~12.2MB. That is the trade, and it is the reason this is a
-# step here rather than something the runtime could opt into.
 #
 # It also costs byte reproducibility. CRuby seeds its Hash function from
 # `random_get` during startup, and the snapshot is a dump of the heap those
