@@ -1,6 +1,6 @@
 {
   "name": "@scalar/ruby-fmt",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Ruby formatter (syntax_tree on CRuby/wasm, then RuboCop Layout via rbcop/wasm) - runs on plain Node, no Ruby install",
   "keywords": [
     "ruby",
