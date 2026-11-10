@@ -1,5 +1,11 @@
 # @scalar/java-fmt
 
+## 0.4.2
+
+### Patch Changes
+
+- 44353d6: Build with upstream TeaVM plus a small patch series and a shims jar instead of a TeaVM fork. Output is byte-identical to before on both conformance corpora.
+
 ## 0.4.1
 
 ### Patch Changes
