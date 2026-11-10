@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url))
  * PHP CS Fixer's official phar, built by build/php_fmt/build.sh.
  *
  * Stored brotli-compressed: a phar is a container of PHP source text and packs
- * down about 8x, which is the difference between a 3.5MB and a 0.44MB install.
+ * down about 8x, which is the difference between a 3.6MB and a 0.45MB install.
  * The cost is one decompression per process, around 9ms, not one per format.
  * Brotli is in node:zlib, so this adds no dependency.
  *
@@ -21,7 +21,7 @@ const ARTIFACT = path.join(here, '..', 'php_fmt.phar.br')
 
 /**
  * The decompressed phar, kept because it is written into every PHP instance
- * this process boots and re-reading 3.5MB from disk to do that would be waste.
+ * this process boots and re-reading 3.6MB from disk to do that would be waste.
  */
 let phar: Buffer | undefined
 

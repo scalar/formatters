@@ -17,7 +17,7 @@ cd "$(dirname "$0")"
 # Pinned rather than "latest" so a rebuild is reproducible and a version bump is
 # a reviewable diff. The conformance test resolves this same version from the
 # artifact, so the native side and the wasm side can never silently disagree.
-PCF_VERSION="${PCF_VERSION:-3.95.27}"
+PCF_VERSION="${PCF_VERSION:-3.95.30}"
 OUT="../../packages/php/php_fmt.phar.br"
 URL="https://github.com/PHP-CS-Fixer/PHP-CS-Fixer/releases/download/v${PCF_VERSION}/php-cs-fixer.phar"
 
@@ -39,7 +39,7 @@ node -e '
 '
 
 # Ship it brotli-compressed. A phar is a container of PHP source text and packs
-# down about 8x, which is the difference between a 3.5MB and a 0.44MB install.
+# down about 8x, which is the difference between a 3.6MB and a 0.45MB install.
 # Quality 11 takes a few seconds here and costs the consumer ~9ms once per
 # process. Brotli is in node:zlib, so this adds no dependency.
 node -e '

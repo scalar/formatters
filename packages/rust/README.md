@@ -86,7 +86,7 @@ await init({ url: '/assets/rust_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 6.2 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 6.1 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 The browser reads the same brotli artifact as Node (1.3 MB over the wire) and
@@ -124,7 +124,7 @@ changes between versions, so a `rustfmt` from another toolchain is skipped
 rather than compared — comparing it would fail for the wrong reason. To run it:
 
 ```bash
-RUSTFMT=$(rustup which --toolchain nightly-2026-09-22 rustfmt) bun test packages/rust
+RUSTFMT=$(rustup which --toolchain nightly-2026-11-10 rustfmt) bun test packages/rust
 ```
 
 ## The one behaviour left out is configuration discovery
@@ -150,7 +150,7 @@ parse error in both.
 
 ## How it is built, and why that was the hard part
 
-It ships as a 1.3MB `rust_fmt.wasm.br` — 6.2MB of wasm, brotli-compressed —
+It ships as a 1.3MB `rust_fmt.wasm.br` — 6.1MB of wasm, brotli-compressed —
 built by [`build/rust_fmt/build.sh`](../../build/rust_fmt/build.sh). It is
 committed, so a fresh clone needs nothing extra; `bun run rust:build` rebuilds
 it. That makes it the *smallest* artifact in this repo, which is not what anyone

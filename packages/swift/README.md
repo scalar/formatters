@@ -86,7 +86,7 @@ await init({ url: '/assets/swift_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 49.5 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 49.4 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 This is the largest artifact in the repo by a wide margin. Load it behind an
