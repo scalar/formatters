@@ -114,7 +114,8 @@ say so.
 - `packages/ruby` loads it beside the Ruby artifact, under Node and in the
   browser, and the Ruby artifact no longer carries RuboCop: 13.9 MB of
   artifacts became 7.9 MB, and the Ruby VM stopped growing with every file.
-- `collect-licenses.py` regenerates the license texts for everything linked in.
+- `build/licenses/collect.py` regenerates `packages/ruby/licenses/NOTICE.md` -
+  the notices for everything linked into both artifacts - on every build.
 - A second corpus, 2,754 files from the Ruby 3.3 standard library and the
   oracle gems, found one rbcop bug on 10 files.
   `Layout/MultilineOperationIndentation` re-indented the wrapped operand of

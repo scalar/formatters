@@ -83,10 +83,10 @@ cargo build --release --locked --manifest-path entry/Cargo.toml --target "$TARGE
 
 cp "entry/target/$TARGET/release/rbcop_fmt.wasm" rbcop_fmt.wasm
 
-echo "==> license texts"
-# Regenerated from the lockfile on every build, so the texts shipped beside the
-# artifact are those of exactly what it links. See the script's header.
-python3 collect-licenses.py entry rbcop ../../packages/ruby/licenses/rbcop
+echo "==> third-party notices"
+# Regenerated from the lockfile on every build, so the notices shipped with the
+# package name exactly what the artifact links. See the script's header.
+python3 ../licenses/collect.py entry rbcop ../../packages/ruby/licenses/NOTICE.md
 
 # Brotli, like the Ruby artifact beside it: 19MB of wasm packs to ~2.5MB, and
 # the runtime decompresses once per process.

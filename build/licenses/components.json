@@ -1,0 +1,201 @@
+{
+  "//": "Everything compiled into @scalar/ruby-fmt's two artifacts that is not a Cargo crate. collect.py adds the crates linked into rbcop_fmt.wasm from the lockfile. `text` is relative to this directory, `rbcop:` to the rbcop checkout build/rbcop_fmt/build.sh clones, and `canonical:<id>` means the standard text with no copyright line of its own. `license` is the license this package distributes the component under: where a component offers a choice, the one with the lightest notice requirement.",
+  "components": [
+    {
+      "artifact": "ruby_fmt.wasm",
+      "name": "CRuby",
+      "version": "4.0.0",
+      "license": "BSD-2-Clause",
+      "offered": "Ruby OR BSD-2-Clause",
+      "text": "texts/cruby-BSDL",
+      "note": "Includes CRuby's default gems, among them json 2.18.0 and prism 1.7.0. Third-party code compiled into CRuby itself (Onigmo, dtoa.c and others) is listed in cruby-LEGAL, reproduced verbatim beside this file."
+    },
+    {
+      "artifact": "ruby_fmt.wasm",
+      "name": "logger",
+      "version": "1.7.0",
+      "license": "BSD-2-Clause",
+      "offered": "Ruby OR BSD-2-Clause",
+      "text": "texts/logger-BSDL"
+    },
+    {
+      "artifact": "ruby_fmt.wasm",
+      "name": "syntax_tree",
+      "version": "6.3.0",
+      "license": "MIT",
+      "text": "texts/syntax_tree-LICENSE"
+    },
+    {
+      "artifact": "ruby_fmt.wasm",
+      "name": "prettier_print",
+      "version": "1.2.1",
+      "license": "MIT",
+      "text": "texts/prettier_print-LICENSE"
+    },
+    {
+      "artifact": "ruby_fmt.wasm",
+      "name": "js (ruby.wasm)",
+      "version": "2.10.1",
+      "license": "MIT",
+      "text": "texts/ruby.wasm-LICENSE",
+      "note": "The js gem ships no license file of its own; it is part of ruby.wasm, whose license covers it."
+    },
+    {
+      "artifact": "ruby_fmt.wasm",
+      "name": "wasi-libc",
+      "version": "wasi-sdk 24",
+      "license": "MIT",
+      "offered": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "text": "texts/wasi-libc-LICENSE-MIT"
+    },
+    {
+      "artifact": "ruby_fmt.wasm",
+      "name": "musl (in wasi-libc)",
+      "version": "wasi-sdk 24",
+      "license": "MIT",
+      "text": "texts/wasi-libc-musl-COPYRIGHT",
+      "verbatim": true
+    },
+    {
+      "artifact": "ruby_fmt.wasm",
+      "name": "cloudlibc (in wasi-libc)",
+      "version": "wasi-sdk 24",
+      "license": "BSD-2-Clause",
+      "text": "texts/wasi-libc-cloudlibc-LICENSE"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "rbcop",
+      "version": "0.1.4",
+      "license": "MIT",
+      "text": "rbcop:LICENSE"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "RuboCop",
+      "version": "1.92.2",
+      "license": "MIT",
+      "text": "rbcop:config/LICENSE",
+      "note": "rbcop ports RuboCop's cops and compiles in its config/default.yml and config/obsoletion.yml."
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "rubocop-performance",
+      "version": "1.27.0",
+      "license": "MIT",
+      "text": "texts/rubocop-performance-LICENSE.txt",
+      "note": "This and the six plugins below: rbcop ports their cops and compiles in their default configuration."
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "rubocop-rails",
+      "version": "2.38.0",
+      "license": "MIT",
+      "text": "rbcop:config/plugins/LICENSE-rubocop-rails"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "rubocop-minitest",
+      "version": "0.41.0",
+      "license": "MIT",
+      "text": "rbcop:config/plugins/LICENSE-rubocop-minitest"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "rubocop-rspec",
+      "version": "3.10.2",
+      "license": "MIT",
+      "text": "rbcop:config/plugins/LICENSE-rubocop-rspec"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "rubocop-rspec_rails",
+      "version": "2.33.0",
+      "license": "MIT",
+      "text": "rbcop:config/plugins/LICENSE-rubocop-rspec_rails"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "rubocop-factory_bot",
+      "version": "2.28.0",
+      "license": "MIT",
+      "text": "rbcop:config/plugins/LICENSE-rubocop-factory_bot"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "rubocop-capybara",
+      "version": "3.1.0",
+      "license": "MIT",
+      "text": "rbcop:config/plugins/LICENSE-rubocop-capybara"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "unicode-display_width",
+      "version": "3.3.0",
+      "license": "MIT",
+      "text": "texts/unicode-display_width-MIT-LICENSE.txt",
+      "note": "rbcop's display-width table was generated from it and is compiled in."
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "unicode-emoji",
+      "version": "4.3.0",
+      "license": "MIT",
+      "text": "texts/unicode-emoji-MIT-LICENSE.txt",
+      "note": "The source of unicode-display_width's emoji data, and so of the same table."
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "Rust standard library",
+      "version": "the toolchain build.sh uses",
+      "license": "MIT",
+      "offered": "MIT OR Apache-2.0",
+      "text": "canonical:MIT",
+      "copyright": ["Copyrights in the Rust project are retained by their contributors."]
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "wasi-libc",
+      "version": "wasi-sdk 25",
+      "license": "MIT",
+      "offered": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "text": "texts/wasi-libc-LICENSE-MIT"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "musl (in wasi-libc)",
+      "version": "wasi-sdk 25",
+      "license": "MIT",
+      "text": "texts/wasi-libc-musl-COPYRIGHT",
+      "verbatim": true
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "cloudlibc (in wasi-libc)",
+      "version": "wasi-sdk 25",
+      "license": "BSD-2-Clause",
+      "text": "texts/wasi-libc-cloudlibc-LICENSE"
+    },
+    {
+      "artifact": "rbcop_fmt.wasm",
+      "name": "musl-fts (in wasi-libc)",
+      "version": "wasi-sdk 25",
+      "license": "BSD-3-Clause",
+      "text": "texts/wasi-libc-musl-fts-COPYING"
+    }
+  ],
+  "no_notice": [
+    {
+      "artifact": "ruby_fmt.wasm, rbcop_fmt.wasm",
+      "name": "dlmalloc (in wasi-libc)",
+      "license": "CC0-1.0",
+      "why": "dedicates it to the public domain"
+    }
+  ],
+  "crate_texts": {
+    "//": "Crates published without a license file, and the upstream text for the license their manifest declares.",
+    "line-index": "texts/line-index-LICENSE-MIT",
+    "ruby-rbs": "texts/rbs-BSDL",
+    "ruby-rbs-sys": "texts/rbs-BSDL"
+  }
+}
