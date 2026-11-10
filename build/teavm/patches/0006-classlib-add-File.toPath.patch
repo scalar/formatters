@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:42:02 +0000
+Subject: [PATCH 06/20] classlib: add File.toPath
+
+---
+ .../src/main/java/org/teavm/classlib/java/io/TFile.java     | 6 ++++++
+ .../src/test/java/org/teavm/classlib/java/io/FileTest.java  | 6 ++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/io/TFile.java b/classlib/src/main/java/org/teavm/classlib/java/io/TFile.java
+index 2245f41ad..e4a365012 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/io/TFile.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/io/TFile.java
+@@ -24,6 +24,8 @@ import java.net.URISyntaxException;
+ import java.util.Arrays;
+ import java.util.Objects;
+ import org.teavm.classlib.java.lang.TSystem;
++import org.teavm.classlib.java.nio.file.TPath;
++import org.teavm.classlib.java.nio.file.TPaths;
+ import org.teavm.classlib.java.util.TRandom;
+ import org.teavm.runtime.fs.VirtualFile;
+ import org.teavm.runtime.fs.VirtualFileSystem;
+@@ -115,6 +117,10 @@ public class TFile implements Serializable, Comparable<TFile> {
+         return path;
+     }
+ 
++    public TPath toPath() {
++        return TPaths.get(path);
++    }
++
+     public String getName() {
+         int separatorIndex = path.lastIndexOf(separator);
+         return separatorIndex < 0 ? path : path.substring(separatorIndex + 1, path.length());
+diff --git a/tests/src/test/java/org/teavm/classlib/java/io/FileTest.java b/tests/src/test/java/org/teavm/classlib/java/io/FileTest.java
+index 79f86cfce..c56abc6ba 100644
+--- a/tests/src/test/java/org/teavm/classlib/java/io/FileTest.java
++++ b/tests/src/test/java/org/teavm/classlib/java/io/FileTest.java
+@@ -1896,6 +1896,12 @@ public class FileTest {
+         assertTrue(exist);
+     }
+ 
++    @Test
++    public void toPath() {
++        assertEquals("/tmp/a.txt", new File("/tmp/a.txt").toPath().toString());
++        assertEquals(new File("/tmp/a.txt"), new File("/tmp/a.txt").toPath().toFile());
++    }
++
+     @PlatformMarker
+     private static boolean isTeaVM() {
+         return false;

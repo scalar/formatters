@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:45:14 +0000
+Subject: [PATCH 18/20] classlib: add ConcurrentHashMap.KeySetView and
+ ConcurrentHashMap.newKeySet
+
+---
+ .../util/concurrent/TConcurrentHashMap.java   | 66 +++++++++++++++++++
+ 1 file changed, 66 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/util/concurrent/TConcurrentHashMap.java b/classlib/src/main/java/org/teavm/classlib/java/util/concurrent/TConcurrentHashMap.java
+index 62c00e8de..330527612 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/util/concurrent/TConcurrentHashMap.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/util/concurrent/TConcurrentHashMap.java
+@@ -636,6 +636,72 @@ public class TConcurrentHashMap<K, V> extends TAbstractMap<K, V>
+         return elementCount == 0;
+     }
+ 
++    public static class KeySetView<K, V> extends TAbstractSet<K> {
++        private final TConcurrentHashMap<K, V> map;
++        private final V value;
++
++        KeySetView(TConcurrentHashMap<K, V> map, V value) {
++            this.map = map;
++            this.value = value;
++        }
++
++        public TConcurrentHashMap<K, V> getMap() {
++            return map;
++        }
++
++        public V getMappedValue() {
++            return value;
++        }
++
++        @Override
++        public boolean add(K key) {
++            if (value == null) {
++                throw new UnsupportedOperationException("no mapped value");
++            }
++            return map.put(key, value) == null;
++        }
++
++        @Override
++        public boolean remove(Object o) {
++            return map.remove(o) != null;
++        }
++
++        @Override
++        public boolean contains(Object o) {
++            return map.containsKey(o);
++        }
++
++        @Override
++        public void clear() {
++            map.clear();
++        }
++
++        @Override
++        public int size() {
++            return map.size();
++        }
++
++        @Override
++        public org.teavm.classlib.java.util.TIterator<K> iterator() {
++            return map.keySet().iterator();
++        }
++    }
++
++    public static <K> KeySetView<K, Boolean> newKeySet() {
++        return new KeySetView<>(new TConcurrentHashMap<>(), Boolean.TRUE);
++    }
++
++    public static <K> KeySetView<K, Boolean> newKeySet(int initialCapacity) {
++        return new KeySetView<>(new TConcurrentHashMap<>(initialCapacity), Boolean.TRUE);
++    }
++
++    public KeySetView<K, V> keySet(V mappedValue) {
++        if (mappedValue == null) {
++            throw new NullPointerException();
++        }
++        return new KeySetView<>(this, mappedValue);
++    }
++
+     @Override
+     public TSet<K> keySet() {
+         if (cachedKeySet == null) {

@@ -1,0 +1,162 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:45:13 +0000
+Subject: [PATCH 15/20] classlib: add MethodHandle, MethodHandles.Lookup and
+ MethodType members that throw
+
+---
+ .../java/lang/invoke/TMethodHandle.java       | 49 ++++++++++++++++
+ .../java/lang/invoke/TMethodHandles.java      | 56 ++++++++++++++++++-
+ .../java/lang/invoke/TMethodType.java         | 15 +++++
+ 3 files changed, 119 insertions(+), 1 deletion(-)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodHandle.java b/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodHandle.java
+index db313f097..7e04d3057 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodHandle.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodHandle.java
+@@ -15,5 +15,54 @@
+  */
+ package org.teavm.classlib.java.lang.invoke;
+ 
++import org.teavm.classlib.java.lang.TClass;
++
+ public abstract class TMethodHandle {
++    public Object invoke() {
++        throw unsupported();
++    }
++
++    public void invoke(Object arg) {
++        throw unsupported();
++    }
++
++    public void invoke(java.util.ResourceBundle arg) {
++        throw unsupported();
++    }
++
++    public void invokeExact(Object[] args) {
++        throw unsupported();
++    }
++
++    public Object invoke(Object... args) {
++        throw unsupported();
++    }
++
++    public Object invokeWithArguments(Object... args) {
++        throw unsupported();
++    }
++
++    public Object invokeWithArguments(java.util.List<?> args) {
++        throw unsupported();
++    }
++
++    public TMethodHandle bindTo(Object receiver) {
++        throw unsupported();
++    }
++
++    public TMethodHandle asType(TMethodType newType) {
++        throw unsupported();
++    }
++
++    public TMethodHandle asSpreader(TClass<?> arrayType, int arrayLength) {
++        throw unsupported();
++    }
++
++    public TMethodType type() {
++        throw unsupported();
++    }
++
++    private static RuntimeException unsupported() {
++        return new UnsupportedOperationException("MethodHandles cannot be resolved ahead of time");
++    }
+ }
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodHandles.java b/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodHandles.java
+index 325c70879..b6d2d0e10 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodHandles.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodHandles.java
+@@ -15,7 +15,61 @@
+  */
+ package org.teavm.classlib.java.lang.invoke;
+ 
+-public class TMethodHandles {
++public final class TMethodHandles {
++    private TMethodHandles() {
++    }
++
++    public static Lookup lookup() {
++        return new Lookup();
++    }
++
++    public static Lookup publicLookup() {
++        return new Lookup();
++    }
++
+     public static final class Lookup {
++        public TMethodHandle findVirtual(Class<?> refc, String name, TMethodType type) {
++            throw unsupported();
++        }
++
++        public TMethodHandle findStatic(Class<?> refc, String name, TMethodType type) {
++            throw unsupported();
++        }
++
++        public TMethodHandle findSpecial(Class<?> refc, String name, TMethodType type, Class<?> specialCaller) {
++            throw unsupported();
++        }
++
++        public TMethodHandle findConstructor(Class<?> refc, TMethodType type) {
++            throw unsupported();
++        }
++
++        public TMethodHandle findGetter(Class<?> refc, String name, Class<?> type) {
++            throw unsupported();
++        }
++
++        public TMethodHandle findSetter(Class<?> refc, String name, Class<?> type) {
++            throw unsupported();
++        }
++
++        public TMethodHandle unreflectGetter(java.lang.reflect.Field field) {
++            throw unsupported();
++        }
++
++        public TMethodHandle unreflectSetter(java.lang.reflect.Field field) {
++            throw unsupported();
++        }
++
++        public TMethodHandle unreflect(java.lang.reflect.Method method) {
++            throw unsupported();
++        }
++
++        public Class<?> lookupClass() {
++            throw unsupported();
++        }
++
++        private static RuntimeException unsupported() {
++            return new UnsupportedOperationException("MethodHandles cannot be resolved ahead of time");
++        }
+     }
+ }
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodType.java b/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodType.java
+index 7ba17d0c2..1491fd5d5 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodType.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/invoke/TMethodType.java
+@@ -18,4 +18,19 @@ package org.teavm.classlib.java.lang.invoke;
+ import java.io.Serializable;
+ 
+ public final class TMethodType implements Serializable {
++    private TMethodType() {
++    }
++
++    public static TMethodType methodType(Class<?> rtype) {
++        throw new UnsupportedOperationException("MethodHandles cannot be resolved ahead of time");
++    }
++
++    public static TMethodType methodType(Class<?> rtype, Class<?> ptype0) {
++        throw new UnsupportedOperationException("MethodHandles cannot be resolved ahead of time");
++    }
++
++    public static TMethodType methodType(Class<?> rtype, Class<?>... ptypes) {
++        throw new UnsupportedOperationException("MethodHandles cannot be resolved ahead of time");
++    }
++
+ }

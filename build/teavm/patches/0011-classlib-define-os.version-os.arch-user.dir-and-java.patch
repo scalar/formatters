@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:44:48 +0000
+Subject: [PATCH 11/20] classlib: define os.version, os.arch, user.dir and
+ java.home
+
+---
+ .../main/java/org/teavm/classlib/java/lang/TSystem.java   | 4 ++++
+ .../java/org/teavm/classlib/java/lang/SystemTest.java     | 8 ++++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/TSystem.java b/classlib/src/main/java/org/teavm/classlib/java/lang/TSystem.java
+index ab4a5521c..36f8ed57f 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/TSystem.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/TSystem.java
+@@ -187,12 +187,16 @@ public final class TSystem extends TObject {
+             Properties defaults = new Properties();
+             defaults.put("java.version", "21");
+             defaults.put("os.name", "TeaVM");
++            defaults.put("os.version", "0");
++            defaults.put("os.arch", "wasm32");
+             defaults.put("file.separator", VirtualFileSystemProvider.getInstance().isWindows() ? "\\" : "/");
+             defaults.put("path.separator", VirtualFileSystemProvider.getInstance().isWindows() ? ";" : ":");
+             defaults.put("line.separator", lineSeparator());
+             defaults.put("java.io.tmpdir", getTempDir());
+             defaults.put("java.vm.version", "21");
+             defaults.put("user.home", getHomeDir());
++            defaults.put("user.dir", getHomeDir());
++            defaults.put("java.home", "/");
+             properties = new Properties(defaults);
+         }
+     }
+diff --git a/tests/src/test/java/org/teavm/classlib/java/lang/SystemTest.java b/tests/src/test/java/org/teavm/classlib/java/lang/SystemTest.java
+index 4d03fc27b..a6bb59fa0 100644
+--- a/tests/src/test/java/org/teavm/classlib/java/lang/SystemTest.java
++++ b/tests/src/test/java/org/teavm/classlib/java/lang/SystemTest.java
+@@ -196,4 +196,12 @@ public class SystemTest {
+         int hc1 = System.identityHashCode(o);
+         assertEquals(hc, hc1);
+     }
++
++    @Test
++    public void requiredPropertiesAreDefined() {
++        assertNotNull(System.getProperty("java.home"));
++        assertNotNull(System.getProperty("user.dir"));
++        assertNotNull(System.getProperty("user.home"));
++        assertNotNull(System.getProperty("java.io.tmpdir"));
++    }
+ }

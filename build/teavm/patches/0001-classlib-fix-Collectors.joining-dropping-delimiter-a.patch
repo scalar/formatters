@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:41:13 +0000
+Subject: [PATCH 01/20] classlib: fix Collectors.joining dropping delimiter
+ after empty element
+
+---
+ .../classlib/java/util/stream/TCollectors.java | 18 ++++--------------
+ .../java/util/stream/CollectorsTest.java       | 10 ++++++++++
+ 2 files changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/util/stream/TCollectors.java b/classlib/src/main/java/org/teavm/classlib/java/util/stream/TCollectors.java
+index a60a9045e..58384c79a 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/util/stream/TCollectors.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/util/stream/TCollectors.java
+@@ -78,20 +78,10 @@ public final class TCollectors {
+ 
+     public static TCollector<CharSequence, ?, String> joining(CharSequence delimiter, CharSequence prefix,
+             CharSequence suffix) {
+-        BiConsumer<StringBuilder, CharSequence> accumulator = (sb, item) -> {
+-            if (sb.length() > 0) {
+-                sb.append(delimiter);
+-            }
+-            sb.append(item);
+-        };
+-        BinaryOperator<StringBuilder> combiner = (a, b) -> {
+-            if (a.length() > 0) {
+-                a.append(delimiter);
+-            }
+-            return a.append(b);
+-        };
+-        return TCollector.of(StringBuilder::new, accumulator, combiner,
+-                sb -> sb.insert(0, prefix).append(suffix).toString());
++        return TCollector.<CharSequence, List<CharSequence>, String>of(ArrayList::new, List::add, (a, b) -> {
++            a.addAll(b);
++            return a;
++        }, list -> prefix + String.join(delimiter, list) + suffix);
+     }
+ 
+     public static <T, A, R, K> TCollector<T, ?, K> mapping(Function<? super T, ? extends A> mapper,
+diff --git a/tests/src/test/java/org/teavm/classlib/java/util/stream/CollectorsTest.java b/tests/src/test/java/org/teavm/classlib/java/util/stream/CollectorsTest.java
+index cefda243c..d9414e217 100644
+--- a/tests/src/test/java/org/teavm/classlib/java/util/stream/CollectorsTest.java
++++ b/tests/src/test/java/org/teavm/classlib/java/util/stream/CollectorsTest.java
+@@ -47,6 +47,16 @@ public class CollectorsTest {
+         assertEquals("[1]", Stream.of(1).map(Object::toString).collect(Collectors.joining(",", "[", "]")));
+     }
+ 
++    @Test
++    public void joiningEmptyElements() {
++        assertEquals(",b", Stream.of("", "b").collect(Collectors.joining(",")));
++        assertEquals(",,", Stream.of("", "", "").collect(Collectors.joining(",")));
++        assertEquals("a,,b", Stream.of("a", "", "b").collect(Collectors.joining(",")));
++        assertEquals("a,", Stream.of("a", "").collect(Collectors.joining(",")));
++        assertEquals("[,b]", Stream.of("", "b").collect(Collectors.joining(",", "[", "]")));
++        assertEquals("\nb", Stream.of("", "b").collect(Collectors.joining("\n")));
++    }
++
+     @Test
+     public void toList() {
+         assertEquals(Arrays.asList(1, 2, 3), Stream.of(1, 2, 3).collect(Collectors.toList()));

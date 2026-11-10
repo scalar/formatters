@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:45:00 +0000
+Subject: [PATCH 12/20] classlib: add Character.UnicodeBlock for the variation
+ selector blocks
+
+---
+ .../teavm/classlib/java/lang/TCharacter.java  | 40 +++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/TCharacter.java b/classlib/src/main/java/org/teavm/classlib/java/lang/TCharacter.java
+index b1d40624c..6d66ab707 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/TCharacter.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/TCharacter.java
+@@ -21,6 +21,46 @@ import org.teavm.classlib.impl.unicode.UnicodeHelper;
+ import org.teavm.platform.metadata.StringResource;
+ 
+ public class TCharacter extends TObject implements TComparable<TCharacter> {
++    public static final class UnicodeBlock {
++        public static final UnicodeBlock VARIATION_SELECTORS =
++                new UnicodeBlock("VARIATION_SELECTORS", 0xFE00, 0xFE0F);
++        public static final UnicodeBlock VARIATION_SELECTORS_SUPPLEMENT =
++                new UnicodeBlock("VARIATION_SELECTORS_SUPPLEMENT", 0xE0100, 0xE01EF);
++
++        private static final UnicodeBlock[] BLOCKS = {
++            VARIATION_SELECTORS,
++            VARIATION_SELECTORS_SUPPLEMENT,
++        };
++
++        private final String name;
++        private final int start;
++        private final int end;
++
++        private UnicodeBlock(String name, int start, int end) {
++            this.name = name;
++            this.start = start;
++            this.end = end;
++        }
++
++        public static UnicodeBlock of(int codePoint) {
++            for (UnicodeBlock block : BLOCKS) {
++                if (codePoint >= block.start && codePoint <= block.end) {
++                    return block;
++                }
++            }
++            return null;
++        }
++
++        public static UnicodeBlock of(char c) {
++            return of((int) c);
++        }
++
++        @Override
++        public String toString() {
++            return name;
++        }
++    }
++
+     public static final int MIN_RADIX = 2;
+     public static final int MAX_RADIX = 36;
+     public static final char MIN_VALUE = '\0';

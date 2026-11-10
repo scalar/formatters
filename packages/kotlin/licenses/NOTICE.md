@@ -14,9 +14,10 @@ the top of it.
 | Kotlin compiler (PSI and parser, `kotlin-compiler-embeddable`) | 2.3.20 | Apache-2.0 | `apache-2.0-LICENSE` |
 | IntelliJ platform (shaded inside the above) | bundled with the above | Apache-2.0 | `apache-2.0-LICENSE` |
 | Kotlin standard library | 2.3.20 | Apache-2.0 | `apache-2.0-LICENSE` |
+| kotlinx-coroutines (`kotlinx-coroutines-core-jvm`) | 1.10.2 | Apache-2.0 | `apache-2.0-LICENSE` |
 | google-java-format (layout engine only) | 1.23.0 | Apache-2.0 | `apache-2.0-LICENSE` |
 | Guava | 33.5.0-jre | Apache-2.0 | `apache-2.0-LICENSE` |
-| TeaVM class library and runtime | fork of master, see build.sh | Apache-2.0 | `apache-2.0-LICENSE` |
+| TeaVM class library and runtime | master + patches, see `build/teavm/UPSTREAM_REF` | Apache-2.0 | `apache-2.0-LICENSE` |
 
 Every entry is Apache-2.0, so they share one text.
 
@@ -40,19 +41,23 @@ compiler's own PSI, and uses google-java-format only for its layout engine
 
 ## Modifications, as the license requires
 
-Apache-2.0 asks that modified files be marked. Two of the components above are
-not shipped unmodified:
+Apache-2.0 asks that modified files be marked. These components are not shipped
+unmodified:
 
 - **ktfmt 0.64** — the initializer of `Parser` builds a bare PSI container
   instead of a `KotlinCoreEnvironment`. One file, ~20 lines; everything else is
   ktfmt's. The diff is `build/java_fmt_teavm/patches/ktfmt.patch`, and
   `gate2.sh` is the evidence that it changes no output.
-- **TeaVM** — a fork carrying three unreleased Wasm GC backend fixes, plus five
-  patch files on top: class-library additions and fixes, a proxy and reflection
-  fix, three charsets, a class-initializer miscompile fix, and single-threaded
-  stand-ins for `Thread.yield`, `Thread.sleep` and `Object.wait`. All of it is in
-  `build/java_fmt_teavm/patches/`, one file per concern, with
-  `build/java_fmt_teavm/patches/README.md` explaining each.
+- **TeaVM** — upstream at a pinned commit with a patch series applied
+  (class-library additions and fixes, a proxy fix, three charsets and a
+  class-initializer miscompile fix), plus a jar of single-threaded `java.*`
+  classes upstream lacks. All of it is in `build/teavm/`, with
+  `build/teavm/README.md` explaining each part.
+- **kotlinx-coroutines 1.10.2 and the IntelliJ platform** — one call deleted
+  from each of three classes at build time, by
+  `build/java_fmt_teavm/kotlin-probe/plugin/kprobe/SingleThreadedCalls.java`:
+  `Thread.yield()` from `kotlinx.coroutines.scheduling.WorkQueue` and from
+  IntelliJ's `ConcurrentIntObjectHashMap`, and `Thread.sleep` from IntelliJ's
+  `TimeoutUtil`. None is on a path formatting takes; see that file for why.
 
-The Kotlin compiler, its standard library, google-java-format and Guava are
-used as published.
+The Kotlin standard library, google-java-format and Guava are used as published.

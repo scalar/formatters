@@ -8,59 +8,23 @@
 Both are diffs against a pinned upstream release, so the change stays reviewable
 and can be dropped the moment it lands upstream.
 
-## The TeaVM changes live on the fork, not here
+## The TeaVM changes live in `../../teavm`
 
-They used to be six files in this directory - one of them applied to a different
-TeaVM than the others - applied in order with two hunks dropped by hand. They are
-now commits on [`amritk/teavm`](https://github.com/amritk/teavm), one per change,
-so both builds clone and build rather than clone and patch.
+They were six patch files here, then commits on the `amritk/teavm` fork. They are
+now a patch series and a shims jar applied to a pinned upstream
+`konsoletyper/teavm` commit, in [`../../teavm`](../../teavm/README.md):
 
-**One toolchain.** Java used to build on 0.14.1 plus `teavm.patch` while Kotlin
-built on the fork; both now build on the fork at the same pinned commit. The Java
-corpus was re-cleared on it: 658/658 byte-identical in both styles, and the
-patch-neutrality half of that run is unchanged at 658/658 too.
+- `patches/` - the edits to classes and compiler code upstream already has, one
+  change per patch, the upstreamable ones first;
+- `shims/` - the `java.*` classes upstream does not define (the single-threaded
+  `java.util.concurrent` stand-ins, `java.lang.management`, `IOError`,
+  `URLClassLoader`, `Normalizer`, `BreakIterator`, ...), loaded through TeaVM's
+  substitution extension point instead of living in its class library;
+- `HUNKS.md` - where every hunk of the fork's diff went;
+- `upstream/` - drafts of the PRs and issues to send.
 
-### What is on the fork
-
-`master` is base + thirteen commits, in dependency order. Ten are upstreamable
-and each has a branch off the upstream base carrying just that change, so a pull
-request is a push rather than a rewrite:
-
-| Branch | What |
-|---|---|
-| `upstream/wasm-gc-coroutine-depth` | a stale `depthBeforeLastInstructionOut`, and per-function coroutine state not reset when a transform fails, which silently corrupted every suspending method compiled afterwards |
-| `upstream/wasm-gc-flattened-conditional-type` | `processOptimizedConditional` left the recorded stack holding whatever arm was walked last, where a wasm block leaves the type it is *declared* to produce |
-| `upstream/wasm-gc-tee-local-type` | `WasmTypeInference.visit(WasmTeeLocal)` recorded the **value's** type; `local.tee` leaves the **local's declared** type on the stack |
-| `upstream/wasm-gc-static-initial-value` | `WasmGCClassGenerator.staticInitialValue` emits a reference null regardless of the global's type |
-| `upstream/classlib-fixes` | `Collectors.joining` drops empty elements; `\R` rejected; `\p{IsAlphabetic}` unknown; `java.home` and `user.dir` undefined |
-| `upstream/classlib-additions` | `String.lines`, `StringBuilder.repeat`, `File.toPath`, `Spliterators`, `System.exit`, `IOError`, `URLClassLoader`, `Normalizer`, `BreakIterator`. Stacked on `classlib-fixes`: both touch `TSystem` |
-| `upstream/system-properties` | `os.version` and `os.arch` undefined |
-| `upstream/proxy-and-reflection` | an interface with a constant field cannot be proxied, plus two unnamed reflection exceptions that made it hard to find |
-| `upstream/charsets` | UTF-32BE, UTF-32LE, windows-1251, and a `forName` registry keyed by canonical name where the lookup uppercases |
-| `upstream/class-init-elimination` | **a miscompile** — `ClassInitElimination` treats any invocation as initializing the class it names, deleting live class initializers |
-
-The first three used to be `claude/…` branches. Those are superseded and can be
-deleted; the CLI could not do it from here.
-
-Three commits stay on `master` only, because they are deliberate divergences
-rather than fixes:
-
-- **the Kotlin class library** — 47 files of single-threaded `java.util.concurrent`
-  stand-ins, `java.lang.management` and `java.beans` declarations, and the
-  members the Kotlin compiler reaches for. Includes the `MethodHandle`
-  descriptors, `asSpreader` among them: they are spelled out one by one because
-  polymorphic-signature methods let the caller write any descriptor, which is
-  whack-a-mole rather than something to send upstream.
-- **`yield`, `sleep` and `wait` as no-ops or throws** — right for one thread,
-  wrong for TeaVM in general. Also what keeps the module a third smaller; see the
-  commit message.
-- **`RuntimeMXBean`**, which comes with the above.
-
-### Which to send first
-
-`upstream/class-init-elimination`. It is the only one that makes previously
-*wrong* code right rather than previously *missing* code present, it is silent,
-and any WasmGC program with the shape can hit it. The rest are ordinary gaps.
+Both builds call `../../teavm/apply.sh`, so Java and Kotlin still compile with one
+TeaVM.
 
 ### Still unreported, with no fix
 
@@ -71,8 +35,8 @@ coroutine prologue runs `Fiber.current()` and then `isResuming()` on it — at
 instantiation, before any fiber exists — and the module traps on load with
 `dereferencing a null pointer`. Any WasmGC program that both uses threads and
 exports anything hits this. Found via `../kotlin-probe`, where the closure
-covered 7,055 of 20,513 methods. The single-threaded stand-ins avoid it here;
-they do not fix it.
+covered 7,055 of 20,513 methods. Upstream's async-off default avoids it here,
+since nothing is coroutine-transformed; it does not fix it.
 
 **`\P{...}` negation is broken** for every char class implemented as an anonymous
 `AbstractCharClass` overriding `contains(int)`. `\P{javaJavaIdentifierStart}`

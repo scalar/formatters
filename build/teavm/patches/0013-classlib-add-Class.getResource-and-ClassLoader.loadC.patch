@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:45:06 +0000
+Subject: [PATCH 13/20] classlib: add Class.getResource and
+ ClassLoader.loadClass, name missing members in reflection exceptions
+
+---
+ .../java/org/teavm/classlib/java/lang/TClass.java    |  8 ++++++--
+ .../org/teavm/classlib/java/lang/TClassLoader.java   | 12 ++++++++++++
+ 2 files changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/TClass.java b/classlib/src/main/java/org/teavm/classlib/java/lang/TClass.java
+index 0432d986c..a2a219ca7 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/TClass.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/TClass.java
+@@ -253,7 +253,7 @@ public final class TClass<T> extends TObject implements TGenericDeclaration, TTy
+                 return field;
+             }
+         }
+-        throw new TNoSuchFieldException();
++        throw new TNoSuchFieldException(getName() + "." + name);
+     }
+ 
+     public TField getField(String name) throws TNoSuchFieldException {
+@@ -414,7 +414,7 @@ public final class TClass<T> extends TObject implements TGenericDeclaration, TTy
+             }
+         }
+         if (bestFit == null) {
+-            throw new TNoSuchMethodException();
++            throw new TNoSuchMethodException(getName() + "." + name);
+         }
+         return bestFit;
+     }
+@@ -713,6 +713,10 @@ public final class TClass<T> extends TObject implements TGenericDeclaration, TTy
+         }
+     }
+ 
++    public java.net.URL getResource(String name) {
++        return null;
++    }
++
+     public InputStream getResourceAsStream(String name) {
+         if (name.startsWith("/")) {
+             return getClassLoader().getResourceAsStream(name.substring(1));
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/TClassLoader.java b/classlib/src/main/java/org/teavm/classlib/java/lang/TClassLoader.java
+index c7e1acd72..e27fcdb70 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/TClassLoader.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/TClassLoader.java
+@@ -61,6 +61,18 @@ public abstract class TClassLoader extends TObject {
+         return new ByteArrayInputStream(Base64Impl.decode(bytes));
+     }
+ 
++    public java.net.URL getResource(String name) {
++        return null;
++    }
++
++    public static java.net.URL getSystemResource(String name) {
++        return null;
++    }
++
++    public TClass<?> loadClass(String name) throws TClassNotFoundException {
++        throw new TClassNotFoundException(name);
++    }
++
+     public static InputStream getSystemResourceAsStream(String name) {
+         return getSystemClassLoader().getResourceAsStream(name);
+     }

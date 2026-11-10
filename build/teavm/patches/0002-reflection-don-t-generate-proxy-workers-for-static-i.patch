@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:41:30 +0000
+Subject: [PATCH 02/20] reflection: don't generate proxy workers for static
+ interface methods
+
+---
+ .../reflection/ProxyDependencySupport.java    |  2 +-
+ .../classlib/java/lang/reflect/ProxyTest.java | 20 +++++++++++++++++++
+ 2 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/core/src/main/java/org/teavm/reflection/ProxyDependencySupport.java b/core/src/main/java/org/teavm/reflection/ProxyDependencySupport.java
+index 9495a5356..e81400519 100644
+--- a/core/src/main/java/org/teavm/reflection/ProxyDependencySupport.java
++++ b/core/src/main/java/org/teavm/reflection/ProxyDependencySupport.java
+@@ -140,7 +140,7 @@ class ProxyDependencySupport {
+         }
+         var itf = agent.getClassSource().get(itfName);
+         for (var method : itf.getMethods()) {
+-            if (method.hasModifier(ElementModifier.BRIDGE)) {
++            if (method.hasModifier(ElementModifier.BRIDGE) || method.hasModifier(ElementModifier.STATIC)) {
+                 continue;
+             }
+             var signature = new Signature(method.getName(), method.getDescriptor().getParameterTypes());
+diff --git a/tests/src/test/java/org/teavm/classlib/java/lang/reflect/ProxyTest.java b/tests/src/test/java/org/teavm/classlib/java/lang/reflect/ProxyTest.java
+index e86928e1f..1c723c164 100644
+--- a/tests/src/test/java/org/teavm/classlib/java/lang/reflect/ProxyTest.java
++++ b/tests/src/test/java/org/teavm/classlib/java/lang/reflect/ProxyTest.java
+@@ -329,6 +329,15 @@ public class ProxyTest {
+         assertEquals(2.718, f.doubleMethod(), 0.00001);
+     }
+ 
++    @Test
++    public void interfaceWithStaticMembers() {
++        var proxy = (WithStaticMembers) Proxy.newProxyInstance(ProxyTest.class.getClassLoader(),
++                new Class[] { WithStaticMembers.class }, (_, m, _) -> m.getName());
++        assertEquals("foo", proxy.foo());
++        assertEquals("bar", WithStaticMembers.bar());
++        assertTrue(WithStaticMembers.CONSTANT instanceof Object);
++    }
++
+     @Test
+     @SkipJVM
+     public void unregisteredInterface() {
+@@ -517,6 +526,17 @@ public class ProxyTest {
+         void bar();
+     }
+ 
++    @Proxiable
++    public interface WithStaticMembers {
++        Object CONSTANT = new Object();
++
++        String foo();
++
++        static String bar() {
++            return "bar";
++        }
++    }
++
+     public static class NonInterface {
+     }
+ }

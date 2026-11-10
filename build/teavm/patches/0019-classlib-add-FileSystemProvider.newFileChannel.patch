@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:45:14 +0000
+Subject: [PATCH 19/20] classlib: add FileSystemProvider.newFileChannel
+
+---
+ .../classlib/java/nio/file/spi/TFileSystemProvider.java     | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/nio/file/spi/TFileSystemProvider.java b/classlib/src/main/java/org/teavm/classlib/java/nio/file/spi/TFileSystemProvider.java
+index 4f4af03e4..e20ddbb36 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/nio/file/spi/TFileSystemProvider.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/nio/file/spi/TFileSystemProvider.java
+@@ -23,6 +23,7 @@ import java.util.Arrays;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.ServiceLoader;
++import java.util.Set;
+ import org.teavm.classlib.java.net.TURI;
+ import org.teavm.classlib.java.nio.file.TAccessMode;
+ import org.teavm.classlib.java.nio.file.TCopyOption;
+@@ -42,6 +43,11 @@ public abstract class TFileSystemProvider {
+     protected TFileSystemProvider() {
+     }
+ 
++    public java.nio.channels.FileChannel newFileChannel(TPath path, Set<? extends TOpenOption> options,
++            TFileAttribute<?>... attrs) throws IOException {
++        throw new UnsupportedOperationException();
++    }
++
+     public abstract String getScheme();
+ 
+     public abstract TFileSystem newFileSystem(TURI uri, Map<String, ?> env) throws IOException;

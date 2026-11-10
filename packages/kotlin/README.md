@@ -182,17 +182,24 @@ the diff is `build/java_fmt_teavm/patches/ktfmt.patch`.
 
 ### TeaVM is patched too
 
-Six patches, five of them ordinary bug fixes or missing class-library members,
-and one a miscompile — `ClassInitElimination` treated any invocation as
-initializing the class it names, which deleted a class initializer that a later
-read of the same class's static field depended on. They are listed in
-`build/java_fmt_teavm/patches/README.md`; none has landed upstream yet.
+It is built from upstream TeaVM at a pinned commit plus the patch series and
+shims in `build/teavm`, shared with `@scalar/java-fmt`. Most of the patches are
+ordinary bug fixes or missing class-library members; one fixes a miscompile.
+`ClassInitElimination` treated an instance call as initializing the class it
+names, which deleted an interface's initializer that a later read of one of its
+fields depended on. `build/teavm/README.md` lists them, and
+`build/teavm/upstream/` drafts each one for upstream; none has landed yet.
 
-One group is a deliberate divergence rather than a fix: `Thread.yield`,
-`Thread.sleep` and `Object.wait` are stand-ins that do nothing or throw, because
-this module is single-threaded. They are also what makes it small — a single
-`Thread.yield()` reachable in kotlinx-coroutines made a third of the program a
-coroutine and the module 37% larger.
+The single-threaded part is a deliberate divergence rather than a fix, and it
+lives outside TeaVM. The `java.util.concurrent` executors, locks and
+`LockSupport` in `build/teavm/shims` do nothing or throw, because this module has
+one thread. Three calls that would otherwise reach a blocking `@Async` method
+(`Thread.yield` in kotlinx-coroutines and in an IntelliJ map, `Thread.sleep` in
+IntelliJ's `TimeoutUtil`) are deleted at build time by
+`build/java_fmt_teavm/kotlin-probe/plugin/kprobe/SingleThreadedCalls.java`. None
+is on a path formatting takes. That keeps TeaVM's async support off, its
+default. A single reachable `Thread.yield()` used to make a third of the program
+a coroutine and the module 37% larger.
 
 `LockSupport.park` is one of those stand-ins, and it used to be audible. Opening
 ktfmt's parser builds an IntelliJ `CoreProjectEnvironment`, which launches two
