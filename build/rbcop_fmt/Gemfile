@@ -1,0 +1,20 @@
+source "https://rubygems.org"
+
+# The oracle, not a build input: nothing here is compiled into the artifact.
+#
+# rbcop reimplements RuboCop, so the claim that its Layout pass is exact rests
+# on comparing it with the real `rubocop`, and packages/ruby's
+# test/rubocop-conformance.test.ts does that against exactly these gems. CI
+# installs them from here.
+#
+# They are the versions rbcop's own parity gates ran against: `rbcop -V`
+# reports RuboCop 1.92.2 using rubocop-ast 1.50.0, Parser 3.3.12.0 and Prism
+# 1.9.0. All four are load-bearing. RuboCop's Layout output changes between
+# releases, rubocop-ast decides which parser produces the token stream the
+# Layout cops see, and the package's TargetRubyVersion (3.4) puts RuboCop on
+# Prism. Move them only with rbcop: when RBCOP_COMMIT in build.sh moves to an
+# rbcop targeting a newer RuboCop, these move to what it reports.
+gem "rubocop", "1.92.2"
+gem "rubocop-ast", "1.50.0"
+gem "parser", "3.3.12.0"
+gem "prism", "1.9.0"

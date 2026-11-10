@@ -7,6 +7,12 @@
 // the bug only ever showed up in a process that formatted a lot - exactly what
 // formatting a whole codebase does.
 //
+// Nearly all of that growth was RuboCop's. Since the RuboCop pass moved out of
+// the VM to rbcop, 13.8MB of real Ruby grows a fresh VM by ~50MB in total, and
+// what is left tracks the largest single file rather than adding up. Linear
+// memory still never shrinks, though, so the recycle stays as the guard against
+// a large file - and this file still holds it in place.
+//
 // This used to reach for that wall directly, formatting 1MB of input in the
 // hope of falling over if recycling stopped happening. That made it far and away
 // the most expensive test in the suite - 90s on a CI runner, and twice it wedged
@@ -22,27 +28,26 @@
 // green with the recycle deleted.
 //
 // Every format here passes `rubocop: false`. The recycling being guarded is the
-// VM's, and it is identical either way - but the RuboCop pass costs two to three
-// times as much per format, which took this file from ~15s to ~150s against a
-// 300s hang guard. That is a hang guard with almost no headroom left, on a
-// slower runner it is a red build, and none of the cost buys any more coverage
-// of the thing under test.
+// Ruby VM's, and the RuboCop pass does not run in that VM at all - it is rbcop,
+// a separate module with memory of its own - so running it here would only add
+// time without adding coverage of the thing under test.
 
 import { format } from '../src/index'
 import { nodeVm } from '../src/node-vm'
 import { describe, expect, it } from 'bun:test'
 
-// ~37KB, and enough for two passes to carry a fresh VM over the 400MB ceiling
-// `format()` recycles at: the artifact arrives pre-initialized, so a VM starts
-// at ~373MB, one pass takes it to ~395MB and the second to ~406MB.
+// ~75KB, and enough for three passes to carry a fresh VM over the 400MB ceiling
+// `format()` recycles at: a VM starts at ~332MB, and passes take it to ~390MB,
+// ~395MB and ~409MB. Smaller samples plateau under the ceiling now that RuboCop
+// is not in the VM, and never recycle at all.
 const SAMPLE = Array.from(
-  { length: 400 },
+  { length: 800 },
   (_, i) => `def method_${i}(alpha, beta: ${i}, gamma: nil)\n  alpha.map { |x| x * ${i} }.select(&:positive?)\nend`,
 ).join('\n')
 
 /**
  * Enough passes to recycle several times over. Measured: the VM recycles on
- * every other pass, so ten gives five, which exercises the path repeatedly while
+ * every third pass, so ten gives three, which exercises the path repeatedly while
  * leaving the run short enough to sit in the main suite.
  */
 const PASSES = 10
@@ -50,19 +55,18 @@ const PASSES = 10
 /**
  * The bound, and it is a long way clear of the measured peak on purpose.
  *
- * A recycling VM peaks at 406MB here - the ~373MB a pre-initialized VM starts
- * at, plus the two passes it takes to trip the ceiling. This number is
+ * A recycling VM peaks at ~409MB here - the ~332MB a pre-initialized VM starts
+ * at, plus the three passes it takes to trip the ceiling. This number is
  * not sized against that peak: it is sized against the wasm32 2GB wall the
  * recycling exists to keep the VM away from, so that a regression that lets
  * memory climb is caught well before the crash and without this file failing on
  * ordinary variation.
  *
  * Which is also why it is not the only assertion. Formatting *this* sample
- * repeatedly plateaus - with recycling switched off it settles at ~415MB and
+ * repeatedly plateaus - with recycling switched off it settles at ~414MB and
  * stops, because the same input reuses the same freed pages - so a bounds check
- * alone would stay green with the recycle deleted. It was already like that
- * before the artifact was pre-initialized; the recycle count below is what
- * actually holds the behaviour in place.
+ * alone would stay green with the recycle deleted. The recycle count below is
+ * what actually holds the behaviour in place.
  */
 const MEMORY_CEILING_BYTES = 800_000_000
 
@@ -73,7 +77,7 @@ const MEMORY_CEILING_BYTES = 800_000_000
  * into a failure that names the pass and the elapsed time, instead of a job
  * that sits silent until CI kills it half an hour later.
  *
- * 300s against a run that takes ~15s, which is a wider margin than it looks
+ * 300s against a run that takes ~12s, which is a wider margin than it looks
  * like it needs. The per-format costs this used to be sized against - ~6.7s on
  * a runner where local was ~0.34s - were not the runner being slow. They were
  * this file sharing a process with the other six packages' wasm instances,
@@ -112,7 +116,7 @@ describe('vm-recycle', () => {
       if (elapsed > BUDGET_MS) {
         throw new Error(
           `vm-recycle exceeded ${BUDGET_MS}ms at pass ${pass} of ${PASSES} (${Math.round(elapsed)}ms). ` +
-            `Formatting has become far slower than the ~340ms a pass this expects, so the run was stopped ` +
+            `Formatting has become far slower than the ~1s a pass this expects, so the run was stopped ` +
             `rather than left to hang - the VM or the runner is the place to look, not this assertion.`,
         )
       }

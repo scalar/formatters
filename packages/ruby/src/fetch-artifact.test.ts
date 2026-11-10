@@ -10,7 +10,11 @@ describe('fetch-artifact', () => {
   // The documented recovery for a synchronous caller is to `init()` again, so
   // refusing the second call would make the instruction impossible to follow.
   it('allows init to be called again with no options', async () => {
-    const loader = createArtifactLoader(compile)
+    const loader = createArtifactLoader({
+      defaultUrl: () => new URL('https://example.invalid/a.wasm.br'),
+      label: 'test',
+      compile,
+    })
     await loader.init({ bytes: wasm })
     await expect(loader.init()).resolves.toBeUndefined()
   })
@@ -18,7 +22,11 @@ describe('fetch-artifact', () => {
   // Re-pointing after the artifact has been read cannot take effect, so it says
   // so rather than appearing to work.
   it('refuses new options once the artifact has been read', async () => {
-    const loader = createArtifactLoader(compile)
+    const loader = createArtifactLoader({
+      defaultUrl: () => new URL('https://example.invalid/a.wasm.br'),
+      label: 'test',
+      compile,
+    })
     await loader.init({ bytes: wasm })
     expect(loader.init({ url: '/somewhere/else' })).rejects.toThrow(/already been read/)
   })

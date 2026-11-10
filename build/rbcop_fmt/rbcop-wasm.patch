@@ -44,6 +44,21 @@ index 7b6e33f..58cc2e4 100644
 +    f.write_all(content)?;
 +    Ok(f)
 +}
+diff --git a/src/cops/layout/multiline_operation_indentation.rs b/src/cops/layout/multiline_operation_indentation.rs
+index c322360..98abff3 100644
+--- a/src/cops/layout/multiline_operation_indentation.rs
++++ b/src/cops/layout/multiline_operation_indentation.rs
+@@ -42,6 +42,10 @@ impl Cop for MultilineOperationIndentation {
+                 if name == "[]" || call.call_operator_loc().is_some() {
+                     return;
+                 }
++                // `/re/ =~ x` is parser's match_with_lvasgn, not a send, so on_send never sees it.
++                if name == "=~" && receiver.as_regular_expression_node().is_some() {
++                    return;
++                }
+                 // unary_operation? (send only): operator whose selector starts the expression.
+                 let start = node.location().start_offset();
+                 if !is_csend(&call)
 diff --git a/src/cops/lint/script_permission.rs b/src/cops/lint/script_permission.rs
 index 5d7a122..5de1540 100644
 --- a/src/cops/lint/script_permission.rs

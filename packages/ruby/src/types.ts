@@ -20,12 +20,11 @@ export type FormatOptions = {
    * rejects is not finished, so clearing it is the default rather than an
    * opt-in.
    *
-   * Set it to `false` for syntax_tree on its own. What that saves is the pass:
-   * a format with RuboCop costs two to three times what syntax_tree alone does.
-   * It no longer saves any loading. RuboCop used to be required into the VM on
-   * the first call that asked for it, at about nine seconds a VM and again
-   * after every recycle; it is now baked into the artifact, so it is there
-   * whether this is `true` or `false`.
+   * The pass is rbcop, RuboCop 1.92.2 reimplemented in Rust and compiled to a
+   * second wasm module, held to byte-identical output against the real
+   * `rubocop` by this package's conformance test. It costs a few milliseconds
+   * a file. Set this to `false` for syntax_tree on its own: the rbcop module is
+   * then never loaded at all, which in a browser is a download saved.
    *
    * The order is fixed and matters. The two tools disagree, so whichever runs
    * last decides; RuboCop goes second, so RuboCop wins. It cannot go first,
@@ -38,13 +37,16 @@ export type FormatOptions = {
    * Extra `.rubocop.yml` entries, merged over the ones this package sets.
    *
    * The escape hatch, for the parts of RuboCop's configuration this type does
-   * not name - `{ 'Layout/IndentationWidth': { Width: 4 } }`. It is written
-   * into the guest as the config file RuboCop loads, so anything a
-   * `.rubocop.yml` can say belongs here, spelled exactly as that file spells
-   * it. Merging is one level deep, so naming a cop replaces this package's
-   * entry for it rather than adding to it - which is how you would put
-   * `Layout/LineLength` back, should you want RuboCop rather than syntax_tree
-   * deciding line width.
+   * not name - `{ 'Layout/IndentationWidth': { Width: 4 } }`. It is written as
+   * the config file the pass loads, so anything a `.rubocop.yml` can say about
+   * Layout cops belongs here, spelled exactly as that file spells it. Merging
+   * is one level deep, so naming a cop replaces this package's entry for it
+   * rather than adding to it - which is how you would put `Layout/LineLength`
+   * back, should you want RuboCop rather than syntax_tree deciding line width.
+   *
+   * What it cannot do is load Ruby: ERB, remote `inherit_from` URLs, plugins
+   * and custom cops need a Ruby to run, and there is none in the pass. A config
+   * that asks for one is reported as an error.
    *
    * Ignored when `rubocop` is `false`, because then there is no RuboCop to
    * configure.
@@ -53,7 +55,7 @@ export type FormatOptions = {
 }
 
 /**
- * Supplies the compiled wasm module, however this environment gets hold of it.
+ * Supplies one compiled wasm module, however this environment gets hold of it.
  *
  * There are two implementations - one reads the artifact from disk, one fetches
  * it - and each caches the compiled module itself, so this is called once per
@@ -74,6 +76,28 @@ export type BootVm = {
   recycle: () => Promise<RubyFormatterVm>
 }
 
+/** A booted rbcop instance: the RuboCop Layout pass over one source. */
+export type RbcopCorrector = {
+  /**
+   * Corrects every Layout offense in `source` under the `.rubocop.yml` text in
+   * `config`, and returns the result. Throws when the pass cannot settle, when
+   * the config is invalid, and when the result would not parse.
+   */
+  correct: (source: string, config: string) => string
+}
+
+/**
+ * An rbcop instance's lifecycle, as `createRbcop` hands it over.
+ *
+ * There is no `recycle`, because rbcop does not leak. `peek` answers
+ * `undefined` both before the first boot and after a trap, and `boot` then
+ * instantiates a fresh one.
+ */
+export type RbcopBoot = {
+  boot: () => Promise<RbcopCorrector>
+  peek: () => RbcopCorrector | undefined
+}
+
 /** The package's asynchronous entry point, exported by both builds as `format`. */
 export type FormatFunction = (source: string, options?: FormatOptions) => Promise<string>
 
@@ -87,16 +111,16 @@ export type FormatFunction = (source: string, options?: FormatOptions) => Promis
 export type FormatSyncFunction = (source: string, options?: FormatOptions) => string
 
 /**
- * Boots the VM, so that `formatSync` can be called afterwards.
+ * Boots both modules, so that `formatSync` can be called afterwards.
  *
- * Booting is instantiating the artifact, applying the syntax_tree patches and
- * building the Layout cop set - the artifact carries syntax_tree and RuboCop
- * already loaded, so neither gem is required at runtime any more.
+ * Booting is instantiating the Ruby artifact and applying the syntax_tree
+ * patches, and instantiating rbcop - the Ruby artifact carries syntax_tree
+ * already loaded, so no gem is required at runtime.
  *
  * Optional for `format`, which boots on demand, and required exactly once before
  * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
  * the second call resolves against the first. The browser build's `init` takes
- * an {@link InitOptions}, for pointing the package at its artifact.
+ * an {@link InitOptions}, for pointing the package at its artifacts.
  *
  * For Ruby this is also the recovery call: `formatSync` refuses once the VM has
  * outgrown what a synchronous caller can clear, and awaiting this again replaces
@@ -112,11 +136,10 @@ export type Formatters = {
 }
 
 /**
- * Options for the browser build's `init`, which is the seam for telling the
- * package where its artifact lives. Every field is optional; the defaults
- * resolve `ruby_fmt.wasm.br` relative to the module and expand it here.
+ * Where the browser build finds one artifact. Every field is optional; the
+ * default resolves the artifact relative to the module and expands it here.
  */
-export type InitOptions = {
+export type ArtifactOptions = {
   /** Where to fetch the artifact from. Defaults to the `.br` beside this package. */
   url?: string | URL
   /** The artifact itself, already in hand. Skips the fetch entirely. */
@@ -132,6 +155,18 @@ export type InitOptions = {
 }
 
 /**
+ * Options for the browser build's `init`, which is the seam for telling the
+ * package where its artifacts live.
+ *
+ * The top-level fields describe `ruby_fmt.wasm.br`, the syntax_tree artifact;
+ * `rbcop` describes `rbcop_fmt.wasm.br`, the RuboCop pass.
+ */
+export type InitOptions = ArtifactOptions & {
+  /** Where to find `rbcop_fmt.wasm.br`. Defaults to the `.br` beside this package. */
+  rbcop?: ArtifactOptions
+}
+
+/**
  * A booted Ruby VM together with the two handles formatting needs to reach
  * into it.
  *
@@ -142,7 +177,7 @@ export type InitOptions = {
  * state that a recycle could leave pointing at a dead VM.
  */
 export type RubyFormatterVm = {
-  /** CRuby (wasm) with syntax_tree and RuboCop already loaded. */
+  /** CRuby (wasm) with syntax_tree already loaded. */
   vm: RubyVM
   /** The mutable contents map behind /work, so input can be written from JS. */
   workFiles: Map<string, File>

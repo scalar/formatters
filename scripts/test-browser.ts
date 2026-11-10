@@ -29,6 +29,12 @@ type BrowserCase = {
   directory: string
   /** The committed artifact, relative to the package directory. */
   artifact: string
+  /**
+   * Further artifacts the package loads, keyed by the `init` option that points
+   * at each. The uncompressed-artifact check repoints these too, so an option
+   * like Ruby's `init({ rbcop })` is proven rather than assumed.
+   */
+  extraArtifacts?: Record<string, string>
   /** Source handed to `format`. */
   source: string
   /** The output the Node build produces for that source, byte for byte. */
@@ -61,6 +67,7 @@ const CASES: BrowserCase[] = [
   {
     directory: 'ruby',
     artifact: 'ruby_fmt.wasm.br',
+    extraArtifacts: { rbcop: 'rbcop_fmt.wasm.br' },
     source: 'def call(user)\n  return unless user\n  user.name\nend\n',
     // The default pipeline is syntax_tree *and* RuboCop. The blank line comes
     // from Layout/EmptyLineAfterGuardClause, which syntax_tree cannot produce on
@@ -167,11 +174,13 @@ const server = Bun.serve({
     // `Content-Encoding: br` or publishes an uncompressed `.wasm`. That is the
     // path `init({ encoding: 'none' })` documents, and the one that skips the
     // brotli decoder entirely, so it is worth proving rather than asserting.
-    const raw = pathname.match(/^\/__raw__\/([\w-]+)$/)
+    const raw = pathname.match(/^\/__raw__\/([\w-]+)(?:\/([\w-]+))?$/)
     if (raw?.[1]) {
-      const found = CASES.find((entry) => entry.directory === raw[1])
+      const found = CASES.find((entry) => entry.directory === raw[1] && (!raw[2] || entry.extraArtifacts?.[raw[2]]))
       if (!found) return new Response('not found', { status: 404 })
-      const compressed = readFileSync(path.join(ROOT, 'packages', found.directory, found.artifact))
+      const artifact = raw[2] ? found.extraArtifacts?.[raw[2]] : found.artifact
+      if (!artifact) return new Response('not found', { status: 404 })
+      const compressed = readFileSync(path.join(ROOT, 'packages', found.directory, artifact))
       return new Response(brotliDecompressSync(compressed), { headers: { 'content-type': 'application/wasm' } })
     }
 
@@ -197,7 +206,7 @@ const browser = await chromium.launch({
 
 const failed = new Set<string>()
 
-for (const { directory, source, expected, options = {}, label } of CASES) {
+for (const { directory, source, expected, options = {}, label, extraArtifacts = {} } of CASES) {
   const packageDirectory = path.join(ROOT, 'packages', directory)
   const entry = path.join(packageDirectory, 'dist', 'index.browser.js')
 
@@ -296,12 +305,15 @@ for (const { directory, source, expected, options = {}, label } of CASES) {
     // the first one has already compiled. Same output, different route in.
     const rawPage = await openPage()
     const viaInit = await rawPage.evaluate(
-      async ([entryUrl, source, rawUrl, options]) => {
+      async ([entryUrl, source, rawUrl, options, extras]) => {
         const module = await import(/* webpackIgnore: true */ entryUrl as string)
-        await module.init({ url: rawUrl as string, encoding: 'none' })
+        const more = Object.fromEntries(
+          (extras as string[]).map((key) => [key, { url: `${rawUrl as string}/${key}`, encoding: 'none' }]),
+        )
+        await module.init({ url: rawUrl as string, encoding: 'none', ...more })
         return module.format(source, options)
       },
-      [entryUrl, source, `${origin}/__raw__/${directory}`, options] as const,
+      [entryUrl, source, `${origin}/__raw__/${directory}`, options, Object.keys(extraArtifacts)] as const,
     )
     await rawPage.close()
 

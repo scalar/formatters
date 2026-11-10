@@ -1,6 +1,7 @@
 import { createBootVm } from './boot-vm'
-import { compileArtifact } from './compile-artifact'
-import type { BootVm } from './types'
+import { compileArtifact, compileRbcopArtifact } from './compile-artifact'
+import { createRbcop } from './rbcop'
+import type { BootVm, RbcopBoot } from './types'
 
 /**
  * The VM the Node build formats through.
@@ -13,3 +14,6 @@ import type { BootVm } from './types'
  * second VM and measure nothing.
  */
 export const nodeVm: BootVm = createBootVm(compileArtifact)
+
+/** The rbcop instance the Node build formats through, shared for the same reason. */
+export const nodeRbcop: RbcopBoot = createRbcop(compileRbcopArtifact)

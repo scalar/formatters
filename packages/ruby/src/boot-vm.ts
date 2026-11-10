@@ -1,12 +1,9 @@
 import { ConsoleStdout, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/browser_wasi_shim'
 import { RubyVM } from '@ruby/wasm-wasi'
 
-import { RUBOCOP_PATCHES } from './rubocop-patch'
-import { RUBOCOP_PERF_PATCHES } from './rubocop-perf-patch'
 import { STREE_PATCHES } from './stree-patch'
 import { STREE_PERF_PATCHES } from './stree-perf-patch'
 import type { ArtifactSource, BootVm, RubyFormatterVm } from './types'
-import { createShimDirectory } from './wasi-shims'
 
 /**
  * The preopened directory the guest reads its input and its config from, and
@@ -17,7 +14,7 @@ import { createShimDirectory } from './wasi-shims'
  * and `build/ruby_fmt/preinit.ts`, which maps a real directory here while wizer
  * snapshots the VM. The guest's preopen table is part of that snapshot, so a
  * mismatch does not read as a missing file - it is a VM that cannot see /work
- * at all, and the first RuboCop call dies with `Errno::ENOENT @ dir_s_mkdir`.
+ * at all, so the first format cannot read its own input.
  */
 export const WORK_DIR = '/work'
 
@@ -40,14 +37,13 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
   let current: RubyFormatterVm | undefined
 
   /**
-   * Instantiates the artifact, which arrives with syntax_tree and RuboCop
-   * already loaded into it.
+   * Instantiates the artifact, which arrives with syntax_tree already loaded
+   * into it.
    *
    * That is the whole shape of this function now. The artifact is a wizer
-   * snapshot of a VM that had already run `ruby-init` and required both gems -
-   * see `build/ruby_fmt/preinit.ts` - so booting is an instantiation, the
-   * syntax_tree patches and one `ScalarRubyFmt.setup` rather than the ~9s of
-   * Ruby it used to be. Formats then reuse the VM, and a recycle costs about
+   * snapshot of a VM that had already run `ruby-init` and required syntax_tree -
+   * see `build/ruby_fmt/preinit.ts` - so booting is an instantiation and the
+   * syntax_tree patches, rather than the seconds of Ruby it used to be. Formats then reuse the VM, and a recycle costs about
    * what this does instead of paying for the requires again.
    *
    * `@bjorn3/browser_wasi_shim` rather than `node:wasi` on purpose. Node's built-in
@@ -67,10 +63,9 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       // fds 0/1/2 are stdin/stdout/stderr; preopened dirs start at fd 3. Passing
       // a directory in one of the first three slots silently makes it stdio.
       //
-      // HOME is set because RuboCop asks for it: `Dir.home` backs its cache
-      // root, and with no HOME in the environment that raises rather than
-      // falling back. It points at /work because that is the one directory here
-      // that exists and can be written to.
+      // HOME is set because `Dir.home` raises rather than falling back without
+      // it, and rubygems asks for it while it loads. It points at /work because
+      // that is the one directory here that exists and can be written to.
       //
       // Ruby reads the environment once, during `ruby-init`, which now happens
       // at build time - so what actually reaches `ENV` is the environment
@@ -86,7 +81,6 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
           ConsoleStdout.lineBuffered(() => {}),
           ConsoleStdout.lineBuffered(() => {}),
           new PreopenDirectory(WORK_DIR, workFiles),
-          createShimDirectory(),
         ],
         // Required: the shim's debug.enable(undefined) resolves to `true`, so
         // omitting this floods stdout with "wasi:" tracing on every syscall.
@@ -97,8 +91,8 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       // one more at the end: `vm.initialize(args)`, which calls the artifact's
       // `ruby-init` export and then requires /bundle/setup. The snapshot has
       // already been through both, and running `ruby-init` again would
-      // reinitialise CRuby underneath the syntax_tree and RuboCop sitting in
-      // its heap. So everything up to that point is done here and that is not.
+      // reinitialise CRuby underneath the syntax_tree sitting in its heap.
+      // So everything up to that point is done here and that is not.
       const vm = new RubyVM()
       const imports = { wasi_snapshot_preview1: wasi.wasiImport }
       vm.addToImports(imports)
@@ -117,20 +111,11 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
       // than the shim's expectations being weakened.
       wasi.initialize(instance as unknown as Parameters<typeof wasi.initialize>[0])
 
-      // A handful of fixes on top of the stock gems, applied here rather than
-      // in the artifact so they stay reviewable. See stree-patch.ts and
-      // rubocop-patch.ts for the correctness ones and the evidence that they
-      // change nothing else, and stree-perf-patch.ts and rubocop-perf-patch.ts
-      // for the ones that change only what a gem costs.
-      const patches = [...STREE_PATCHES, ...RUBOCOP_PATCHES, ...STREE_PERF_PATCHES, ...RUBOCOP_PERF_PATCHES]
-      for (const patch of patches) vm.eval(patch)
-
-      // The one part of the RuboCop setup that cannot be baked in. `ScalarRubyFmt`
-      // itself is in the snapshot (see `RUBOCOP_SETUP` in rubocop.ts), but `setup`
-      // chdirs into /work and builds the Layout cop set, and both of those belong
-      // to a VM rather than to an artifact - a recycled VM starts over on each.
-      // It costs ~40ms against the ~8.9s requiring RuboCop used to.
-      vm.eval(`ScalarRubyFmt.setup(${JSON.stringify(WORK_DIR)})`)
+      // A handful of fixes on top of the stock gem, applied here rather than in
+      // the artifact so they stay reviewable. See stree-patch.ts for the
+      // correctness ones and the evidence that they change nothing else, and
+      // stree-perf-patch.ts for the ones that change only what the gem costs.
+      for (const patch of [...STREE_PATCHES, ...STREE_PERF_PATCHES]) vm.eval(patch)
 
       current = { vm, workFiles, memory: wasi.inst.exports.memory }
       return current
@@ -152,9 +137,7 @@ export const createBootVm = (compileArtifact: ArtifactSource): BootVm => {
    * the only lever we have. It is cheap: the artifact source still has the
    * compiled module cached, so a recycle pays for neither the decompress nor
    * the compile - and since the artifact is pre-initialized, it no longer pays
-   * for requiring syntax_tree and RuboCop either. 91ms measured, and 507ms
-   * counting the extra work the first format after it does - against the 6,339ms
-   * the same pair cost when a fresh VM had to load both gems from scratch.
+   * for requiring syntax_tree either.
    */
   const recycle = (): Promise<RubyFormatterVm> => {
     vmPromise = undefined

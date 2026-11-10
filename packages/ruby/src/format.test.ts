@@ -1,16 +1,16 @@
 // Imports the wired entry point rather than `createFormat`, because `format`
 // bound to the on-disk artifact is what a Node consumer actually gets.
 import { createBootVm } from './boot-vm'
-import { compileArtifact } from './compile-artifact'
+import { compileArtifact, compileRbcopArtifact } from './compile-artifact'
 import { createFormat } from './format'
 import { format, formatSync, init } from './index'
+import { createRbcop } from './rbcop'
 import type { FormatOptions } from './types'
 import { beforeAll, describe, expect, it } from 'bun:test'
 
 /**
- * Generous, because this decompresses and compiles a ~67MB wasm artifact before
- * it boots anything. Requiring RuboCop used to be the expensive half; the
- * artifact carries it now.
+ * Generous, because this decompresses and compiles two wasm artifacts before
+ * it boots anything.
  */
 const WARMUP_TIMEOUT_MS = 120_000
 
@@ -278,10 +278,12 @@ describe('format', () => {
     )
   })
 
-  // RuboCop 1.84.1 through 1.91 flatten a chain like this against its receiver,
-  // because the cop mistakes the chain inside the lambda for the value of the
-  // enclosing `run:` pair. The indent syntax_tree gives it is the one it had
-  // before, and the one this package keeps (see src/rubocop-patch.ts).
+  // RuboCop 1.84.1 through 1.91 flattened a chain like this against its
+  // receiver, because the cop mistook the chain inside the lambda for the value
+  // of the enclosing `run:` pair (rubocop/rubocop#15761). This package carried
+  // a patch for it until the pass moved to RuboCop 1.92.2's behaviour, which
+  // has the fix; test/rubocop-conformance.test.ts holds the native binary to
+  // the same bytes.
   it('keeps a wrapped chain indented inside a block that is a hash value', async () => {
     const source =
       'CASES = [\n  {\n    label: "all params",\n    run: -> do\n      client.beta.messages.batches.results_streaming("message_batch_id", {betas: ["beta"]}).each { |_event| break }\n    end\n  }\n]\n'
@@ -322,8 +324,8 @@ describe('format', () => {
     )
   })
 
-  // What the patch must not undo: a chain that *is* the hash value is still
-  // aligned the way stock RuboCop 1.91 aligns it.
+  // What that fix must not undo: a chain that *is* the hash value is still
+  // aligned against its receiver.
   it('still aligns a wrapped chain that is itself the hash value', async () => {
     const source =
       'CONFIG = { value: some_receiver.method_one.method_two(argument_one, argument_two).method_three(argument_four) }\n'
@@ -341,8 +343,8 @@ describe('format', () => {
     expect(await format(once)).toBe(once)
   })
 
-  // The RuboCop pass is loaded into the VM once and stays there. Opting out
-  // afterwards has to be unaffected by that.
+  // The rbcop instance is booted once and stays. Opting out afterwards has to be
+  // unaffected by that.
   it('honours an opt-out after a rubocop pass has run', async () => {
     await format(NEEDS_RUBOCOP)
 
@@ -399,9 +401,9 @@ describe('format', () => {
     )
   })
 
-  // A caller-supplied config carries strings, and Ruby evaluates #{...} inside
-  // double quotes - so it goes through the guest filesystem like the source
-  // does, never through interpolation.
+  // A caller-supplied config carries strings. Nothing in the pass evaluates
+  // Ruby any more, so this is the claim that nothing started to: the string
+  // stays a string.
   it('does not evaluate #{} interpolation in a rubocopConfig value', async () => {
     const source = 'x=1\n'
 
@@ -455,27 +457,58 @@ describe('formatSync', () => {
   })
 })
 
+describe('rubocopConfig', () => {
+  // ERB in a .rubocop.yml is rendered by running Ruby, and the pass has no Ruby
+  // to run it with. That has to be an error a caller can read, not a crash or a
+  // config silently taken literally.
+  it('reports a config the pass cannot load', async () => {
+    expect(format('x = 1\n', { rubocopConfig: { inherit_from: 'https://example.com/rubocop.yml' } })).rejects.toThrow()
+  })
+
+  // A bad config fails that format only, and the next one, with a good config,
+  // goes through.
+  it('stays usable after a config it could not load', async () => {
+    await format('x = 1\n', { rubocopConfig: { inherit_from: 'https://example.com/rubocop.yml' } }).catch(() => {})
+
+    expect(await format('x=1')).toBe('x = 1\n')
+  })
+})
+
+describe('a crash in the RuboCop pass', () => {
+  // A config value of the wrong type panics inside rbcop - RuboCop raises a
+  // TypeError at the same point - and a Rust panic traps the wasm instance. The
+  // format that hit it has to fail, and the one after it has to work, on a
+  // fresh instance.
+  const BAD = { rubocopConfig: { 'Layout/IndentationWidth': { Width: 'four' } } }
+
+  it('is reported as an error', async () => {
+    expect(format('class A\n    def x\n  1\n end\nend\n', BAD)).rejects.toThrow(/crashed/)
+  })
+
+  it('does not take the next format down with it', async () => {
+    await format('class A\n    def x\n  1\n end\nend\n', BAD).catch(() => {})
+
+    expect(await format('class A\n    def x\n  1\n end\nend\n')).toBe('class A\n  def x\n    1\n  end\nend\n')
+  })
+})
+
 describe('init', () => {
-  // The check that the committed artifact really is pre-initialized. It is a
-  // wizer snapshot of a VM that had already required syntax_tree and RuboCop
-  // (see build/ruby_fmt/preinit.ts), and nothing at runtime requires either any
-  // more - so an artifact rebuilt without that step would leave `RuboCop`
-  // undefined here rather than quietly costing nine seconds a boot.
+  // The check that the committed Ruby artifact is pre-initialized with
+  // syntax_tree and nothing else. RuboCop used to be baked into it; the pass is
+  // rbcop now, and a snapshot still carrying RuboCop would be ~7MB of dead Ruby
+  // heap in every install.
   //
-  // Built on its own VM rather than the shared one because a fresh boot is the
-  // claim: whatever the module-level VM has been through by now says nothing
-  // about what an artifact hands a caller on the first call.
-  //
-  // `init` takes no argument at all now. It used to take one for declining the
-  // RuboCop load, and this is what makes that removal safe rather than merely
-  // tidy: there is nothing left for a caller to decline.
-  it('boots a VM that already has RuboCop, without being asked', async () => {
+  // Built on its own modules rather than the shared ones because a fresh boot is
+  // the claim: whatever the module-level VM has been through by now says
+  // nothing about what an artifact hands a caller on the first call.
+  it('boots a VM with syntax_tree and without RuboCop', async () => {
     const vm = createBootVm(compileArtifact)
-    const own = createFormat(vm)
+    const own = createFormat(vm, createRbcop(compileRbcopArtifact))
 
     await own.init()
 
-    expect(vm.peek()?.vm.eval('defined?(RuboCop) ? "loaded" : "missing"').toString()).toBe('loaded')
+    expect(vm.peek()?.vm.eval('defined?(SyntaxTree) ? "loaded" : "missing"').toString()).toBe('loaded')
+    expect(vm.peek()?.vm.eval('defined?(RuboCop) ? "loaded" : "missing"').toString()).toBe('missing')
 
     // A blank line RuboCop's Layout/EmptyLinesAroundAttributeAccessor inserts
     // and syntax_tree never would, so it is the pass itself being observed and
@@ -483,5 +516,29 @@ describe('init', () => {
     expect(own.formatSync('class A\n  attr_reader :b\n  def c\n    @b\n  end\nend\n')).toBe(
       'class A\n  attr_reader :b\n\n  def c\n    @b\n  end\nend\n',
     )
+  }, 120_000)
+
+  // `rubocop: false` is syntax_tree on its own, and it should not pay for the
+  // module it does not use - in a browser that module is a download.
+  it('does not load rbcop for a format that does not run the pass', async () => {
+    const rbcop = createRbcop(compileRbcopArtifact)
+    const own = createFormat(createBootVm(compileArtifact), rbcop)
+
+    expect(await own.format('x=1', { rubocop: false })).toBe('x = 1\n')
+    expect(rbcop.peek()).toBeUndefined()
+
+    expect(await own.format('x=1')).toBe('x = 1\n')
+    expect(rbcop.peek()).toBeDefined()
+  }, 120_000)
+
+  // formatSync cannot instantiate, so it has to say so rather than skip the
+  // pass when rbcop has not been booted.
+  it('refuses a synchronous RuboCop pass before rbcop has booted', async () => {
+    const own = createFormat(createBootVm(compileArtifact), createRbcop(compileRbcopArtifact))
+
+    await own.format('x=1', { rubocop: false })
+
+    expect(own.formatSync('x=1', { rubocop: false })).toBe('x = 1\n')
+    expect(() => own.formatSync('x=1')).toThrow(/init\(\)/)
   }, 120_000)
 })

@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Fruby-fmt)](https://www.npmjs.com/package/@scalar/ruby-fmt)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
-The real syntax_tree gem, on real CRuby compiled to WebAssembly, callable from TypeScript on plain Node.
+The real syntax_tree gem on real CRuby, then RuboCop's Layout pass via [rbcop](https://github.com/costajohnt/rbcop), both compiled to WebAssembly and callable from TypeScript on plain Node.
 
 ---
 
@@ -37,19 +37,17 @@ await format('class A\n  def initialize(b)\n@b=b\n  end\nend')
 // end
 ```
 
-Async because the first call decompresses the artifact, compiles it and
-instantiates a Ruby VM from it — about 2s all in. That work is cached, so every
-later call is milliseconds. The VM arrives with syntax_tree and RuboCop already
-loaded, because the artifact is a snapshot of one that has already booted; the
-same call used to cost 11s.
+Async because the first call decompresses the two artifacts, compiles them and
+instantiates both — about half a second all in. That work is cached, so every
+later call is milliseconds. The Ruby VM arrives with syntax_tree already loaded,
+because its artifact is a snapshot of one that has already booted.
 
 ---
 
 ## Two tools, and why both
 
-`format` runs syntax_tree and then the real
-[RuboCop](https://github.com/rubocop/rubocop), and neither is optional-by-accident:
-they do different jobs and neither subsumes the other.
+`format` runs syntax_tree and then RuboCop's Layout department, and neither is
+optional-by-accident: they do different jobs and neither subsumes the other.
 
 **syntax_tree reprints.** It throws away the input's line breaking and decides
 it again from the syntax tree, which is what makes formatting idempotent and
@@ -67,7 +65,9 @@ end
 ```
 
 Zero Layout offenses, by RuboCop's own reckoning. "One statement per line" is
-not a Layout rule; it is a consequence of reprinting.
+not a Layout rule; it is a consequence of reprinting. That is also why the Ruby
+VM stays even though the RuboCop pass no longer needs one: nothing but
+syntax_tree reprints, and syntax_tree needs CRuby.
 
 **But syntax_tree's output is not clean.** Over 397 files of real Ruby, about
 30% of it still trips stock `rubocop --only Layout` — overwhelmingly
@@ -81,6 +81,25 @@ So both run, in that order. The RuboCop half is exactly
 rewrite code rather than lay it out, and `-A` will happily delete an unused
 assignment or turn an `if` into a ternary, which is not something a function
 called `format` should do.
+
+### The RuboCop pass is rbcop
+
+The pass is not the RuboCop gem. It is
+[rbcop](https://github.com/costajohnt/rbcop): RuboCop 1.92.2 reimplemented in
+Rust on Prism, built for byte-identical output, and compiled here to a second
+wasm module of its own. It does the same Layout pass in about 4 ms a file,
+against about 80 ms for the RuboCop gem on CRuby wasm, and it does not grow the
+Ruby VM's memory.
+
+That makes it the one part of this package that is a reimplementation, and a
+reimplementation is exact only for as long as something keeps checking it.
+[`test/rubocop-conformance.test.ts`](#the-output-is-exact-and-how-that-is-held)
+does: it runs the real `rubocop` 1.92.2 binary over the same input and asserts
+byte-identical output. Run over 300 files of real Ruby it found no divergence.
+Run over a second corpus of 2,754 files it found one rbcop bug, on 10 of them:
+`Layout/MultilineOperationIndentation` re-indented the wrapped operand of a
+regex literal's `=~`, which RuboCop never looks at. The build fixes it (see
+`build/rbcop_fmt/rbcop-wasm.patch`) and the test now pins both shapes.
 
 ### Who owns what
 
@@ -100,11 +119,17 @@ RuboCop owns the rest of layout — indentation, alignment, blank lines, spacing
 await format(source, { rubocopConfig: { 'Layout/IndentationWidth': { Width: 4 } } })
 ```
 
-Merged over the two entries this package sets, one level deep, and written into
-the guest as the `.rubocop.yml` RuboCop loads. Anything a `.rubocop.yml` can say
-belongs here, spelled exactly as that file spells it — including
+Merged over the two entries this package sets, one level deep, and written as
+the `.rubocop.yml` the pass loads. Anything a `.rubocop.yml` can say about
+Layout cops belongs here, spelled exactly as that file spells it — including
 `{ 'Layout/LineLength': { Max: 100 } }` to put that cop back and let RuboCop
 have line width after all.
+
+What it cannot do is run Ruby, because the pass has none. ERB in the config, a
+remote `inherit_from` URL, `require:` and custom cops all need one, and each is
+an error naming what was asked for rather than a config quietly read some other
+way. A value of the wrong type — `{ Width: 'four' }` — fails where RuboCop's
+own `TypeError` would, and the next format goes through as normal.
 
 ### Turning RuboCop off
 
@@ -112,14 +137,11 @@ have line width after all.
 await format(source, { rubocop: false })
 ```
 
-syntax_tree on its own, at about a third of the cost per call. Worth it if the
-output is not going anywhere near a RuboCop, or if the
-[costs below](#what-it-costs) are not worth paying.
-
-It skips the pass, not the loading — RuboCop is in the artifact either way, so
-there is nothing to say at `init`, and `formatSync(source, { rubocop: false })`
-declines exactly as much as `format` does. `init` takes no options at all under
-Node; the browser build's take only the artifact's location.
+syntax_tree on its own. It skips the pass *and* the loading: the rbcop module is
+a separate artifact, and a process (or a page) that never asks for the pass
+never fetches or compiles it. `formatSync(source, { rubocop: false })` declines
+exactly as much as `format` does. `init` takes no options at all under Node; the
+browser build's take only the artifacts' locations.
 
 The order is fixed, and it is the only order that works. The two tools disagree,
 so whichever runs last decides. Running syntax_tree second would undo RuboCop's
@@ -127,78 +149,39 @@ corrections — over those same 397 files, in 116 of them.
 
 ### What it costs
 
-| | `rubocop: false` | default |
-|:---|:---|:---|
-| cold start, one fresh process | ~0.70 s | ~0.86 s |
-| every call after | ~7 ms | 2–4× that |
-| one VM recycle, over an ordinary call | ~0.03 s | ~0.06 s |
-| artifact | 13.2 MB either way | |
+Measured on one machine, over 300 files of real Ruby (1.2 MB), against the
+release that ran the RuboCop gem inside the Ruby VM:
 
-Cold start is the artifact plus one VM: expanding and compiling the brotli into
-74 MB of wasm takes ~0.6 s and instantiating a VM from it ~0.12 s, which is the
-whole of the `rubocop: false` column. The default column adds ~0.16 s, and that
-is the RuboCop pass itself — mobilizing the Layout department and correcting for
-the first time.
-
-What it no longer adds is the config. Merging a `.rubocop.yml` over RuboCop's own
-`default.yml` costs about half a second, it is the same work whatever a caller
-asks for, and it used to happen once per VM: on the first RuboCop format, and
-again after every [recycle](#known-bug-the-vm-leaks-and-recycles-itself-to-survive-it).
-The artifact now ships with it already parsed, so a restored VM starts holding
-the answer. Measured on one machine, against the artifact this replaces:
-
-| | before | after |
+| | before | now |
 |:---|---:|---:|
-| first RuboCop format on a fresh VM | 492 ms | **124 ms** |
-| of which is RuboCop's share | 471 ms | **101 ms** |
-| cold start, default | 1,181 ms | **857 ms** |
-| one VM recycle | 359 ms | **60 ms** |
-| cold start, `rubocop: false` | 695 ms | 698 ms |
+| first `format()` in a fresh process | ~0.86 s | **~0.5 s** |
+| all 300 files, RuboCop on | 31.1 s | **7.5 s** |
+| the RuboCop pass's share of that | 23.9 s | **1.2 s** |
+| per file, RuboCop pass | ~80 ms | **~4 ms** |
+| installed artifacts (brotli) | 13.9 MB | **7.9 MB** (5.7 + 2.2) |
+| a fresh Ruby VM's linear memory | ~373 MB | **~332 MB** |
 
-The last row is the control: nothing about the syntax_tree path changed, and it
-did not move. Neither did steady-state formatting — 502 real files came out in
-44.6 s against 44.9 s — because the config was only ever parsed once per VM, so
-what this removes is a fixed cost per VM rather than a cost per call. The artifact
-grew 12.2 MB → 12.7 MB carrying the parsed config, and a VM starts ~6 MB nearer
-its recycle ceiling for the same reason.
-
-**Loading is not on this table any more, and that is the change worth knowing
-about.** RuboCop's 698 cop files used to be read and evaluated by a Ruby running
-on WebAssembly on the first call that asked for them, at ~9 s per VM — and again
-after every [recycle](#known-bug-the-vm-leaks-and-recycles-itself-to-survive-it),
-which is what made recycling expensive rather than merely occasional. The
-artifact is now a [wizer](https://github.com/bytecodealliance/wizer) snapshot of
-a VM that has already done all of it, so those seconds are spent once at build
-time. Measured on one machine, RuboCop on:
-
-| | before | after |
-|:---|---:|---:|
-| cold start | 11,115 ms | 2,080 ms |
-| one VM recycle | 6,339 ms | 507 ms |
-
-What `rubocop: false` now saves is the pass, not the loading: RuboCop is in the
-artifact whether or not you ask for it. `init`'s own `rubocop` option is gone —
-it existed to decline that load, and there is no longer a load to decline.
-
-The artifact carries both tools whichever way you call it, so there was never a
-lighter build to be had by dropping one — and the snapshot makes that literal:
-7 MB of the 13.2 MB is a Ruby heap with both gems already in it, and the
-config they are configured by.
-
+syntax_tree is now most of what a format costs, at ~25 ms for a typical file.
 Per-call cost grows faster than file size, so a very large file is worse per KB
-than the ~9 ms row above suggests. It used to be far worse again for a file
-carrying any multi-byte character at all — one accented letter made
-syntax_tree's parser quadratic in the file's size. The dominant term of that is
-[gone](#5-the-comment-walk-that-is-quadratic-on-a-multi-byte-source). What
+than that suggests. It used to be far worse again for a file carrying any
+multi-byte character at all — one accented letter made syntax_tree's parser
+quadratic in the file's size. The dominant term of that is
+[gone](#4-the-comment-walk-that-is-quadratic-on-a-multi-byte-source). What
 remains is superlinear in size, and still somewhat worse with a multi-byte
 character than without.
+
+The rbcop instance keeps every config it has resolved, so the first format with
+a given `rubocopConfig` pays ~30 ms to merge it over RuboCop's `default.yml` and
+every later one pays nothing for it.
 
 ### When it gives up
 
 Corrections can introduce offenses, so RuboCop corrects in a loop until the
 source stops changing. Two cops can also undo one another forever. When that
-happens — a repeated checksum, or 200 rounds without settling, both RuboCop's
-own conditions — `format` rejects rather than returning half-corrected source.
+happens — a repeated source, or 200 rounds without settling, both RuboCop's
+own conditions, which rbcop reproduces — `format` rejects rather than returning
+half-corrected source. It also rejects if a correction ever produced source
+that does not parse, rather than returning it.
 
 ---
 

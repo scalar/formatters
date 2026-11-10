@@ -6,8 +6,9 @@ can replace the RuboCop half of `packages/ruby`, which today runs
 `rubocop --autocorrect --only Layout` on CRuby compiled to wasm.
 
 Short answer: it compiles to `wasm32-wasip1`, runs under plain Node's WASI, and
-matched native RuboCop 1.92.2 byte for byte on every file tested. It is not
-wired into the package yet; see [What is left](#what-is-left).
+matched native RuboCop 1.92.2 byte for byte on the first corpus tested. It is
+now the package's RuboCop pass; see [Since the spike](#since-the-spike) for
+what changed on the way in, including the one rbcop bug a larger corpus found.
 
 ## Building it
 
@@ -26,7 +27,10 @@ The work was in four places:
 4. **rbcop's file plumbing is unix-only.** That covers `openat`-relative atomic
    writes, inode identity, terminal width, execute bits and `uname`. The patch
    gates each behind `cfg(unix)`. A single-file formatter never reaches any of
-   them. The diff is 42 added lines, in `rbcop-wasm.patch`.
+   them.
+
+The same patch carries one fix to rbcop's behaviour, described under
+[Since the spike](#since-the-spike).
 
 The binary is `entry/`, not rbcop's CLI. It calls the library's
 `autocorrect::correct_bytes` with `--only Layout` and `-a` semantics. The CLI
@@ -99,15 +103,25 @@ conformance suite against the real `rubocop` binary would be the only thing
 that backs the claim. The status table and the package README would have to
 say so.
 
-## What is left
+## Since the spike
 
-1. A reactor entry: export `format(source, config) -> String` with the config
-   cached across calls, instead of a `_start` per file.
-2. A loader in `packages/ruby` for the second module, under Node and in the
-   browser, and `format.ts` piping syntax_tree's output through it.
-3. `test/rubocop-conformance.test.ts` pinned to RuboCop 1.92.2 (rbcop's target)
-   and pointed at the new pass. Retire `rubocop-patch.ts` and
-   `rubocop-perf-patch.ts`.
-4. A rebuilt Ruby artifact without RuboCop. RuboCop takes part of the 7 MB
-   pre-initialized heap, and the artifact should shrink by that much.
-5. README, status table and NOTICE/licenses changes (rbcop is MIT).
+- The entry is a WASI reactor (`entry/src/lib.rs`): instantiated once, called
+  per format, with every resolved config cached. The ~33 ms of fixed overhead
+  per call measured above is paid once per config instead, so a call costs the
+  Layout pass alone - ~4 ms a file through the package, measured end to end.
+- Configs that need Ruby (ERB, remote `inherit_from`) are errors. rbcop warns
+  and carries on without them, which would quietly differ from RuboCop.
+- `packages/ruby` loads it beside the Ruby artifact, under Node and in the
+  browser, and the Ruby artifact no longer carries RuboCop: 13.9 MB of
+  artifacts became 7.9 MB, and the Ruby VM stopped growing with every file.
+- `collect-licenses.py` regenerates the license texts for everything linked in.
+- A second corpus, 2,754 files from the Ruby 3.3 standard library and the
+  oracle gems, found one rbcop bug on 10 files.
+  `Layout/MultilineOperationIndentation` re-indented the wrapped operand of
+  `/regex/ =~ operand`. Parser builds `match_with_lvasgn` for that rather than
+  a `send`, so RuboCop's cop never visits it. rbcop already handles this shape
+  in `Layout/RedundantLineBreak` and `Layout/SpaceAroundOperators`, and
+  `rbcop-wasm.patch` adds the same four-line guard to this cop. rbcop's own
+  test suite passes with it, apart from five config scenarios that fail
+  identically without it, because they need gems this machine lacks. It is
+  worth reporting upstream so the patch can retire.

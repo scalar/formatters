@@ -20,9 +20,9 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 
-import { compileArtifact } from '../packages/ruby/src/compile-artifact'
+import { compileArtifact, compileRbcopArtifact } from '../packages/ruby/src/compile-artifact'
 import { format } from '../packages/ruby/src/index'
-import { nodeVm } from '../packages/ruby/src/node-vm'
+import { nodeRbcop, nodeVm } from '../packages/ruby/src/node-vm'
 
 /** What the parent asks for. One of these per spawned process. */
 export type BenchRequest =
@@ -36,10 +36,9 @@ export type BenchRequest =
  * Three parts and a warm baseline rather than one number, because the parts move
  * independently and only some of them are worth attacking: `compileMs` is
  * brotli plus `WebAssembly.compile`, `bootMs` is instantiating the VM plus the
- * syntax_tree patches and `ScalarRubyFmt.setup`, and `firstFormatMs` carries
- * RuboCop's config merge over its own `default.yml` when RuboCop is on - which
- * is where most of a cold call with RuboCop goes now that the artifact arrives
- * with both gems already required.
+ * syntax_tree patches, and `firstFormatMs` carries rbcop's config merge over
+ * RuboCop's own `default.yml` when RuboCop is on. With RuboCop on, the first
+ * two include the rbcop module as well; with it off, rbcop is never loaded.
  */
 export type BootResult = {
   measurement: 'boot'
@@ -63,8 +62,9 @@ export type BootResult = {
  *
  * A recycle is two costs, not one. `recycleMs` is `boot()` again - cheaper than
  * a cold start because the compiled module is still cached - and `reloadMs` is
- * the next format, which pays the per-VM RuboCop config merge over again when
- * RuboCop is on. Subtracting a warm format leaves the overhead.
+ * the next format, which pays whatever a fresh VM still has to warm. The rbcop
+ * instance and its parsed config are not part of the VM and survive a recycle.
+ * Subtracting a warm format leaves the overhead.
  */
 export type RecycleResult = {
   measurement: 'recycle'
@@ -131,8 +131,8 @@ export type BenchResult = BootResult | RecycleResult | CorpusResult
  * The source the boot and recycle measurements format.
  *
  * Deliberately tiny. Both measurements are about what booting costs, so the
- * format on the end is there only to force the per-VM work a first format still
- * does - the RuboCop config merge - to happen and be counted. A real file would
+ * format on the end is there only to force the work a first format still does -
+ * rbcop's config merge, when RuboCop is on - to happen and be counted. A real file would
  * add its own formatting cost to a
  * number that is supposed to be about the VM, and would make results from two
  * machines with different corpora incomparable.
@@ -192,8 +192,10 @@ const timed = async <T>(run: () => Promise<T>): Promise<[T, number]> => {
  * measuring the VM alone.
  */
 const measureBoot = async (rubocop: boolean): Promise<BootResult> => {
-  const [, compileMs] = await timed(compileArtifact)
-  const [, bootMs] = await timed(nodeVm.boot)
+  const [, compileMs] = await timed(() =>
+    Promise.all([compileArtifact(), rubocop ? compileRbcopArtifact() : undefined]),
+  )
+  const [, bootMs] = await timed(() => Promise.all([nodeVm.boot(), rubocop ? nodeRbcop.boot() : undefined]))
   const [, firstFormatMs] = await timed(() => format(SNIPPET, { rubocop }))
   const [, warmFormatMs] = await timed(() => format(SNIPPET, { rubocop }))
 
@@ -243,10 +245,8 @@ const measureRecycle = async (rounds: number, rubocop: boolean): Promise<Recycle
     const beforeGrowth = nodeVm.peek()
     await format(GROWTH_SAMPLE, { rubocop: false })
 
-    // The margin here is real but not wide: a pre-initialized VM arrives with
-    // RuboCop's heap in it and so starts within ~30MB of the ceiling. If a
-    // future artifact closes that gap further, the growth format starts
-    // recycling on its own before the timed one, which costs a round its time
+    // If a future artifact starts close enough to the ceiling, the growth format
+    // recycles on its own before the timed one, which costs a round its time
     // rather than its correctness - but silently, so it says so.
     if (beforeGrowth && nodeVm.peek() !== beforeGrowth) {
       console.error(`  round ${round}: the growth pass recycled on its own, so this round is slower than it needs`)

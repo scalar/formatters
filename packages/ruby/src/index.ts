@@ -1,5 +1,5 @@
 import { createFormat } from './format'
-import { nodeVm } from './node-vm'
+import { nodeRbcop, nodeVm } from './node-vm'
 
 export type {
   ArtifactSource,
@@ -9,15 +9,17 @@ export type {
   FormatSyncFunction,
   Formatters,
   InitFunction,
+  RbcopBoot,
+  RbcopCorrector,
   RubyFormatterVm,
 } from './types'
 
 /**
- * The Node entry point, wired to the VM that reads the wasm from disk. Browsers
+ * The Node entry point, wired to the two modules read from disk. Browsers
  * resolve `index.browser.ts` instead, through the `browser` export condition -
  * this file is the one that may touch `node:` built-ins.
  */
-const { format, formatSync, init } = createFormat(nodeVm)
+const { format, formatSync, init } = createFormat(nodeVm, nodeRbcop)
 
 export { format, formatSync, init }
 
