@@ -158,96 +158,95 @@ toolchain-free checkout still passes.
 
 ### `@scalar/ruby-fmt` (`packages/ruby`)
 
-Reference: **syntax_tree + RuboCop**. Status: exact.
+Reference: **syntax_tree + RuboCop**. Status: syntax_tree exact (+3 fixes); the
+RuboCop pass **exact by test**, because it is a reimplementation.
 
-Runs actual CRuby compiled to WebAssembly with the actual syntax_tree gem loaded
-into it. It works because syntax_tree and prettier_print are pure Ruby whose only
-C dependency is Ripper, which is already inside CRuby's stdlib.
+Two wasm artifacts. `ruby_fmt.wasm.br` is actual CRuby compiled to WebAssembly
+with the actual syntax_tree gem loaded into it - it works because syntax_tree
+and prettier_print are pure Ruby whose only C dependency is Ripper, which is
+already inside CRuby's stdlib. `rbcop_fmt.wasm.br` is
+[rbcop](https://github.com/costajohnt/rbcop), RuboCop 1.92.2 reimplemented in
+Rust on Prism, built by `build/rbcop_fmt/build.sh` as a WASI reactor.
 
 `format()` is async because the first call decompresses and compiles the
-artifact and instantiates a Ruby VM from it; the VM is cached, so later calls
-are milliseconds.
+artifacts and instantiates both; both are cached, so later calls are
+milliseconds.
 
-**The artifact is a wizer snapshot of an already-booted VM.** `build.sh` runs
-[wizer](https://github.com/bytecodealliance/wizer) over the module - see
+**The Ruby artifact is a wizer snapshot of an already-booted VM.** `build.sh`
+runs [wizer](https://github.com/bytecodealliance/wizer) over the module - see
 `build/ruby_fmt/preinit.ts`, which is where every non-obvious part of that step
 is written down - so the linear memory it ships *is* a CRuby with syntax_tree
-and RuboCop required into it. Booting used to cost ~9 s of Ruby and to cost it
-again after every VM recycle, which was about a quarter of the wall-clock of
-formatting a large tree. Four things follow, and none of them is optional:
+required into it. Three things follow, and none of them is optional:
 
 - `boot-vm.ts` does not call `RubyVM.instantiateModule`, because that helper
   ends by calling `ruby-init` - which the snapshot has already been through.
-  Re-running it would reinitialise CRuby underneath the loaded gems.
-- The preopened directories the snapshot is taken with have to match the ones
-  the runtime provides, name for name. The guest's preopen table is captured in
-  the snapshot, so a mismatch is a VM that cannot see `/work` at all and dies on
-  the first RuboCop call with `Errno::ENOENT @ dir_s_mkdir`.
-- It costs size: 12.2 MB compressed against 5.2 MB, because a Ruby heap with
-  RuboCop in it is part of the module now. That is the trade, and the size table
-  in the root README states it.
+  Re-running it would reinitialise CRuby underneath the loaded gem.
+- The preopened directory the snapshot is taken with has to match the one the
+  runtime provides, by name. The guest's preopen table is captured in the
+  snapshot, so a mismatch is a VM that cannot see `/work`, where every format
+  writes its input.
 - It costs byte reproducibility: CRuby's `Hash` seed comes from `random_get` at
   startup and the snapshot is a dump of the heap those hashes live in, so two
   builds from identical inputs differ in most of their bytes while behaving
   identically. A rebuild is checked with the corpus comparison, never by
   diffing against the committed artifact.
 
-**Two tools, one artifact, both by default.** `format` runs syntax_tree and then
-the real `rubocop --autocorrect --only Layout`. Neither subsumes the other:
-syntax_tree reprints (it discards the input's line breaking and decides it
-again) but about 30% of its output still trips stock `rubocop --only Layout`,
-while RuboCop corrects offenses without ever reprinting - measured on 116 files
-whose formatting differed only in line breaking, RuboCop alone mapped 0 of them
-to a common result and syntax_tree mapped 91. They share one artifact so that a
-process does not carry two copies of CRuby, and `src/rubocop.ts` documents which
-of RuboCop's own parts drive the correction and which are deliberately left out.
+**Two tools, both by default.** `format` runs syntax_tree and then
+`rubocop --autocorrect --only Layout`. Neither subsumes the other: syntax_tree
+reprints (it discards the input's line breaking and decides it again) but about
+30% of its output still trips stock `rubocop --only Layout`, while RuboCop
+corrects offenses without ever reprinting - measured on 116 files whose
+formatting differed only in line breaking, RuboCop alone mapped 0 of them to a
+common result and syntax_tree mapped 91. That is why the Ruby VM stays even
+though the RuboCop pass no longer needs one.
 
 Order decides the result, because the two disagree about multiline indentation:
 syntax_tree first, RuboCop second. Running syntax_tree afterwards would revert
 RuboCop in 116 of 397 files.
 
-`rubocop: false` opts out of the pass, which is worth two to three times a
-syntax_tree-only format. It no longer opts out of loading RuboCop: that used to
-happen on the first call that asked for it, at ~9 s a VM, and it now happens at
-build time for every VM. `init` therefore takes no argument at all any more: the
-`rubocop` option and the `InitFormatOptions` type it lived on are gone, which
-puts Ruby's `InitFunction` back in line with every other package's.
+**The RuboCop pass is rbcop, and the exactness rule applies to it in the form
+it takes for a reimplementation.** It used to be the RuboCop gem inside the
+VM; rbcop does the same pass in ~4 ms a file against ~80 ms, and took the VM's
+memory growth with it. Because it is a reimplementation,
+`test/rubocop-conformance.test.ts` is the whole of the evidence that it is
+exact: it runs the real `RuboCop::CLI`, pinned to the four gems in
+`build/rbcop_fmt/Gemfile` (the versions rbcop's own parity gates ran against),
+and asserts byte-identity, over its samples and over any corpus named by
+`RUBY_FMT_CONFORMANCE_CORPUS`. A 2,754-file corpus found one rbcop bug, which
+`build/rbcop_fmt/rbcop-wasm.patch` fixes. Bump `RBCOP_COMMIT` only with a corpus
+run, and move the oracle pins with it.
+
+`src/rbcop.ts` hosts the module through the same WASI shim as the VM. It caches
+every resolved config inside the instance (resolving one costs ~30x a typical
+pass), turns configs that need Ruby - ERB, remote `inherit_from` - into errors
+rather than letting rbcop skip them, and drops an instance that traps, since a
+Rust panic aborts on wasm. `rubocop: false` never boots rbcop at all.
 
 **syntax_tree owns line width.** `Layout/LineLength` is disabled in the config
-written into the guest, because it is the one Layout cop that contradicts
-`printWidth` - with it on at RuboCop's default `Max: 120`, `printWidth: 200`
-came back rewrapped at 124. Disabling it changes none of 397 corpus files at the
-default width. `rubocopConfig` merges over that config one level deep, which is
-both the escape hatch for the rest of RuboCop's settings and the way to put that
-cop back.
-
-The gem pins in `build/ruby_fmt/Gemfile` are load-bearing beyond
-reproducibility, and they are what fixes the CRuby the artifact is built on.
-`rubocop-ast` subclasses prism's parser translation while it is being required,
-so prism has to be loadable before any cop is registered - 1.43.0 needs prism
-~> 1.4 and 1.49.0 needs ~> 1.7. A prism *gem* cannot supply that, because a
-static wasm build resolves `require "prism/prism"` from the built-in extension
-table before `$LOAD_PATH`, so whatever CRuby compiles in is what runs. Ruby
-3.4.1 compiles in 1.2.0 and Ruby 4.0.0 compiles in 1.7.0, which is why the
-RuboCop pin and the `RUBY_VERSION` in `build.sh` move together.
+the pass loads, because it is the one Layout cop that contradicts `printWidth` -
+with it on at RuboCop's default `Max: 120`, `printWidth: 200` came back
+rewrapped at 124. Disabling it changes none of 397 corpus files at the default
+width. `rubocopConfig` merges over that config one level deep, which is both the
+escape hatch for the rest of RuboCop's settings and the way to put that cop
+back.
 
 **WASI comes from `@bjorn3/browser_wasi_shim`, not `node:wasi`,** even though the
-package only ever runs on Node. The interfaces are compatible —
+Node build could use the built-in. The interfaces are compatible —
 `@ruby/wasm-wasi` wants `{ wasiImport, initialize }` and Node's WASI has
 both — but Node's implementation segfaults non-deterministically once ruby.wasm
 is given preopened directories, and a preopen is how the input file reaches
 Ruby. Measured at 2 failures in 6 runs on identical input, killing the process
 with SIGSEGV rather than throwing. The shim is also pure JavaScript with an
-in-memory filesystem, so the source being formatted never touches disk. Do not
-"simplify" this dependency away.
+in-memory filesystem, so the source being formatted never touches disk, and it
+is what lets the browser build run the same code. Do not "simplify" this
+dependency away.
 
-**Known bug — the cached VM leaks.** Each format grows the VM's wasm linear
-memory (roughly 74 MB per 23 KB of input) and never releases it. Ruby's own
-object heap stays flat, so this is not a Ruby-level leak. At 2 GB a guest
-pointer read as a signed i32 goes negative and the JS glue throws
-`RangeError: Start offset -… is outside the bounds of the buffer`. The practical
-ceiling is about 680 KB of cumulative input per process. Anything that formats a
-whole codebase in one process must recycle the VM.
+**The VM's memory never shrinks, so it is still recycled.** This used to be a
+leak of ~74 MB per 23 KB of input that killed the VM at the wasm32 2 GB wall
+after ~680 KB; nearly all of it was RuboCop's. With RuboCop out of the VM,
+13.8 MB of input grows it by ~50 MB and growth tracks the largest file, so
+`format()`'s recycle at 400 MB now fires only after a large one. Keep it:
+nothing else stops a pathological file from walking the VM into the wall.
 
 **`on_comment` is quadratic on a multi-byte source, and
 `src/stree-perf-patch.ts` is why the dominant term of that is gone.** The gem's

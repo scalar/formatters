@@ -123,5 +123,6 @@ say so.
   in `Layout/RedundantLineBreak` and `Layout/SpaceAroundOperators`, and
   `rbcop-wasm.patch` adds the same four-line guard to this cop. rbcop's own
   test suite passes with it, apart from five config scenarios that fail
-  identically without it, because they need gems this machine lacks. It is
-  worth reporting upstream so the patch can retire.
+  identically without it, because they need gems this machine lacks. With the
+  fix, all 2,754 files match native RuboCop 1.92.2, and so do the 300 above. It
+  is worth reporting upstream so the patch can retire.
