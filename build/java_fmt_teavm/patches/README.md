@@ -78,10 +78,12 @@ root. The new tests that ship with the fixes (`joining`, the proxy, `\R`,
 `\p{IsAlphabetic}`, the class-initializer reproducer) were also run without
 their fixes on stock upstream, and each fails there.
 
-That run had a twentieth patch on top, a `br_on_null` reset in the Wasm GC
-`WasmTypeInference` that upstream rejected as defensive in the #1224 review. It
-has since been dropped: both formatters build to byte-identical modules without
-it.
+That run had three patches since dropped. One was a `br_on_null` reset in the
+Wasm GC `WasmTypeInference`, which upstream rejected as defensive in the #1224
+review; both formatters build to byte-identical modules without it. The other
+two were the `Charset.forName` registry key and the UTF-32 and windows-1251
+charsets, which nothing on the formatting path asks for any more
+(`../../teavm/README.md`, "Which patch each formatter needs").
 
 The two packages built on it are the end-to-end check: 658 Java files
 byte-identical against google-java-format on a JVM in both styles, and 589 Kotlin

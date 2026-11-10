@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: amritk <amrit.kahlon00@gmail.com>
 Date: Mon, 9 Nov 2026 23:42:02 +0000
-Subject: [PATCH 06/20] classlib: add File.toPath
+Subject: [PATCH 06/17] classlib: add File.toPath
 
 ---
  .../src/main/java/org/teavm/classlib/java/io/TFile.java     | 6 ++++++

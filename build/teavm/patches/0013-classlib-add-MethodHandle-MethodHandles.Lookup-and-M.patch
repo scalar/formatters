@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: amritk <amrit.kahlon00@gmail.com>
 Date: Mon, 9 Nov 2026 23:45:13 +0000
-Subject: [PATCH 15/20] classlib: add MethodHandle, MethodHandles.Lookup and
+Subject: [PATCH 13/17] classlib: add MethodHandle, MethodHandles.Lookup and
  MethodType members that throw
 
 ---

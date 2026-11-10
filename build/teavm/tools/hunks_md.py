@@ -11,18 +11,16 @@ P = {  # patch number -> (short name, upstream plan)
     '0005': ('StringBuilder.repeat', 'PR C5'),
     '0006': ('File.toPath', 'PR C6'),
     '0007': ('Spliterators', 'PR C7'),
-    '0008': ('Charset.forName key', 'later, in one PR with 0010'),
-    '0009': ('ClassInitElimination', 'issue first, with reproducer'),
-    '0010': ('UTF-32, windows-1251', 'later: ask about code pages in an issue'),
-    '0011': ('system properties', 'later: ask per-backend values'),
-    '0012': ('Character.UnicodeBlock', 'later, one PR per class'),
-    '0013': ('Class / ClassLoader', 'later, one PR per class'),
-    '0014': ('Thread.State', 'later: getState must report real states'),
-    '0015': ('java.lang.invoke stubs', 'issue: polymorphic signatures need compiler support'),
-    '0016': ('Locale.forLanguageTag', 'later, one PR per class'),
-    '0017': ('ResourceBundle.Control', 'later, one PR per class'),
-    '0018': ('ConcurrentHashMap.KeySetView', 'later, one PR per class'),
-    '0019': ('FileSystemProvider.newFileChannel', 'later, one PR per class'),
+    '0008': ('ClassInitElimination', 'issue first, with reproducer'),
+    '0009': ('system properties', 'later: ask per-backend values'),
+    '0010': ('Character.UnicodeBlock', 'later, one PR per class'),
+    '0011': ('Class / ClassLoader', 'later, one PR per class'),
+    '0012': ('Thread.State', 'later: getState must report real states'),
+    '0013': ('java.lang.invoke stubs', 'issue: polymorphic signatures need compiler support'),
+    '0014': ('Locale.forLanguageTag', 'later, one PR per class'),
+    '0015': ('ResourceBundle.Control', 'later, one PR per class'),
+    '0016': ('ConcurrentHashMap.KeySetView', 'later, one PR per class'),
+    '0017': ('FileSystemProvider.newFileChannel', 'later, one PR per class'),
 }
 C = 'classlib/src/main/java/org/teavm/classlib/java/'
 T = 'tests/src/test/java/org/teavm/classlib/java/'
@@ -36,19 +34,19 @@ by_file = {
     C + 'lang/TStringBuilder.java': 'patch 0005', T + 'lang/StringBuilderTest.java': 'patch 0005',
     C + 'io/TFile.java': 'patch 0006', T + 'io/FileTest.java': 'patch 0006',
     C + 'util/TSpliterators.java': 'patch 0007', T + 'util/SpliteratorsTest.java': 'patch 0007',
-    C + 'nio/charset/TCharset.java': 'patch 0008 + 0010',
-    'core/src/main/java/org/teavm/model/optimization/ClassInitElimination.java': 'patch 0009',
-    C + 'nio/charset/TStandardCharsets.java': 'patch 0010',
-    C + 'lang/TSystem.java': 'patch 0011', T + 'lang/SystemTest.java': 'patch 0011',
-    C + 'lang/TCharacter.java': 'patch 0012',
-    C + 'lang/TClass.java': 'patch 0013', C + 'lang/TClassLoader.java': 'patch 0013',
-    C + 'lang/TThread.java': 'patch 0014',
-    C + 'lang/invoke/TMethodHandle.java': 'patch 0015', C + 'lang/invoke/TMethodHandles.java': 'patch 0015',
-    C + 'lang/invoke/TMethodType.java': 'patch 0015',
-    C + 'util/TLocale.java': 'patch 0016',
-    C + 'util/TResourceBundle.java': 'patch 0017',
-    C + 'util/concurrent/TConcurrentHashMap.java': 'patch 0018',
-    C + 'nio/file/spi/TFileSystemProvider.java': 'patch 0019',
+    C + 'nio/charset/TCharset.java': 'dropped',
+    'core/src/main/java/org/teavm/model/optimization/ClassInitElimination.java': 'patch 0008',
+    C + 'nio/charset/TStandardCharsets.java': 'dropped',
+    C + 'lang/TSystem.java': 'patch 0009', T + 'lang/SystemTest.java': 'patch 0009',
+    C + 'lang/TCharacter.java': 'patch 0010',
+    C + 'lang/TClass.java': 'patch 0011', C + 'lang/TClassLoader.java': 'patch 0011',
+    C + 'lang/TThread.java': 'patch 0012',
+    C + 'lang/invoke/TMethodHandle.java': 'patch 0013', C + 'lang/invoke/TMethodHandles.java': 'patch 0013',
+    C + 'lang/invoke/TMethodType.java': 'patch 0013',
+    C + 'util/TLocale.java': 'patch 0014',
+    C + 'util/TResourceBundle.java': 'patch 0015',
+    C + 'util/concurrent/TConcurrentHashMap.java': 'patch 0016',
+    C + 'nio/file/spi/TFileSystemProvider.java': 'patch 0017',
     'core/src/main/java/org/teavm/backend/wasm/transformation/CoroutineTransformation.java': 'dropped',
     'core/src/main/java/org/teavm/backend/wasm/generate/classes/WasmGCClassGenerator.java': 'dropped',
 }
@@ -62,7 +60,7 @@ for i, h in enumerate(hunks, 1):
     if f.endswith('WasmTypeInference.java'):
         dest = 'dropped (comment only)' if h['code_in_patches'] == 0 and h['code_missing'] == 0 else 'dropped'
     elif f.startswith(C + 'nio/charset/impl/'):
-        dest = 'patch 0010'
+        dest = 'dropped'
     elif dest is None and f.startswith(C) and h['removed'] == 0:
         dest = 'shim'
     if dest is None:
@@ -123,6 +121,11 @@ out = ['# Where every hunk of the fork went', '',
        '- `WasmTypeInference`: resetting `depthBeforeLastInstructionOut` when `br_on_null` meets an empty',
        '  stack, and the javadoc on `getDepthBeforeLastInstructionOut`. Rejected as defensive in the #1224',
        '  review; both formatters build to byte-identical modules without it.',
+       '- The `Charset.forName` registry key and the UTF-32BE, UTF-32LE and windows-1251 charsets. IntelliJ\'s',
+       '  `CharsetToolkit` asks for them in its initializer, which the Kotlin probe once reached.',
+       '  Formatting as it is built today never initializes that class (checked with `-Xlog:class+init`',
+       '  on the JVM over the corpus in all three styles and the parse-error cases), and both',
+       '  conformance corpora pass without them. The fork\'s `upstream/charsets` branch still has them.',
        '']
 open(out_path, 'w').write('\n'.join(out))
 print(len(rows), counts)

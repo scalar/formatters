@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: amritk <amrit.kahlon00@gmail.com>
 Date: Mon, 9 Nov 2026 23:41:30 +0000
-Subject: [PATCH 02/20] reflection: don't generate proxy workers for static
+Subject: [PATCH 02/17] reflection: don't generate proxy workers for static
  interface methods
 
 ---

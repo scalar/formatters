@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: amritk <amrit.kahlon00@gmail.com>
 Date: Mon, 9 Nov 2026 23:41:51 +0000
-Subject: [PATCH 03/20] classlib: support \R in regex
+Subject: [PATCH 03/17] classlib: support \R in regex
 
 ---
  .../classlib/java/util/regex/TLexer.java      | 40 +++++++++++++++++++

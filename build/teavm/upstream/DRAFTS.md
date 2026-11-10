@@ -51,7 +51,7 @@ if (invoke.getInstance() == null) {
 
 Happy to send it as a PR with the test above in `VMTest`, or leave it to you.
 
-Patch `0009` is this fix plus that test.
+Patch `0008` is this fix plus that test.
 
 ---
 
@@ -145,21 +145,3 @@ default file system. Test added to `FileTest`.
 splits into array batches, which TeaVM has no parallel streams to use. `SIZED`
 implies `SUBSIZED`, as in the JDK. Tests added to `SpliteratorsTest`; none of them
 asserts what `trySplit` returns, since that is implementation-specific.
-
----
-
-## Later: `Charset.forName` registry key, with the UTF-32 and windows-1251 charsets
-
-Not a PR of its own. `Charset.forName` looks names up in `TCharset.Charsets.value`
-by `charsetName.toUpperCase()`, while the registry is filled with
-`value.put(charset.name(), charset)`. Every charset upstream registers today has
-an uppercase canonical name, so the two agree and nothing fails yet: there is no
-test that fails on upstream as it stands. The first charset with a lowercase
-canonical name (`windows-1251`) can never be found by `forName`.
-
-So patch `0008` (key the registry by `name().toUpperCase()`) goes in the same PR
-as patch `0010` (UTF-32BE, UTF-32LE and windows-1251), where
-`Charset.forName("windows-1251")` is the failing test that shows it is needed.
-Ask in an issue first whether single-byte code pages belong in classlib at all;
-if they do not, send `0008` with whichever charset upstream accepts that has a
-lowercase name, or not at all.

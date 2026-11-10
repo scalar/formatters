@@ -103,10 +103,55 @@ for exactly one thread. That is right for these formatters and wrong for TeaVM
 in general, which is why they stay out of upstream unless the maintainer asks for
 real implementations.
 
-The UTF-32 and windows-1251 charsets are *not* shims, even though their classes
-are new. `Charset.forName` resolves through a registry inside `TCharset`, so a
-charset has to be registered in a class upstream owns; they ride in a patch with
-that registration.
+A new class that has to be registered in a class upstream owns cannot be a shim,
+even though it is new: it rides in a patch with that registration. Charsets were
+the case in point (`Charset.forName` resolves through a registry inside
+`TCharset`) until they were dropped; see below.
+
+## Which patch each formatter needs
+
+Every patch was taken out on its own, TeaVM rebuilt, both formatters rebuilt,
+and both conformance corpora run. Rebuilds reproduced the shipped modules byte
+for byte throughout, so a module that comes out byte-identical without a patch
+shows the patch does nothing for that formatter.
+
+| Patch | Java without it | Kotlin without it |
+|---|---|---|
+| 0001 `Collectors.joining` | 1 of 658 files fails | passes, module differs |
+| 0002 proxy static methods | byte-identical | all 589 fail |
+| 0003 `\R` | passes, module differs | all 589 fail |
+| 0004 `\p{IsAlphabetic}` | 1 of 658 fails | passes, module differs |
+| 0005 `StringBuilder.repeat` | does not compile | byte-identical |
+| 0006 `File.toPath` | does not compile | byte-identical |
+| 0007 `Spliterators` | does not compile | byte-identical |
+| 0008 `ClassInitElimination` | passes, module differs | passes, module differs |
+| 0009 system properties | 1 of 658 fails (NPE) | all 589 fail |
+| 0010-0017 class-library members | byte-identical | does not compile |
+
+The corpora are valid source only, so "passes" says nothing about the error
+paths; the package tests cover those. Java passing without 0003 is the example:
+`FormatterException` compiles `\R` in its initializer, so without it every syntax
+error comes back as a `PatternSyntaxException` (`../../packages/java/README.md`).
+
+"Does not compile" means TeaVM reports the member as reachable and missing.
+Several of those members only throw, but the call sites that reach them are
+compiled in, so the member has to exist.
+
+0008 is the one kept without a corpus failure to show for it. Without it the
+modules change, which means the optimization deletes class initializers that
+both formatters' code currently keeps, and the Kotlin probe once failed on exactly
+that (`../java_fmt_teavm/kotlin-probe/README.md`, "A sixth TeaVM bug"). That the
+corpora happen not to read an uninitialized field today is not a reason to ship a
+miscompile.
+
+Two patches were dropped on this evidence: the `Charset.forName` registry key and
+the UTF-32BE, UTF-32LE and windows-1251 charsets. Both corpora pass without them,
+and IntelliJ's `CharsetToolkit`, whose initializer was the only thing that asked
+for those charsets, is never initialized by formatting (checked with
+`-Xlog:class+init` on the JVM, over the corpus in all three styles and the
+parse-error cases).
+
+The series is shared, so a patch stays if either formatter needs it.
 
 ## Can `ResourceTransformer` move patches into the shims?
 

@@ -1,8 +1,8 @@
 # Where every hunk of the fork went
 
 Generated from `git diff upstream/master origin/master` with `upstream/master` at `bbc601c` and
-`amritk/teavm` `master` at `152a9c3`: 78 files, +3,428/−27, 95 hunks. Of those, 47 went to a patch,
-41 to the shims and 7 were dropped. No hunk is unassigned: the generator refuses to write
+`amritk/teavm` `master` at `152a9c3`: 78 files, +3,428/−27, 95 hunks. Of those, 38 went to a patch,
+41 to the shims and 16 were dropped. No hunk is unassigned: the generator refuses to write
 the table otherwise.
 
 The **evidence** column is checked, not asserted. For each non-comment line a hunk adds, the
@@ -34,18 +34,18 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 | 3 | `classlib/…/java/io/TFile.java` | 24 | +2 −0 | patch 0006 | PR C6 | 2/2 code lines in patches |
 | 4 | `classlib/…/java/io/TFile.java` | 117 | +4 −0 | patch 0006 | PR C6 | 3/3 code lines in patches |
 | 5 | `classlib/…/java/io/TIOError.java` | 1 | +27 −0 | shim | — | 9/9 code lines in shims; 15 comment lines not compared |
-| 6 | `classlib/…/java/lang/TCharacter.java` | 21 | +46 −0 | patch 0012 | later, one PR per class | 33/33 code lines in patches; 6 comment lines not compared |
-| 7 | `classlib/…/java/lang/TClass.java` | 253 | +1 −1 | patch 0013 | later, one PR per class | 1/1 code lines in patches |
-| 8 | `classlib/…/java/lang/TClass.java` | 414 | +5 −1 | patch 0013 | later, one PR per class | 1/1 code lines in patches; 4 comment lines not compared |
-| 9 | `classlib/…/java/lang/TClass.java` | 717 | +10 −0 | patch 0013 | later, one PR per class | 3/3 code lines in patches; 6 comment lines not compared |
-| 10 | `classlib/…/java/lang/TClassLoader.java` | 61 | +18 −0 | patch 0013 | later, one PR per class | 9/9 code lines in patches; 6 comment lines not compared |
+| 6 | `classlib/…/java/lang/TCharacter.java` | 21 | +46 −0 | patch 0010 | later, one PR per class | 33/33 code lines in patches; 6 comment lines not compared |
+| 7 | `classlib/…/java/lang/TClass.java` | 253 | +1 −1 | patch 0011 | later, one PR per class | 1/1 code lines in patches |
+| 8 | `classlib/…/java/lang/TClass.java` | 414 | +5 −1 | patch 0011 | later, one PR per class | 1/1 code lines in patches; 4 comment lines not compared |
+| 9 | `classlib/…/java/lang/TClass.java` | 717 | +10 −0 | patch 0011 | later, one PR per class | 3/3 code lines in patches; 6 comment lines not compared |
+| 10 | `classlib/…/java/lang/TClassLoader.java` | 61 | +18 −0 | patch 0011 | later, one PR per class | 9/9 code lines in patches; 6 comment lines not compared |
 | 11 | `classlib/…/java/lang/TStringBuilder.java` | 216 | +10 −0 | patch 0005 | PR C5 | 9/9 code lines in patches |
-| 12 | `classlib/…/java/lang/TSystem.java` | 187 | +12 −0 | patch 0011 | later: ask per-backend values | 4/4 code lines in patches; 8 comment lines not compared |
-| 13 | `classlib/…/java/lang/TThread.java` | 23 | +18 −0 | patch 0014 | later: getState must report real states | 11/11 code lines in patches; 5 comment lines not compared |
-| 14 | `classlib/…/java/lang/TThread.java` | 276 | +4 −0 | patch 0014 | later: getState must report real states | 2/2 code lines in patches; 1 comment lines not compared |
-| 15 | `classlib/…/java/lang/invoke/TMethodHandle.java` | 15 | +54 −0 | patch 0015 | issue: polymorphic signatures need compiler support | 37/37 code lines in patches; 5 comment lines not compared |
-| 16 | `classlib/…/java/lang/invoke/TMethodHandles.java` | 15 | +61 −1 | patch 0015 | issue: polymorphic signatures need compiler support | 42/42 code lines in patches; 6 comment lines not compared |
-| 17 | `classlib/…/java/lang/invoke/TMethodType.java` | 18 | +15 −0 | patch 0015 | issue: polymorphic signatures need compiler support | 11/11 code lines in patches |
+| 12 | `classlib/…/java/lang/TSystem.java` | 187 | +12 −0 | patch 0009 | later: ask per-backend values | 4/4 code lines in patches; 8 comment lines not compared |
+| 13 | `classlib/…/java/lang/TThread.java` | 23 | +18 −0 | patch 0012 | later: getState must report real states | 11/11 code lines in patches; 5 comment lines not compared |
+| 14 | `classlib/…/java/lang/TThread.java` | 276 | +4 −0 | patch 0012 | later: getState must report real states | 2/2 code lines in patches; 1 comment lines not compared |
+| 15 | `classlib/…/java/lang/invoke/TMethodHandle.java` | 15 | +54 −0 | patch 0013 | issue: polymorphic signatures need compiler support | 37/37 code lines in patches; 5 comment lines not compared |
+| 16 | `classlib/…/java/lang/invoke/TMethodHandles.java` | 15 | +61 −1 | patch 0013 | issue: polymorphic signatures need compiler support | 42/42 code lines in patches; 6 comment lines not compared |
+| 17 | `classlib/…/java/lang/invoke/TMethodType.java` | 18 | +15 −0 | patch 0013 | issue: polymorphic signatures need compiler support | 11/11 code lines in patches |
 | 18 | `classlib/…/java/lang/management/TGarbageCollectorMXBean.java` | 1 | +24 −0 | shim | — | 6/6 code lines in shims; 15 comment lines not compared |
 | 19 | `classlib/…/java/lang/management/TManagementFactory.java` | 1 | +49 −0 | shim | — | 22/22 code lines in shims; 19 comment lines not compared |
 | 20 | `classlib/…/java/lang/management/TMemoryMXBean.java` | 1 | +20 −0 | shim | — | 4/4 code lines in shims; 15 comment lines not compared |
@@ -56,27 +56,27 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 | 25 | `classlib/…/java/lang/management/TThreadInfo.java` | 1 | +54 −0 | shim | — | 30/30 code lines in shims; 15 comment lines not compared |
 | 26 | `classlib/…/java/lang/management/TThreadMXBean.java` | 1 | +26 −0 | shim | — | 7/7 code lines in shims; 15 comment lines not compared |
 | 27 | `classlib/…/java/net/TURLClassLoader.java` | 1 | +65 −0 | shim | — | 35/35 code lines in shims; 20 comment lines not compared |
-| 28 | `classlib/…/java/nio/charset/TCharset.java` | 144 | +6 −2 | patch 0008 + 0010 | later, in one PR with 0010 / later: ask about code pages in an issue | 3/3 code lines in patches; 3 comment lines not compared |
-| 29 | `classlib/…/java/nio/charset/TStandardCharsets.java` | 17 | +2 −0 | patch 0010 | later: ask about code pages in an issue | 2/2 code lines in patches |
-| 30 | `classlib/…/java/nio/charset/TStandardCharsets.java` | 32 | +23 −0 | patch 0010 | later: ask about code pages in an issue | 19/19 code lines in patches; 3 comment lines not compared |
-| 31 | `classlib/…/java/nio/charset/impl/TSingleByteCharset.java` | 1 | +60 −0 | patch 0010 | later: ask about code pages in an issue | 33/33 code lines in patches; 20 comment lines not compared |
-| 32 | `classlib/…/java/nio/charset/impl/TSingleByteDecoder.java` | 1 | +51 −0 | patch 0010 | later: ask about code pages in an issue | 27/27 code lines in patches; 18 comment lines not compared |
-| 33 | `classlib/…/java/nio/charset/impl/TSingleByteEncoder.java` | 1 | +74 −0 | patch 0010 | later: ask about code pages in an issue | 54/54 code lines in patches; 15 comment lines not compared |
-| 34 | `classlib/…/java/nio/charset/impl/TUTF32Charset.java` | 1 | +44 −0 | patch 0010 | later: ask about code pages in an issue | 23/23 code lines in patches; 15 comment lines not compared |
-| 35 | `classlib/…/java/nio/charset/impl/TUTF32Decoder.java` | 1 | +73 −0 | patch 0010 | later: ask about code pages in an issue | 51/51 code lines in patches; 17 comment lines not compared |
-| 36 | `classlib/…/java/nio/charset/impl/TUTF32Encoder.java` | 1 | +81 −0 | patch 0010 | later: ask about code pages in an issue | 62/62 code lines in patches; 15 comment lines not compared |
-| 37 | `classlib/…/java/nio/file/spi/TFileSystemProvider.java` | 23 | +1 −0 | patch 0019 | later, one PR per class | 1/1 code lines in patches |
-| 38 | `classlib/…/java/nio/file/spi/TFileSystemProvider.java` | 43 | +9 −0 | patch 0019 | later, one PR per class | 4/4 code lines in patches; 4 comment lines not compared |
+| 28 | `classlib/…/java/nio/charset/TCharset.java` | 144 | +6 −2 | dropped | not planned | not carried; 3 comment lines not compared; for example `TStandardCharsets.UTF_16LE, TStandardCharsets.UTF_32BE, TStandardCharsets.UTF_32LE,`, `TStandardCharsets.WINDOWS_1251 };` … |
+| 29 | `classlib/…/java/nio/charset/TStandardCharsets.java` | 17 | +2 −0 | dropped | not planned | not carried; for example `import org.teavm.classlib.java.nio.charset.impl.TSingleByteCharset;`, `import org.teavm.classlib.java.nio.charset.impl.TUTF32Charset;` |
+| 30 | `classlib/…/java/nio/charset/TStandardCharsets.java` | 32 | +23 −0 | dropped | not planned | not carried; 3 comment lines not compared; for example `public static final TCharset UTF_32BE = new TUTF32Charset("UTF-32BE", false);`, `public static final TCharset UTF_32LE = new TUTF32Charset("UTF-32LE", true);` … |
+| 31 | `classlib/…/java/nio/charset/impl/TSingleByteCharset.java` | 1 | +60 −0 | dropped | not planned | not carried; 20 comment lines not compared; for example `package org.teavm.classlib.java.nio.charset.impl;`, `import org.teavm.classlib.java.nio.charset.TCharset;` … |
+| 32 | `classlib/…/java/nio/charset/impl/TSingleByteDecoder.java` | 1 | +51 −0 | dropped | not planned | not carried; 18 comment lines not compared; for example `package org.teavm.classlib.java.nio.charset.impl;`, `import org.teavm.classlib.java.nio.charset.TCharset;` … |
+| 33 | `classlib/…/java/nio/charset/impl/TSingleByteEncoder.java` | 1 | +74 −0 | dropped | not planned | not carried; 15 comment lines not compared; for example `package org.teavm.classlib.java.nio.charset.impl;`, `import org.teavm.classlib.java.nio.charset.TCharset;` … |
+| 34 | `classlib/…/java/nio/charset/impl/TUTF32Charset.java` | 1 | +44 −0 | dropped | not planned | not carried; 15 comment lines not compared; for example `package org.teavm.classlib.java.nio.charset.impl;`, `import org.teavm.classlib.java.nio.charset.TCharset;` … |
+| 35 | `classlib/…/java/nio/charset/impl/TUTF32Decoder.java` | 1 | +73 −0 | dropped | not planned | not carried; 17 comment lines not compared; for example `package org.teavm.classlib.java.nio.charset.impl;`, `import org.teavm.classlib.java.nio.charset.TCharset;` … |
+| 36 | `classlib/…/java/nio/charset/impl/TUTF32Encoder.java` | 1 | +81 −0 | dropped | not planned | not carried; 15 comment lines not compared; for example `package org.teavm.classlib.java.nio.charset.impl;`, `import org.teavm.classlib.java.nio.charset.TCharset;` … |
+| 37 | `classlib/…/java/nio/file/spi/TFileSystemProvider.java` | 23 | +1 −0 | patch 0017 | later, one PR per class | 1/1 code lines in patches |
+| 38 | `classlib/…/java/nio/file/spi/TFileSystemProvider.java` | 43 | +9 −0 | patch 0017 | later, one PR per class | 4/4 code lines in patches; 4 comment lines not compared |
 | 39 | `classlib/…/java/text/TBreakIterator.java` | 1 | +113 −0 | shim | — | 67/67 code lines in shims; 21 comment lines not compared |
 | 40 | `classlib/…/java/text/TNormalizer.java` | 1 | +42 −0 | shim | — | 17/17 code lines in shims; 21 comment lines not compared |
-| 41 | `classlib/…/java/util/TLocale.java` | 144 | +25 −0 | patch 0016 | later, one PR per class | 20/20 code lines in patches; 4 comment lines not compared |
-| 42 | `classlib/…/java/util/TResourceBundle.java` | 62 | +39 −0 | patch 0017 | later, one PR per class | 26/26 code lines in patches; 5 comment lines not compared |
-| 43 | `classlib/…/java/util/TResourceBundle.java` | 110 | +6 −0 | patch 0017 | later, one PR per class | 4/4 code lines in patches; 1 comment lines not compared |
+| 41 | `classlib/…/java/util/TLocale.java` | 144 | +25 −0 | patch 0014 | later, one PR per class | 20/20 code lines in patches; 4 comment lines not compared |
+| 42 | `classlib/…/java/util/TResourceBundle.java` | 62 | +39 −0 | patch 0015 | later, one PR per class | 26/26 code lines in patches; 5 comment lines not compared |
+| 43 | `classlib/…/java/util/TResourceBundle.java` | 110 | +6 −0 | patch 0015 | later, one PR per class | 4/4 code lines in patches; 1 comment lines not compared |
 | 44 | `classlib/…/java/util/TSpliterators.java` | 17 | +1 −0 | patch 0007 | PR C7 | 1/1 code lines in patches |
 | 45 | `classlib/…/java/util/TSpliterators.java` | 335 | +58 −0 | patch 0007 | PR C7 | 45/45 code lines in patches; 5 comment lines not compared |
 | 46 | `classlib/…/java/util/concurrent/TAbstractExecutorService.java` | 1 | +81 −0 | shim | — | 57/57 code lines in shims; 16 comment lines not compared |
 | 47 | `classlib/…/java/util/concurrent/TCompletableFuture.java` | 1 | +156 −0 | shim | — | 114/114 code lines in shims; 19 comment lines not compared |
-| 48 | `classlib/…/java/util/concurrent/TConcurrentHashMap.java` | 636 | +71 −0 | patch 0018 | later, one PR per class | 53/53 code lines in patches; 5 comment lines not compared |
+| 48 | `classlib/…/java/util/concurrent/TConcurrentHashMap.java` | 636 | +71 −0 | patch 0016 | later, one PR per class | 53/53 code lines in patches; 5 comment lines not compared |
 | 49 | `classlib/…/java/util/concurrent/TConcurrentLinkedQueue.java` | 1 | +59 −0 | shim | — | 34/34 code lines in shims; 16 comment lines not compared |
 | 50 | `classlib/…/java/util/concurrent/TDelayQueue.java` | 1 | +27 −0 | shim | — | 8/8 code lines in shims; 17 comment lines not compared |
 | 51 | `classlib/…/java/util/concurrent/TDelayed.java` | 1 | +22 −0 | shim | — | 5/5 code lines in shims; 15 comment lines not compared |
@@ -114,11 +114,11 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 | 83 | `core/…/backend/wasm/model/instruction/WasmTypeInference.java` | 90 | +2 −0 | dropped | not planned | not carried |
 | 84 | `core/…/backend/wasm/transformation/CoroutineTransformation.java` | 80 | +18 −0 | dropped | not planned | not carried; 4 comment lines not compared; for example `try {`, `transformImpl(function);` … |
 | 85 | `core/…/backend/wasm/transformation/CoroutineTransformation.java` | 119 | +0 −8 | dropped | not planned | not carried |
-| 86 | `core/…/model/optimization/ClassInitElimination.java` | 60 | +12 −1 | patch 0009 | issue first, with reproducer | 3/3 code lines in patches; 9 comment lines not compared |
+| 86 | `core/…/model/optimization/ClassInitElimination.java` | 60 | +12 −1 | patch 0008 | issue first, with reproducer | 3/3 code lines in patches; 9 comment lines not compared |
 | 87 | `core/…/reflection/ProxyDependencySupport.java` | 143 | +8 −0 | patch 0002 | PR C2 | 2/3 code lines in patches; 5 comment lines not compared; not carried: `if (method.hasModifier(ElementModifier.STATIC)) {` |
 | 88 | `tests/…/java/io/FileTest.java` | 1896 | +6 −0 | patch 0006 | PR C6 | 5/5 code lines in patches |
 | 89 | `tests/…/java/lang/StringBuilderTest.java` | 286 | +14 −0 | patch 0005 | PR C5 | 11/11 code lines in patches; 2 comment lines not compared |
-| 90 | `tests/…/java/lang/SystemTest.java` | 196 | +10 −0 | patch 0011 | later: ask per-backend values | 7/7 code lines in patches; 2 comment lines not compared |
+| 90 | `tests/…/java/lang/SystemTest.java` | 196 | +10 −0 | patch 0009 | later: ask per-backend values | 7/7 code lines in patches; 2 comment lines not compared |
 | 91 | `tests/…/java/util/SpliteratorsTest.java` | 19 | +2 −0 | patch 0007 | PR C7 | 2/2 code lines in patches |
 | 92 | `tests/…/java/util/SpliteratorsTest.java` | 118 | +53 −0 | patch 0007 | PR C7 | 40/40 code lines in patches; 4 comment lines not compared |
 | 93 | `tests/…/java/util/regex/PatternTest.java` | 33 | +1 −0 | patch 0003 + 0004 | PR C3 / PR C4 | 1/1 code lines in patches |
@@ -136,18 +136,16 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 | 0005 | StringBuilder.repeat | PR C5 |
 | 0006 | File.toPath | PR C6 |
 | 0007 | Spliterators | PR C7 |
-| 0008 | Charset.forName key | later, in one PR with 0010 |
-| 0009 | ClassInitElimination | issue first, with reproducer |
-| 0010 | UTF-32, windows-1251 | later: ask about code pages in an issue |
-| 0011 | system properties | later: ask per-backend values |
-| 0012 | Character.UnicodeBlock | later, one PR per class |
-| 0013 | Class / ClassLoader | later, one PR per class |
-| 0014 | Thread.State | later: getState must report real states |
-| 0015 | java.lang.invoke stubs | issue: polymorphic signatures need compiler support |
-| 0016 | Locale.forLanguageTag | later, one PR per class |
-| 0017 | ResourceBundle.Control | later, one PR per class |
-| 0018 | ConcurrentHashMap.KeySetView | later, one PR per class |
-| 0019 | FileSystemProvider.newFileChannel | later, one PR per class |
+| 0008 | ClassInitElimination | issue first, with reproducer |
+| 0009 | system properties | later: ask per-backend values |
+| 0010 | Character.UnicodeBlock | later, one PR per class |
+| 0011 | Class / ClassLoader | later, one PR per class |
+| 0012 | Thread.State | later: getState must report real states |
+| 0013 | java.lang.invoke stubs | issue: polymorphic signatures need compiler support |
+| 0014 | Locale.forLanguageTag | later, one PR per class |
+| 0015 | ResourceBundle.Control | later, one PR per class |
+| 0016 | ConcurrentHashMap.KeySetView | later, one PR per class |
+| 0017 | FileSystemProvider.newFileChannel | later, one PR per class |
 
 ## Dropped
 
@@ -158,3 +156,8 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 - `WasmTypeInference`: resetting `depthBeforeLastInstructionOut` when `br_on_null` meets an empty
   stack, and the javadoc on `getDepthBeforeLastInstructionOut`. Rejected as defensive in the #1224
   review; both formatters build to byte-identical modules without it.
+- The `Charset.forName` registry key and the UTF-32BE, UTF-32LE and windows-1251 charsets. IntelliJ's
+  `CharsetToolkit` asks for them in its initializer, which the Kotlin probe once reached.
+  Formatting as it is built today never initializes that class (checked with `-Xlog:class+init`
+  on the JVM over the corpus in all three styles and the parse-error cases), and both
+  conformance corpora pass without them. The fork's `upstream/charsets` branch still has them.

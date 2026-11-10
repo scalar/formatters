@@ -382,6 +382,9 @@ registering empty objects, since a charset that exists but decodes wrongly is th
 worse failure. It also fixes the lookup: `forName` uppercases the name it is
 given but the registry was keyed by canonical name, which agreed by accident
 until `windows-1251` — the first charset whose canonical name is not uppercase.
+No longer carried: formatting as it is built now never initializes
+`CharsetToolkit`, so the charsets were dropped from `../../teavm/patches`
+(`../../teavm/README.md`, "Which patch each formatter needs").
 
 **One resource.** `Registry` reads `misc/registry.properties` off the classpath
 and throws `MissingResourceException` for a key it cannot find, with no default,

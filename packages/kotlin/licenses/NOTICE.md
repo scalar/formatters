@@ -49,8 +49,8 @@ unmodified:
   ktfmt's. The diff is `build/java_fmt_teavm/patches/ktfmt.patch`, and
   `gate2.sh` is the evidence that it changes no output.
 - **TeaVM** — upstream at a pinned commit with a patch series applied
-  (class-library additions and fixes, a proxy fix, three charsets and a
-  class-initializer miscompile fix), plus a jar of single-threaded `java.*`
+  (class-library additions and fixes, a proxy fix and a class-initializer
+  miscompile fix), plus a jar of single-threaded `java.*`
   classes upstream lacks. All of it is in `build/teavm/`, with
   `build/teavm/README.md` explaining each part.
 - **kotlinx-coroutines 1.10.2 and the IntelliJ platform** — one call deleted
