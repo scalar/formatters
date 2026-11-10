@@ -1,6 +1,6 @@
 {
   "name": "@scalar/swift-fmt",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Swift formatter (swift-format on wasm) - runs on plain Node, no Swift toolchain",
   "keywords": [
     "swift",
