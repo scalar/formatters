@@ -434,7 +434,7 @@ every format, and killed the runtime after ~100 of them.
 ## Rust
 
 See [`packages/rust`](packages/rust). It runs the real rustfmt — the build that
-ships with the pinned nightly, rustc's own parser included — compiled to
+ships with stable Rust 1.99.1, rustc's own parser included — compiled to
 `wasm32-wasip1`, so output is byte-identical to the same version natively. A
 conformance test asserts that across functions, traits, generics, lifetimes,
 macros, async and unicode under four configurations, and the build was checked

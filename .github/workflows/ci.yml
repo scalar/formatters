@@ -88,7 +88,7 @@ jobs:
       # skip themselves when there is no native tool to compare against - so without these steps
       # they never actually run here. syntax_tree and RuboCop are pure Ruby and install in
       # seconds, which makes Ruby the one reference toolchain cheap enough for CI to carry; the
-      # others need a .NET SDK, a Rust nightly or a JDK and still skip.
+      # others need a .NET SDK, a Rust toolchain or a JDK and still skip.
       #
       # Ruby 4.0 because that is what build/ruby_fmt/build.sh bakes into the artifact. Ripper is
       # part of CRuby rather than the gem, so a different Ruby here could diverge for reasons that

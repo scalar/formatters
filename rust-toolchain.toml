@@ -1,0 +1,16 @@
+# The one Rust toolchain this repo uses, for both build/rust_fmt and
+# build/rbcop_fmt. A stable release, not a nightly: rustfmt needs compiler
+# internals behind feature gates, and build/rust_fmt/build.sh unlocks those with
+# RUSTC_BOOTSTRAP=1 instead of reaching for a nightly toolchain.
+#
+# Moving this moves @scalar/rust-fmt's rustfmt too, because rustfmt is built
+# from the same commit as the compiler. Update RUST_COMMIT and RUST_VERSION in
+# build/rust_fmt/build.sh in the same change - `rustc +<channel> -vV` prints
+# both - and rebuild both artifacts.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+# rustc-dev, llvm-tools and rust-src are for build/rust_fmt; rbcop needs only
+# the wasm target.
+components = ["rustc-dev", "llvm-tools", "rust-src"]
+targets = ["wasm32-wasip1"]

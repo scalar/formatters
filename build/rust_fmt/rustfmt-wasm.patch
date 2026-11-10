@@ -30,12 +30,12 @@ index 6c48301f..06472653 100644
 +    #[cfg(not(target_family = "wasm"))]
      rustc_driver::install_ice_hook(BUG_REPORT_URL, |_| ());
  
-     setup_tracing();
+     tracing_subscriber::fmt()
 diff --git a/src/tools/rustfmt/src/lib.rs b/src/tools/rustfmt/src/lib.rs
-index 942b42ec..a8e27e0d 100644
+index 65c83a61..dcf9df29 100644
 --- a/src/tools/rustfmt/src/lib.rs
 +++ b/src/tools/rustfmt/src/lib.rs
-@@ -19,6 +19,7 @@
+@@ -20,6 +20,7 @@
  // Necessary to pull in object code as the rest of the rustc crates are shipped only as rmeta
  // files.
  #[allow(unused_extern_crates)]

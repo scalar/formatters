@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Compiles rustfmt to the wasm artifact shipped by @scalar/rust-fmt.
 #
-# Requires nothing preinstalled but rustup, curl and node: the pinned nightly
-# and the wasm target are fetched into rustup, and rust-lang/rust is cloned into
+# Requires nothing preinstalled but rustup, curl and node: the toolchain pinned
+# in the repo's rust-toolchain.toml and the wasm target are fetched into rustup, and rust-lang/rust is cloned into
 # ./rust, which is gitignored. Consumers of the package need nothing but Node.
 # Expect ~20 minutes on a cold run, most of it compiling the compiler crates.
 #
@@ -16,13 +16,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# rustfmt's output is welded to the compiler it parses with, so these two pins
-# move together and neither moves alone. RUST_COMMIT must be the commit the
-# nightly was built from - `rustc +nightly-<date> -vV` prints it - because the
-# rustc_private crates are built from that source and loaded by that compiler.
-RUST_NIGHTLY="${RUST_NIGHTLY:-nightly-2026-11-10}"
-RUST_COMMIT="${RUST_COMMIT:-ac8310ba643a3796cbe77d2e06944d7c8513999f}"
-RUST_VERSION="${RUST_VERSION:-1.102.0}"
+# rustfmt's output is welded to the compiler it parses with, so these pins move
+# together and none moves alone. The toolchain is a stable release, read from
+# the repo's rust-toolchain.toml so this and build/rbcop_fmt share one Rust.
+# RUST_COMMIT must be the commit that release was built from - `rustc
+# +<version> -vV` prints it - because the rustc_private crates are built from
+# that source and loaded by that compiler.
+RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-$(sed -n 's/^channel = "\(.*\)"$/\1/p' ../../rust-toolchain.toml)}"
+RUST_COMMIT="${RUST_COMMIT:-58cf8f9c35b355199727627d07ae34a4e2846d67}"
+RUST_VERSION="${RUST_VERSION:-1.99.1}"
 
 TARGET="wasm32-wasip1"
 CHECKOUT="$PWD/rust"
@@ -33,12 +35,12 @@ if ! command -v rustup > /dev/null; then
   exit 1
 fi
 
-echo "==> toolchain $RUST_NIGHTLY"
+echo "==> toolchain $RUST_TOOLCHAIN"
 # rustc-dev carries the compiler crates for the *host*, which is what lets the
-# pinned nightly build them at all. It is emphatically not the wasm build of
+# pinned toolchain build them at all. It is emphatically not the wasm build of
 # them - rustup publishes rustc-dev for 34 host targets and no wasm target,
 # which is the whole reason this script exists.
-rustup toolchain install "$RUST_NIGHTLY" --profile minimal \
+rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
   --component rustc-dev,llvm-tools,rust-src --target "$TARGET"
 
 echo "==> rust-lang/rust @ ${RUST_COMMIT:0:9}"
@@ -87,17 +89,27 @@ cd "$CHECKOUT"
 
 # Bootstrap normally injects these. Without them rustc_span does not build on
 # any target: `error: environment variable not found` for env!("CFG_RELEASE").
+#
+# RUSTC_BOOTSTRAP=1 is what lets a stable toolchain compile the compiler crates
+# and rustfmt, which use feature gates throughout - it is how rust-lang's own
+# bootstrap builds them with a beta. It unlocks the gates; it does not make this
+# a nightly build.
+#
+# CFG_RELEASE_CHANNEL is a real setting, not a label. rustfmt reads it to decide
+# whether its unstable options are allowed, and "stable" is what the rustfmt
+# shipped with this release was built with - so unstable options are refused
+# here exactly as they are by the native binary.
 export RUSTC_BOOTSTRAP=1
-export CFG_RELEASE="$RUST_VERSION-nightly"
-export CFG_RELEASE_CHANNEL="nightly"
-export CFG_VERSION="$RUST_VERSION-nightly ($(echo "$RUST_COMMIT" | cut -c1-9) $(git show -s --format=%cd --date=short HEAD))"
+export CFG_RELEASE="$RUST_VERSION"
+export CFG_RELEASE_CHANNEL="stable"
+export CFG_VERSION="$RUST_VERSION ($(echo "$RUST_COMMIT" | cut -c1-9) $(git show -s --format=%cd --date=short HEAD))"
 export CFG_RELEASE_NUM="$RUST_VERSION"
-export CFG_COMPILER_HOST_TRIPLE="$(rustc +"$RUST_NIGHTLY" -vV | sed -n 's/^host: //p')"
+export CFG_COMPILER_HOST_TRIPLE="$(rustc +"$RUST_TOOLCHAIN" -vV | sed -n 's/^host: //p')"
 export CFG_LIBDIR_RELATIVE="lib"
 
 export CARGO_PROFILE_RELEASE_DEBUG=0
 export CARGO_PROFILE_RELEASE_STRIP=symbols
-export RUSTUP_TOOLCHAIN="$RUST_NIGHTLY"
+export RUSTUP_TOOLCHAIN="$RUST_TOOLCHAIN"
 
 echo "==> compiler crates -> $TARGET"
 # The crates rustfmt loads from the sysroot. Plain cargo cross-compiles them:
