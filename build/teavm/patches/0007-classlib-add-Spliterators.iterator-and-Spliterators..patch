@@ -1,0 +1,152 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:42:02 +0000
+Subject: [PATCH 07/17] classlib: add Spliterators.iterator and
+ Spliterators.AbstractSpliterator
+
+---
+ .../classlib/java/util/TSpliterators.java     | 54 +++++++++++++++++++
+ .../classlib/java/util/SpliteratorsTest.java  | 52 ++++++++++++++++++
+ 2 files changed, 106 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/util/TSpliterators.java b/classlib/src/main/java/org/teavm/classlib/java/util/TSpliterators.java
+index 0f3c3fc7e..6ec46bfe9 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/util/TSpliterators.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/util/TSpliterators.java
+@@ -17,6 +17,7 @@ package org.teavm.classlib.java.util;
+ 
+ import java.util.Collection;
+ import java.util.Iterator;
++import java.util.NoSuchElementException;
+ import java.util.PrimitiveIterator;
+ import java.util.function.Consumer;
+ import java.util.function.DoubleConsumer;
+@@ -334,4 +335,57 @@ public class TSpliterators {
+             }
+         };
+     }
++
++    public static <T> Iterator<T> iterator(TSpliterator<? extends T> spliterator) {
++        return new Iterator<T>() {
++            private boolean valueReady;
++            private T value;
++
++            @Override
++            public boolean hasNext() {
++                if (!valueReady) {
++                    valueReady = spliterator.tryAdvance(e -> value = e);
++                }
++                return valueReady;
++            }
++
++            @Override
++            public T next() {
++                if (!hasNext()) {
++                    throw new NoSuchElementException();
++                }
++                T result = value;
++                value = null;
++                valueReady = false;
++                return result;
++            }
++        };
++    }
++
++    public abstract static class AbstractSpliterator<T> implements TSpliterator<T> {
++        private final int characteristics;
++        private long estimate;
++
++        protected AbstractSpliterator(long estimate, int additionalCharacteristics) {
++            this.estimate = estimate;
++            this.characteristics = (additionalCharacteristics & TSpliterator.SIZED) != 0
++                    ? additionalCharacteristics | TSpliterator.SUBSIZED
++                    : additionalCharacteristics;
++        }
++
++        @Override
++        public TSpliterator<T> trySplit() {
++            return null;
++        }
++
++        @Override
++        public long estimateSize() {
++            return estimate;
++        }
++
++        @Override
++        public int characteristics() {
++            return characteristics;
++        }
++    }
+ }
+diff --git a/tests/src/test/java/org/teavm/classlib/java/util/SpliteratorsTest.java b/tests/src/test/java/org/teavm/classlib/java/util/SpliteratorsTest.java
+index da271ed71..d585a73c5 100644
+--- a/tests/src/test/java/org/teavm/classlib/java/util/SpliteratorsTest.java
++++ b/tests/src/test/java/org/teavm/classlib/java/util/SpliteratorsTest.java
+@@ -19,9 +19,11 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.junit.jupiter.api.Assertions.fail;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.List;
++import java.util.NoSuchElementException;
+ import java.util.Spliterator;
+ import java.util.Spliterators;
+ import java.util.function.Consumer;
+@@ -116,4 +118,54 @@ public class SpliteratorsTest {
+         assertArrayEquals(new Object[] { 1, 2, 9, 4 }, collected.toArray());
+         assertEquals(0, spliterator.estimateSize());
+     }
++
++    @Test
++    public void iteratorOverSpliterator() {
++        var iterator = Spliterators.iterator(Spliterators.spliterator(new Object[] { 1, 2, 3 }, 0));
++
++        var collected = new ArrayList<>();
++        while (iterator.hasNext()) {
++            collected.add(iterator.next());
++        }
++
++        assertArrayEquals(new Object[] { 1, 2, 3 }, collected.toArray());
++        assertFalse(iterator.hasNext());
++    }
++
++    @Test
++    public void iteratorOverEmptySpliterator() {
++        var iterator = Spliterators.iterator(Spliterators.spliterator(new Object[0], 0));
++
++        assertFalse(iterator.hasNext());
++        try {
++            iterator.next();
++            fail("expected NoSuchElementException");
++        } catch (NoSuchElementException e) {
++            // expected
++        }
++    }
++
++    @Test
++    public void abstractSpliterator() {
++        var spliterator = new Spliterators.AbstractSpliterator<Integer>(3, Spliterator.SIZED) {
++            private int next = 1;
++
++            @Override
++            public boolean tryAdvance(Consumer<? super Integer> action) {
++                if (next > 3) {
++                    return false;
++                }
++                action.accept(next++);
++                return true;
++            }
++        };
++
++        assertEquals(3L, spliterator.estimateSize());
++        assertTrue(spliterator.hasCharacteristics(Spliterator.SIZED));
++        assertTrue(spliterator.hasCharacteristics(Spliterator.SUBSIZED));
++
++        var collected = new ArrayList<Integer>();
++        spliterator.forEachRemaining(collected::add);
++        assertArrayEquals(new Object[] { 1, 2, 3 }, collected.toArray());
++    }
+ }

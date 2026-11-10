@@ -26,10 +26,10 @@ node run.ts target-forkthree/wasm                            # does it run?
 
 `./build.sh` does all of the above and writes the package artifact; the steps are
 listed separately because each is a measurement worth being able to run on its
-own. It clones [`amritk/teavm`](https://github.com/amritk/teavm) at a pinned
-commit and builds it — no patching, because the fork's master *is* the patched
-TeaVM, one commit per change. `../patches/README.md` maps them, and says which
-are upstreamable and which are deliberate divergences.
+own. It builds TeaVM through `../../teavm/apply.sh`: upstream at a pinned commit,
+a patch series, and a jar of `java.*` shims, the same TeaVM the Java package
+uses. `../../teavm/README.md` explains which part is which, and which are on
+their way upstream.
 
 Two flags are worth knowing when something goes wrong: `-Dteavm.minifying=false`
 puts a name section in the module, without which a trap reports bare function
@@ -120,8 +120,9 @@ found them and the evidence for each.
 `WasmTypeInference.visit(WasmTeeLocal)` pushes no type at all, so the fixes do
 not port back. That forced a master-based TeaVM here while `@scalar/java-fmt`
 was still on 0.14.1 — two toolchains for a while. Java has since moved to the
-same fork and re-cleared `../conformance.sh` at 658/658, so there is one. They
-are commits on the fork rather than patch files; see `../patches/README.md`.
+same TeaVM and re-cleared `../conformance.sh` at 658/658, so there is one. All
+three fixes have since landed upstream, in reworked form, so they are not in
+`../../teavm/patches` at all.
 
 ## Gate 1b — cleared
 
@@ -172,19 +173,23 @@ That last point is the one worth keeping. Making `yield` a no-op moved the whole
 7,055 to `Thread.sleep` — same count, next root. Cutting roots one at a time does
 nothing; the fix has to leave no reachable `@Async` method at all.
 
-`../patches/teavm-kotlin-runtime.patch` does that, and the reasoning is the same
-one the concurrency stand-ins already use — with one thread, `yield` has nothing
-to yield to, `sleep` has nothing to wait for, and `Object.wait` can never be
-notified, so it throws. The async set goes to 3, all of them the uncontended
-monitor path, which `AsyncMethodFinder` already declines to propagate:
+This used to be done in TeaVM itself, by making `yield`, `sleep` and `wait`
+non-async for every program. That broke upstream's own thread tests, so it is
+gone. Upstream has since made async opt-in (`3d8ed09`): with the `asyncEnabled`
+option off, which is the default and how this builds, nothing is
+coroutine-transformed at all, and a reachable `@Async` method is a compile error
+rather than a third of the program.
 
-```
-asyncMethods=3
-root 3 java.lang.Object.monitorEnterWait
-```
-
-Nothing is coroutine-transformed, the start function stops trapping, and the
-module gets 37% smaller.
+Three calls reach one, and none is on a path formatting takes: `Thread.yield` in
+kotlinx-coroutines' `WorkQueue.addLast` and in IntelliJ's
+`ConcurrentIntObjectHashMap.initTable`, both spinning on a race another thread
+would have to be in, and `Thread.sleep` in IntelliJ's `TimeoutUtil`, which only
+`PsiUtilCore.ensureValid` calls once an element is already invalid.
+`plugin/kprobe/SingleThreadedCalls.java`, a TeaVM `ClassHolderTransformer`
+named in `pom-ktfmt.xml`, deletes exactly those three calls and no others, so a
+new one after a ktfmt or kotlinx-coroutines bump fails the build instead of
+disappearing. Nothing is coroutine-transformed, the start function cannot trap,
+and the module stays the size it was.
 
 ### There is a TeaVM bug underneath this, still unfixed
 
@@ -196,9 +201,10 @@ TeaVM WasmGC program that legitimately needs threads and exports anything via
 exports themselves — a `@JSExport` method that lands in the async closure is
 called from JS with no fiber either.
 
-This is a fourth backend bug on top of the three in `../patches/README.md`, and
-unlike those it has no fix here, only an avoidance. It has not been reported
-upstream.
+It has no fix here, only an avoidance, and it has not been reported upstream.
+Upstream's `asyncEnabled` default makes it unreachable for any program that
+leaves async off, which narrows it to programs that turn async on and export
+something.
 
 ## Also found: a crash that should be a diagnostic
 
@@ -376,6 +382,9 @@ registering empty objects, since a charset that exists but decodes wrongly is th
 worse failure. It also fixes the lookup: `forName` uppercases the name it is
 given but the registry was keyed by canonical name, which agreed by accident
 until `windows-1251` — the first charset whose canonical name is not uppercase.
+No longer carried: formatting as it is built now never initializes
+`CharsetToolkit`, so the charsets were dropped from `../../teavm/patches`
+(`../../teavm/README.md`, "Which patch each formatter needs").
 
 **One resource.** `Registry` reads `misc/registry.properties` off the classpath
 and throws `MissingResourceException` for a key it cannot find, with no default,
@@ -407,9 +416,10 @@ would want it silenced; the probe leaves it visible.
 ## What the patches contain
 
 - `../patches/ktfmt.patch` — the parser swap. Proven neutral by `gate2.sh`.
-- **The TeaVM changes** are commits on the fork rather than files here — ten
-  upstreamable ones with a branch each, three deliberate divergences on `master`
-  only. `../patches/README.md` maps them.
+- **The TeaVM changes** are a patch series and a shims jar in `../../teavm`,
+  applied to a pinned upstream commit. `../../teavm/HUNKS.md` maps where each
+  change from the old fork went.
+- `plugin/kprobe/SingleThreadedCalls.java` — the three deleted calls above.
 
 `MethodHandle.invoke` and `invokeExact` are worth calling out. They are
 polymorphic-signature methods: the caller writes whatever descriptor it likes.

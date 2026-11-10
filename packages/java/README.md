@@ -215,16 +215,17 @@ nothing has to be installed first. Expect about ten minutes cold, most of it
 compiling TeaVM. Rerun it when a pin or a patch changes, and commit the result:
 the bytes in git are the bytes the tests run against.
 
-**The build compiles a patched TeaVM**, from
-[`amritk/teavm`](https://github.com/amritk/teavm) at a pinned commit — the same
-one `@scalar/kotlin-fmt` uses. It carries nine class-library additions javac
-needs (`String.lines`, `StringBuilder.repeat`, `File.toPath`,
-`Spliterators.iterator` and `AbstractSpliterator`, `System.exit`, `IOError`,
-`URLClassLoader`, `Normalizer`, `BreakIterator`), four class-library bug fixes,
-and Wasm GC backend fixes, each as its own commit with a branch ready to send
-upstream. `build/java_fmt_teavm/patches/README.md` lists them. Until they land,
-reproducing the artifact means compiling TeaVM. See `.claude/architecture.md` for
-the trade-off.
+**The build compiles a patched TeaVM**: upstream
+[`konsoletyper/teavm`](https://github.com/konsoletyper/teavm) at a pinned commit,
+plus a patch series and a jar of `java.*` shims, both in `build/teavm` — the same
+TeaVM `@scalar/kotlin-fmt` uses. The patches add class-library members javac needs
+(`StringBuilder.repeat`, `File.toPath`, `Spliterators.iterator` and
+`AbstractSpliterator`), four class-library bug fixes and a class-initializer
+miscompile fix, one change per patch. The shims supply the classes upstream has
+no counterpart for at all (`IOError`, `URLClassLoader`, `Normalizer`,
+`BreakIterator`). `build/teavm/README.md` explains the split, and
+`build/teavm/upstream/` drafts the PRs. Until they land, reproducing the artifact
+means compiling TeaVM. See `.claude/architecture.md` for the trade-off.
 
 Four of those patches are worth naming, because without them the module builds
 and then produces wrong answers or none:

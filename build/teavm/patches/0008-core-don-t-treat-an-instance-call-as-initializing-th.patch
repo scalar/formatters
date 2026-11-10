@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:43:52 +0000
+Subject: [PATCH 08/17] core: don't treat an instance call as initializing the
+ class it names
+
+---
+ .../optimization/ClassInitElimination.java    |  4 ++-
+ tests/src/test/java/org/teavm/vm/VMTest.java  | 29 +++++++++++++++++++
+ 2 files changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/core/src/main/java/org/teavm/model/optimization/ClassInitElimination.java b/core/src/main/java/org/teavm/model/optimization/ClassInitElimination.java
+index 3f6c1fe10..b5309c255 100644
+--- a/core/src/main/java/org/teavm/model/optimization/ClassInitElimination.java
++++ b/core/src/main/java/org/teavm/model/optimization/ClassInitElimination.java
+@@ -60,7 +60,9 @@ public class ClassInitElimination implements MethodOptimization {
+                     }
+                     if (insn instanceof InvokeInstruction) {
+                         InvokeInstruction invoke = (InvokeInstruction) insn;
+-                        step.initializedClasses.add(invoke.getMethod().getClassName());
++                        if (invoke.getInstance() == null) {
++                            step.initializedClasses.add(invoke.getMethod().getClassName());
++                        }
+                     }
+                 }
+             }
+diff --git a/tests/src/test/java/org/teavm/vm/VMTest.java b/tests/src/test/java/org/teavm/vm/VMTest.java
+index 6117984e5..cc162e584 100644
+--- a/tests/src/test/java/org/teavm/vm/VMTest.java
++++ b/tests/src/test/java/org/teavm/vm/VMTest.java
+@@ -416,6 +416,14 @@ public class VMTest {
+         callback.complete(value);
+     }
+ 
++    @Test
++    public void interfaceCallDoesNotInitializeInterface() {
++        initCount = 42;
++        InterfaceWithInitializer impl = initCount > 0 ? new FirstInitializerImpl() : new SecondInitializerImpl();
++        impl.run();
++        assertEquals(42, InterfaceWithInitializer.STATE[0]);
++    }
++
+     @Test
+     public void clinitReadsState() {
+         initCount = 23;
+@@ -434,6 +442,27 @@ public class VMTest {
+     private static native int[] doCreateArrayJS();
+ 
+     static int initCount;
++    static int runCount;
++
++    interface InterfaceWithInitializer {
++        int[] STATE = { initCount };
++
++        void run();
++    }
++
++    static class FirstInitializerImpl implements InterfaceWithInitializer {
++        @Override
++        public void run() {
++            runCount++;
++        }
++    }
++
++    static class SecondInitializerImpl implements InterfaceWithInitializer {
++        @Override
++        public void run() {
++            runCount--;
++        }
++    }
+ 
+     private static class ReadingStateInClinit {
+         public static final int state = initCount;

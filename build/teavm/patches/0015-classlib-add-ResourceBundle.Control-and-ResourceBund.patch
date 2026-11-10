@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:45:14 +0000
+Subject: [PATCH 15/17] classlib: add ResourceBundle.Control and
+ ResourceBundle.clearCache
+
+---
+ .../classlib/java/util/TResourceBundle.java   | 39 +++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/util/TResourceBundle.java b/classlib/src/main/java/org/teavm/classlib/java/util/TResourceBundle.java
+index 364821689..0beab5fc0 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/util/TResourceBundle.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/util/TResourceBundle.java
+@@ -62,6 +62,40 @@ public abstract class TResourceBundle {
+     public TResourceBundle() {
+     }
+ 
++    public static class Control {
++        public static final java.util.List<String> FORMAT_DEFAULT = java.util.List.of("java.class",
++                "java.properties");
++        public static final java.util.List<String> FORMAT_CLASS = java.util.List.of("java.class");
++        public static final java.util.List<String> FORMAT_PROPERTIES = java.util.List.of("java.properties");
++        public static final long TTL_DONT_CACHE = -1;
++        public static final long TTL_NO_EXPIRATION_CONTROL = -2;
++
++        protected Control() {
++        }
++
++        public static Control getControl(java.util.List<String> formats) {
++            return new Control();
++        }
++
++        public static Control getNoFallbackControl(java.util.List<String> formats) {
++            return new Control();
++        }
++
++        public java.util.List<String> getFormats(String baseName) {
++            return FORMAT_DEFAULT;
++        }
++
++        public long getTimeToLive(String baseName, Locale locale) {
++            return TTL_NO_EXPIRATION_CONTROL;
++        }
++    }
++
++    public static void clearCache() {
++    }
++
++    public static void clearCache(ClassLoader loader) {
++    }
++
+     public static TResourceBundle getBundle(String bundleName)
+             throws MissingResourceException {
+         return getBundleImpl(bundleName, Locale.getDefault(), ClassLoader.getSystemClassLoader());
+@@ -71,6 +105,11 @@ public abstract class TResourceBundle {
+         return getBundleImpl(bundleName, locale, ClassLoader.getSystemClassLoader());
+     }
+ 
++    public static TResourceBundle getBundle(String bundleName, Locale locale, ClassLoader loader,
++            Control control) {
++        return getBundle(bundleName, locale, loader);
++    }
++
+     public static TResourceBundle getBundle(String bundleName, Locale locale, ClassLoader loader)
+             throws MissingResourceException {
+         if (loader == null) {

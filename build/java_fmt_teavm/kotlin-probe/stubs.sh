@@ -8,10 +8,11 @@
 #     with those modules visible javac refuses to define them, and they have to
 #     be defined here since TeaVM has no class library for any of them.
 #
-#   local.ktfmt:kotlin-policy:1  ./plugin  - a TeaVM build-time extension, which
-#     is compiled against TeaVM rather than for it and never becomes wasm. It
+#   local.ktfmt:kotlin-policy:1  ./plugin  - TeaVM build-time extensions, which
+#     are compiled against TeaVM rather than for it and never become wasm. One
 #     tells the compiler that one class is findable by name and has one readable
-#     field; see plugin/kprobe/KotlinProbeReflectionPolicy.java.
+#     field (plugin/kprobe/KotlinProbeReflectionPolicy.java); another deletes the
+#     two calls that reach an @Async method (plugin/kprobe/SingleThreadedCalls.java).
 #
 # See README.md for what each stub is standing in for.
 set -euo pipefail
@@ -19,7 +20,7 @@ cd "$(dirname "$0")"
 
 KOTLIN_VERSION="${KOTLIN_VERSION:-2.3.20}"
 COROUTINES_VERSION="${COROUTINES_VERSION:-1.10.2}"
-TEAVM_VERSION="${TEAVM_VERSION:-0.16.0-forkthree}"
+TEAVM_VERSION="${TEAVM_VERSION:-$(cat ../../teavm/TEAVM_VERSION)}"
 
 M2="$HOME/.m2/repository"
 STDLIB="$M2/org/jetbrains/kotlin/kotlin-stdlib/$KOTLIN_VERSION/kotlin-stdlib-$KOTLIN_VERSION.jar"
@@ -47,12 +48,14 @@ echo "installed local.ktfmt:kotlin-stubs:1"
 # it by hand keeps the probe from needing the processor on its classpath.
 SPI="$HOME/.m2/repository/org/teavm/teavm-extension-spi/$TEAVM_VERSION/teavm-extension-spi-$TEAVM_VERSION.jar"
 APIS="$HOME/.m2/repository/org/teavm/teavm-extension-apis/$TEAVM_VERSION/teavm-extension-apis-$TEAVM_VERSION.jar"
-if [ ! -f "$SPI" ] || [ ! -f "$APIS" ]; then
+# SingleThreadedCalls is a ClassHolderTransformer, which is core API rather than SPI.
+CORE="$HOME/.m2/repository/org/teavm/teavm-core/$TEAVM_VERSION/teavm-core-$TEAVM_VERSION.jar"
+if [ ! -f "$SPI" ] || [ ! -f "$APIS" ] || [ ! -f "$CORE" ]; then
   echo "need TeaVM $TEAVM_VERSION in the local Maven repo; see README.md" >&2
   exit 1
 fi
 rm -rf build/plugin && mkdir -p build/plugin/META-INF/services
-javac -nowarn -cp "$SPI:$APIS" -d build/plugin $(find plugin -name '*.java')
+javac -nowarn -cp "$SPI:$APIS:$CORE" -d build/plugin $(find plugin -name '*.java')
 echo kprobe.KotlinProbeReflectionPolicy \
   > build/plugin/META-INF/services/org.teavm.extension.spi.reflection.ReflectionPolicy
 echo kprobe.KotlinProbeResourcesPolicy \

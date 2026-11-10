@@ -13,7 +13,7 @@ it.
 | google-java-format | 1.36.1 | Apache-2.0 | `apache-2.0-LICENSE` |
 | Guava | bundled with the above | Apache-2.0 | `apache-2.0-LICENSE` |
 | Checker Framework qualifiers | bundled with the above | MIT | `checker-qual-LICENSE` |
-| TeaVM class library and runtime | fork of master, see build.sh | Apache-2.0 | `apache-2.0-LICENSE` |
+| TeaVM class library and runtime | master + patches, see `build/teavm/UPSTREAM_REF` | Apache-2.0 | `apache-2.0-LICENSE` |
 | javac (`java.compiler`, `jdk.compiler`) | OpenJDK 21 | GPLv2 with the Classpath Exception | `openjdk-GPLv2`, `openjdk-ADDITIONAL_LICENSE_INFO`, `openjdk-ASSEMBLY_EXCEPTION` |
 
 The Apache-2.0 entries share one text: google-java-format ships its dependencies
@@ -64,10 +64,9 @@ google-java-format nor TeaVM is shipped unmodified here:
   `JavacTokens`, `JavaInputAstVisitor` and `RemoveUnusedImports`. The diff is
   `build/java_fmt_teavm/patches/google-java-format.patch`, and the package
   README lists the sites individually.
-- **TeaVM** — a fork carrying class-library additions and bug fixes plus Wasm GC
-  backend fixes, one commit each on
-  [`amritk/teavm`](https://github.com/amritk/teavm);
-  `build/java_fmt_teavm/patches/README.md` lists them.
+- **TeaVM** — upstream at a pinned commit with a patch series applied
+  (class-library additions and bug fixes, and a class-initializer fix), plus a
+  jar of `java.*` classes upstream lacks; `build/teavm/README.md` lists them.
 - **javac** — unmodified. It is used as the JDK ships it, with a handful of
   JDK-internal classes it references supplied as stubs that throw
   (`build/java_fmt_teavm/stubs/`), because nothing on the formatter's path calls

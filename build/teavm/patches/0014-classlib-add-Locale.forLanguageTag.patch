@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:45:13 +0000
+Subject: [PATCH 14/17] classlib: add Locale.forLanguageTag
+
+---
+ .../org/teavm/classlib/java/util/TLocale.java | 21 +++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/util/TLocale.java b/classlib/src/main/java/org/teavm/classlib/java/util/TLocale.java
+index 73f6f1346..fb27390cc 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/util/TLocale.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/util/TLocale.java
+@@ -144,6 +144,27 @@ public final class TLocale implements TCloneable, TSerializable {
+         return countryCode;
+     }
+ 
++    public static TLocale forLanguageTag(String languageTag) {
++        if (languageTag == null || languageTag.isEmpty() || languageTag.equals("und")) {
++            return new TLocale("", "", "");
++        }
++        String[] parts = languageTag.replace('_', '-').split("-");
++        String language = parts.length > 0 ? parts[0].toLowerCase() : "";
++        String country = "";
++        String variant = "";
++        for (int i = 1; i < parts.length; ++i) {
++            String part = parts[i];
++            if (part.length() == 2 || (part.length() == 3 && Character.isDigit(part.charAt(0)))) {
++                country = part.toUpperCase();
++                if (i + 1 < parts.length) {
++                    variant = parts[i + 1];
++                }
++                break;
++            }
++        }
++        return new TLocale(language, country, variant);
++    }
++
+     public static TLocale getDefault() {
+         return defaultLocale;
+     }

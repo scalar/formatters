@@ -22,12 +22,9 @@ cd "$(dirname "$0")"
 
 GJF_VERSION="${GJF_VERSION:-1.36.1}"
 
-# The same TeaVM the Kotlin package uses: the fork's master, pinned to a commit.
-# It carries every change this build needs as separate commits - see
-# patches/README.md - so there is nothing to patch here.
-TEAVM_REPO="${TEAVM_REPO:-https://github.com/amritk/teavm.git}"
-TEAVM_COMMIT="${TEAVM_COMMIT:-a726013}"
-TEAVM_VERSION="${TEAVM_VERSION:-0.16.0-forkthree}"
+# The same TeaVM the Kotlin package uses: upstream at a pinned commit plus the
+# patches and shims in ../teavm. See ../teavm/README.md.
+TEAVM_VERSION="${TEAVM_VERSION:-$(cat ../teavm/TEAVM_VERSION)}"
 
 TOOLCHAIN="$PWD/toolchain"
 OUT_DIR="../../packages/java"
@@ -47,26 +44,13 @@ if [ "$java_version" != "21" ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# 1. TeaVM, from the fork.
+# 1. TeaVM: upstream konsoletyper/teavm, patched, plus the java.* shims.
 #
-# This used to clone konsoletyper/teavm at 0.14.1 and apply patches/teavm.patch.
-# It now builds the same TeaVM the Kotlin package does, so there is one toolchain
-# rather than two and one place to change TeaVM.
-#
-# A full publish is required rather than just :classlib, because the classlib
-# POM references teavm-extension-spi.
+# This used to clone a fork. The fork is now a patch series and a shims jar in
+# ../teavm, applied to a pinned upstream commit; apply.sh skips the build when
+# neither has changed.
 # ----------------------------------------------------------------------------
-STAMP="$TOOLCHAIN/teavm/.built-$TEAVM_COMMIT"
-if [ ! -f "$HOME/.m2/repository/org/teavm/teavm-maven-plugin/$TEAVM_VERSION/teavm-maven-plugin-$TEAVM_VERSION.jar" ] \
-  || [ ! -f "$STAMP" ]; then
-  echo "building TeaVM $TEAVM_VERSION from source"
-  rm -rf "$TOOLCHAIN/teavm"
-  git clone --quiet "$TEAVM_REPO" "$TOOLCHAIN/teavm"
-  git -C "$TOOLCHAIN/teavm" checkout --quiet "$TEAVM_COMMIT"
-  (cd "$TOOLCHAIN/teavm" && ./gradlew --no-daemon -q publishToMavenLocal \
-    -Pteavm.project.version="$TEAVM_VERSION" -x test -x checkstyleMain -x checkstyleTest)
-  touch "$STAMP"
-fi
+TEAVM_VERSION="$TEAVM_VERSION" ../teavm/apply.sh
 
 # ----------------------------------------------------------------------------
 # 2. javac, as a jar TeaVM can read.

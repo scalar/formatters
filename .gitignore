@@ -43,6 +43,8 @@ build/java_fmt/classes/
 build/java_fmt/*.wasm
 build/java_fmt/*.wat
 
+# upstream TeaVM checkout that build/teavm/apply.sh patches and builds
+build/teavm/toolchain/
 # teavm build scratch (patched TeaVM checkout, gjf sources/jars, Binaryen)
 build/java_fmt_teavm/toolchain/
 build/java_fmt_teavm/target/

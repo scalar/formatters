@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:41:51 +0000
+Subject: [PATCH 04/17] classlib: support \p{IsAlphabetic} in regex
+
+---
+ .../java/util/regex/TAbstractCharClass.java      | 16 ++++++++++++++++
+ .../classlib/java/util/regex/PatternTest.java    |  8 ++++++++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/util/regex/TAbstractCharClass.java b/classlib/src/main/java/org/teavm/classlib/java/util/regex/TAbstractCharClass.java
+index bae4dd8a6..0c6fcf5a7 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/util/regex/TAbstractCharClass.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/util/regex/TAbstractCharClass.java
+@@ -607,6 +607,21 @@ abstract class TAbstractCharClass extends TSpecialToken {
+         }
+     }
+ 
++    static class LazyAlphabetic extends LazyCharClass {
++        @Override
++        protected TAbstractCharClass computeValue() {
++            TAbstractCharClass chCl = new TAbstractCharClass() {
++                @Override
++                public boolean contains(int ch) {
++                    return Character.isAlphabetic(ch);
++                }
++            };
++
++            chCl.mayContainSupplCodepoints = true;
++            return chCl;
++        }
++    }
++
+     static class LazyJavaLetter extends LazyCharClass {
+         @Override
+         protected TAbstractCharClass computeValue() {
+@@ -721,6 +736,7 @@ abstract class TAbstractCharClass extends TSpecialToken {
+                 { "javaDigit", new LazyJavaDigit() }, //$NON-NLS-1$
+                 { "javaIdentifierIgnorable", new LazyJavaIdentifierIgnorable() }, //$NON-NLS-1$
+                 { "javaISOControl", new LazyJavaISOControl() }, //$NON-NLS-1$
++                { "Alphabetic", new LazyAlphabetic() }, //$NON-NLS-1$
+                 { "javaJavaIdentifierPart", new LazyJavaJavaIdentifierPart() }, //$NON-NLS-1$
+                 { "javaJavaIdentifierStart", new LazyJavaJavaIdentifierStart() }, //$NON-NLS-1$
+                 { "javaLetter", new LazyJavaLetter() }, //$NON-NLS-1$
+diff --git a/tests/src/test/java/org/teavm/classlib/java/util/regex/PatternTest.java b/tests/src/test/java/org/teavm/classlib/java/util/regex/PatternTest.java
+index 164dfc3ce..0f515525c 100644
+--- a/tests/src/test/java/org/teavm/classlib/java/util/regex/PatternTest.java
++++ b/tests/src/test/java/org/teavm/classlib/java/util/regex/PatternTest.java
+@@ -1411,6 +1411,14 @@ public class PatternTest {
+         assertEquals("b", groups.group(2));
+     }
+ 
++    @Test
++    public void alphabeticProperty() {
++        assertTrue(Pattern.compile("\\p{IsAlphabetic}").matcher("a").matches());
++        assertTrue(Pattern.compile("\\p{IsAlphabetic}").matcher("\u00e9").matches());
++        assertFalse(Pattern.compile("\\p{IsAlphabetic}").matcher("1").matches());
++        assertFalse(Pattern.compile("\\p{IsAlphabetic}").matcher(" ").matches());
++    }
++
+     @Test
+     public void surrogatesInCharClasses() {
+         checkFind("[a-z]+", "ab\uD835\uDC00cd", "[0-2, 4-6]", false);

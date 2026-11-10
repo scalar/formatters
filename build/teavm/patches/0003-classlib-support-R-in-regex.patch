@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:41:51 +0000
+Subject: [PATCH 03/17] classlib: support \R in regex
+
+---
+ .../classlib/java/util/regex/TLexer.java      | 40 +++++++++++++++++++
+ .../classlib/java/util/regex/PatternTest.java | 23 +++++++++++
+ 2 files changed, 63 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/util/regex/TLexer.java b/classlib/src/main/java/org/teavm/classlib/java/util/regex/TLexer.java
+index 634cd4952..f60a89b17 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/util/regex/TLexer.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/util/regex/TLexer.java
+@@ -216,6 +216,8 @@ class TLexer {
+     // original string representing pattern
+     private String orig;
+ 
++    private static final String LINE_BREAK = "(?:\\r\\n|[\\n\\x0B\\f\\r\\x85\\u2028\\u2029])";
++
+     public TLexer(String pattern, int flags) {
+         orig = pattern;
+         if ((flags & TPattern.LITERAL) > 0) {
+@@ -223,6 +225,7 @@ class TLexer {
+         } else if ((flags & TPattern.CANON_EQ) > 0) {
+             pattern = TLexer.normalize(pattern);
+         }
++        pattern = expandLineBreaks(pattern);
+ 
+         this.pattern = new char[pattern.length() + 2];
+         System.arraycopy(pattern.toCharArray(), 0, this.pattern, 0, pattern.length());
+@@ -236,6 +239,43 @@ class TLexer {
+ 
+     }
+ 
++    private static String expandLineBreaks(String pattern) {
++        if (pattern.indexOf("\\R") < 0) {
++            return pattern;
++        }
++
++        var result = new StringBuilder(pattern.length() + LINE_BREAK.length());
++        var quoted = false;
++        var classDepth = 0;
++        for (var i = 0; i < pattern.length(); ++i) {
++            char c = pattern.charAt(i);
++            if (c == '\\' && i + 1 < pattern.length()) {
++                char escaped = pattern.charAt(i + 1);
++                if (quoted) {
++                    quoted = escaped != 'E';
++                } else if (escaped == 'Q') {
++                    quoted = true;
++                } else if (escaped == 'R' && classDepth == 0) {
++                    result.append(LINE_BREAK);
++                    ++i;
++                    continue;
++                }
++                result.append(c).append(escaped);
++                ++i;
++                continue;
++            }
++            if (!quoted) {
++                if (c == '[') {
++                    ++classDepth;
++                } else if (c == ']' && classDepth > 0) {
++                    --classDepth;
++                }
++            }
++            result.append(c);
++        }
++        return result.toString();
++    }
++
+     /**
+      * Returns current character w/o reading next one; if there are no more
+      * characters returns 0;
+diff --git a/tests/src/test/java/org/teavm/classlib/java/util/regex/PatternTest.java b/tests/src/test/java/org/teavm/classlib/java/util/regex/PatternTest.java
+index 178cb556d..164dfc3ce 100644
+--- a/tests/src/test/java/org/teavm/classlib/java/util/regex/PatternTest.java
++++ b/tests/src/test/java/org/teavm/classlib/java/util/regex/PatternTest.java
+@@ -33,6 +33,7 @@
+ 
+ package org.teavm.classlib.java.util.regex;
+ 
++import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
+ import static org.junit.jupiter.api.Assertions.assertNotNull;
+@@ -1388,6 +1389,28 @@ public class PatternTest {
+         assertThrows(IllegalArgumentException.class, () -> matcher.end("qwe"));
+     }
+ 
++    @Test
++    public void lineBreakMatcher() {
++        assertArrayEquals(new String[] { "a", "b" }, Pattern.compile("\\R").split("a\r\nb"));
++        assertArrayEquals(new String[] { "a", "b" }, Pattern.compile("\\R").split("a\nb"));
++        assertArrayEquals(new String[] { "a", "b" }, Pattern.compile("\\R").split("a\rb"));
++        assertArrayEquals(new String[] { "a", "b" }, Pattern.compile("\\R").split("a\u2028b"));
++        assertArrayEquals(new String[] { "a", "", "b" }, Pattern.compile("\\R").split("a\n\nb"));
++
++        var matcher = Pattern.compile("\\R").matcher("a\r\nb");
++        assertTrue(matcher.find());
++        assertEquals(1, matcher.start());
++        assertEquals(3, matcher.end());
++        assertFalse(matcher.find());
++
++        assertTrue(Pattern.compile("a\\R+b").matcher("a\r\n\nb").matches());
++        assertFalse(Pattern.compile("\\R").matcher("a").find());
++        var groups = Pattern.compile("(a)\\R(b)").matcher("a\nb");
++        assertTrue(groups.matches());
++        assertEquals("a", groups.group(1));
++        assertEquals("b", groups.group(2));
++    }
++
+     @Test
+     public void surrogatesInCharClasses() {
+         checkFind("[a-z]+", "ab\uD835\uDC00cd", "[0-2, 4-6]", false);

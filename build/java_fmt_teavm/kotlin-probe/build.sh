@@ -16,12 +16,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# The fork carries every TeaVM change this build needs, as separate commits on
-# master - see ../patches/README.md for what they are and which are upstreamable.
-# Pinned to a commit rather than a branch so the build is reproducible.
-TEAVM_REPO="${TEAVM_REPO:-https://github.com/amritk/teavm.git}"
-TEAVM_COMMIT="${TEAVM_COMMIT:-a726013}"
-TEAVM_VERSION="${TEAVM_VERSION:-0.16.0-forkthree}"
+# Upstream TeaVM at a pinned commit, plus the patches and shims in ../../teavm.
+# See ../../teavm/README.md for what they are and which are upstreamable.
+TEAVM_VERSION="${TEAVM_VERSION:-$(cat ../../teavm/TEAVM_VERSION)}"
 NODE_VERSION="${NODE_VERSION:-26.7.0}"
 
 TOOLCHAIN="$PWD/../toolchain"
@@ -56,24 +53,12 @@ if [ ! -x "$NODE" ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# 2. TeaVM, from the fork.
+# 2. TeaVM: upstream konsoletyper/teavm, patched, plus the java.* shims.
 #
-# Nothing is patched here any more: the fork's master is the patched TeaVM, one
-# commit per change. That is why this step is a clone and a build rather than a
-# patch stack, and why a change to TeaVM is made on the fork rather than in a
-# file here.
+# The same TeaVM the Java package builds with. apply.sh skips the build when
+# neither the pin nor the patches nor the shims have changed.
 # ----------------------------------------------------------------------------
-STAMP="$TOOLCHAIN/teavm-kotlin/.built-$TEAVM_COMMIT"
-if [ ! -f "$HOME/.m2/repository/org/teavm/teavm-maven-plugin/$TEAVM_VERSION/teavm-maven-plugin-$TEAVM_VERSION.jar" ] \
-  || [ ! -f "$STAMP" ]; then
-  echo "building TeaVM $TEAVM_VERSION from source (~10 minutes)"
-  rm -rf "$TOOLCHAIN/teavm-kotlin"
-  git clone --quiet "$TEAVM_REPO" "$TOOLCHAIN/teavm-kotlin"
-  git -C "$TOOLCHAIN/teavm-kotlin" checkout --quiet "$TEAVM_COMMIT"
-  ( cd "$TOOLCHAIN/teavm-kotlin" && ./gradlew --no-daemon -q publishToMavenLocal \
-      -Pteavm.project.version="$TEAVM_VERSION" -x test -x checkstyleMain -x checkstyleTest )
-  touch "$STAMP"
-fi
+TEAVM_VERSION="$TEAVM_VERSION" ../../teavm/apply.sh
 
 # ----------------------------------------------------------------------------
 # 3. The classpath stubs, the build-time policies, and ktfmt itself.

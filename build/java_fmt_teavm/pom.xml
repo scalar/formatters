@@ -19,7 +19,7 @@
   <packaging>jar</packaging>
 
   <properties>
-    <teavm.version>0.14.1</teavm.version>
+    <teavm.version>0.16.0-patched</teavm.version>
     <gjf.version>1.36.1</gjf.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>21</maven.compiler.source>
@@ -40,6 +40,12 @@
       <groupId>org.teavm</groupId>
       <artifactId>teavm-jso-apis</artifactId>
       <version>${teavm.version}</version>
+    </dependency>
+    <!-- java.* classes upstream TeaVM lacks; see ../teavm/README.md. -->
+    <dependency>
+      <groupId>com.scalar.teavm</groupId>
+      <artifactId>teavm-shims</artifactId>
+      <version>1</version>
     </dependency>
 
     <!--

@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:42:01 +0000
+Subject: [PATCH 05/17] classlib: add StringBuilder.repeat(int, int)
+
+---
+ .../teavm/classlib/java/lang/TStringBuilder.java    | 10 ++++++++++
+ .../teavm/classlib/java/lang/StringBuilderTest.java | 13 +++++++++++++
+ 2 files changed, 23 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/TStringBuilder.java b/classlib/src/main/java/org/teavm/classlib/java/lang/TStringBuilder.java
+index 765337902..198cdc3df 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/TStringBuilder.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/TStringBuilder.java
+@@ -216,4 +216,14 @@ public class TStringBuilder extends TAbstractStringBuilder implements TAppendabl
+         super.reverse();
+         return this;
+     }
++
++    public TStringBuilder repeat(int codePoint, int count) {
++        if (count < 0) {
++            throw new TIllegalArgumentException("count is negative: " + count);
++        }
++        for (int i = 0; i < count; ++i) {
++            appendCodePoint(codePoint);
++        }
++        return this;
++    }
+ }
+diff --git a/tests/src/test/java/org/teavm/classlib/java/lang/StringBuilderTest.java b/tests/src/test/java/org/teavm/classlib/java/lang/StringBuilderTest.java
+index 2990cbd99..d54a49511 100644
+--- a/tests/src/test/java/org/teavm/classlib/java/lang/StringBuilderTest.java
++++ b/tests/src/test/java/org/teavm/classlib/java/lang/StringBuilderTest.java
+@@ -286,4 +286,17 @@ public class StringBuilderTest {
+                 new char[] { (char) 56972, (char) 56178 }).codePoints().toArray());
+         assertArrayEquals(new int[] { 56178 }, new StringBuilder().append((char) 56178).codePoints().toArray());
+     }
++
++    @Test
++    public void repeatCodePoint() {
++        assertEquals("aaa", new StringBuilder().repeat('a', 3).toString());
++        assertEquals("x", new StringBuilder("x").repeat('y', 0).toString());
++        assertEquals(4, new StringBuilder().repeat(969356, 2).length());
++        try {
++            new StringBuilder().repeat('a', -1);
++            fail("expected IllegalArgumentException");
++        } catch (IllegalArgumentException e) {
++            // expected
++        }
++    }
+ }

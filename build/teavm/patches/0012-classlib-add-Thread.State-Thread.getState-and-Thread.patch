@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: amritk <amrit.kahlon00@gmail.com>
+Date: Mon, 9 Nov 2026 23:45:06 +0000
+Subject: [PATCH 12/17] classlib: add Thread.State, Thread.getState and
+ Thread.setContextClassLoader
+
+---
+ .../org/teavm/classlib/java/lang/TThread.java    | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/classlib/src/main/java/org/teavm/classlib/java/lang/TThread.java b/classlib/src/main/java/org/teavm/classlib/java/lang/TThread.java
+index b68864cf8..7dd7df379 100644
+--- a/classlib/src/main/java/org/teavm/classlib/java/lang/TThread.java
++++ b/classlib/src/main/java/org/teavm/classlib/java/lang/TThread.java
+@@ -23,6 +23,19 @@ import org.teavm.runtime.EventQueue;
+ import org.teavm.runtime.Fiber;
+ 
+ public class TThread extends TObject implements TRunnable {
++    public enum State {
++        NEW,
++        RUNNABLE,
++        BLOCKED,
++        WAITING,
++        TIMED_WAITING,
++        TERMINATED
++    }
++
++    public State getState() {
++        return alive ? State.RUNNABLE : State.TERMINATED;
++    }
++
+     private static TThread mainThread = new TThread("main");
+     private static TThread currentThread = mainThread;
+     private static int nextId = 1;
+@@ -258,6 +271,9 @@ public class TThread extends TObject implements TRunnable {
+         return new TStackTraceElement[0];
+     }
+ 
++    public void setContextClassLoader(TClassLoader classLoader) {
++    }
++
+     public TClassLoader getContextClassLoader() {
+         return TClassLoader.getSystemClassLoader();
+     }
