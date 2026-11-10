@@ -63,17 +63,21 @@ master-only bug; it was our patch applied twice.
 
 ## How the TeaVM changes were verified
 
-TeaVM's own JUnit runner drives a browser, which this environment cannot start.
-Two things stand in for it.
+Upstream `bbc601c` with `../../teavm/patches` applied, with JS, Wasm GC and C,
+each optimized and not:
 
-The class-library assertions were run as a Wasm GC module under Node
-(`../toolchain/classlib-probe`) and, unchanged, on a real JVM. Both report ALL
-PASS, which is the point: the tests encode Java's semantics, not TeaVM's. That
-second run caught an assertion that `AbstractSpliterator.trySplit()` returns
-null — true of this implementation, false of the JDK's, and therefore wrong to
-assert in a conformance suite.
+```bash
+./gradlew checkstyleMain :tests:test --tests 'org.teavm.vm.*' --tests 'org.teavm.classlib.java.lang.*' --tests 'org.teavm.classlib.java.util.stream.CollectorsTest' --tests 'org.teavm.classlib.java.util.regex.PatternTest' --tests 'org.teavm.classlib.java.util.SpliteratorsTest' --tests 'org.teavm.classlib.java.io.FileTest' --tests 'org.teavm.classlib.java.nio.charset.*' -Pteavm.tests.js=true -Pteavm.tests.wasm-gc=true -Pteavm.tests.c=true -Pteavm.tests.optimized=true
+```
 
-The backend changes are checked by the two packages built on them: 658 Java files
-byte-identical against google-java-format on a JVM, and 589 Kotlin files in three
-styles byte-identical against ktfmt on a JVM. `class-init-elimination` in
-particular has no unit-sized reproducer and is checked only that way.
+Checkstyle passes, and 704 of 707 tests pass. The other three are `FileTest`
+cases (`mkdir`, `setReadOnly`, `list_withUnicodeFileName`) that fail identically
+on stock upstream in the same container: they create files with CJK names on a
+JVM without a UTF-8 locale, and expect a read-only file to be unwritable by
+root. The new tests that ship with the fixes (`joining`, the proxy, `\R`,
+`\p{IsAlphabetic}`, the class-initializer reproducer) were also run without
+their fixes on stock upstream, and each fails there.
+
+The two packages built on it are the end-to-end check: 658 Java files
+byte-identical against google-java-format on a JVM in both styles, and 589 Kotlin
+files byte-identical against ktfmt on a JVM in all three.
