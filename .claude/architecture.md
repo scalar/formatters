@@ -521,7 +521,7 @@ Exception, so a paid product may ship a copy.
 
 Reference: **PHP CS Fixer**. Status: exact.
 
-Runs the official php-cs-fixer 3.95.27 phar, unmodified, on actual PHP 8.4
+Runs the official php-cs-fixer 3.95.30 phar, unmodified, on actual PHP 8.4
 compiled to WebAssembly. It works because PHP CS Fixer is pure PHP and a
 maintained wasm PHP already exists, so there is nothing to compile.
 
@@ -532,7 +532,7 @@ the instance is cached, so later calls are ~290ms.
 compiles its reference tool because no wasm build of it exists. The released
 phar *is* PHP CS Fixer, so `build/php_fmt/build.sh` downloads the pinned
 release, sanity-checks the stub and signature marker, and brotli-compresses it
-(3.5MB → 0.44MB committed). Building from source would only add a copy that
+(3.6MB → 0.45MB committed). Building from source would only add a copy that
 could drift from the release, which is the exactness rule pointed at ourselves.
 
 **The runtime is a dependency, not part of the artifact.** PHP comes from

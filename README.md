@@ -31,7 +31,7 @@ Composer, no native binaries, no postinstall downloads.
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
 | [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.5 MB | ✅ exact | ✅ |
-| [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.44 MB | ✅ exact | — |
+| [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.45 MB | ✅ exact | — |
 | [`@scalar/rust-fmt`](packages/rust) | rustfmt | 1.3 MB | ✅ exact | ✅ |
 
 Artifact is the brotli-compressed module as committed and published — the whole
@@ -380,7 +380,7 @@ ship a copy.
 
 ## PHP
 
-See [`packages/php`](packages/php). It runs the real PHP CS Fixer 3.95.27 - the
+See [`packages/php`](packages/php). It runs the real PHP CS Fixer 3.95.30 - the
 official phar, unmodified - on real PHP 8.4 compiled to WebAssembly, so output
 is byte-identical to the same phar on a native PHP. A conformance test asserts
 that, and the build was checked against 1117 real PHP files (PHP CS Fixer's own
@@ -412,8 +412,8 @@ compile their reference tool because no wasm build of it exists; PHP CS Fixer is
 pure PHP, so the released phar *is* the tool and a maintained wasm PHP already
 exists to run it. Building from source here would only add a copy that could
 drift. So [`build/php_fmt/build.sh`](build/php_fmt/build.sh) downloads the
-pinned phar, checks it really is one, and brotli-compresses it - 3.5MB down to
-a committed 0.44MB.
+pinned phar, checks it really is one, and brotli-compresses it - 3.6MB down to
+a committed 0.45MB.
 
 It is also the one package whose runtime is not embedded in its artifact: PHP
 arrives as an ordinary npm dependency, `@php-wasm/node-8-4`. That is

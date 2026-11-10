@@ -43,7 +43,7 @@ const init = async (options?: InitOptions): Promise<void> => {
  * generator that formats each file inside the builder that emits it, say. It
  * needs `await init()` first, which is the one thing booting can never avoid.
  *
- * Formatting compiles ~6.2MB of wasm and holds ~35MB of linear memory, so run
+ * Formatting compiles ~6.1MB of wasm and holds ~35MB of linear memory, so run
  * this in a worker rather than on the main thread. Nothing here requires one -
  * it works either way - but a main-thread caller will see the tab stall for the
  * length of the first boot.

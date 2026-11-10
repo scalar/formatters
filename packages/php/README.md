@@ -161,7 +161,7 @@ Prefer `format()` wherever you can await. This is for where you cannot.
 ## This is the real PHP CS Fixer, and the output is exact
 
 This is **actual [PHP CS Fixer](https://github.com/PHP-CS-Fixer/PHP-CS-Fixer)
-3.95.27** — the official phar, unmodified — running on **actual PHP 8.4**
+3.95.30** — the official phar, unmodified — running on **actual PHP 8.4**
 compiled to WebAssembly. It is not a reimplementation, so it does not drift.
 
 `test/native-conformance.test.ts` asserts byte-identical output against a native
@@ -190,7 +190,7 @@ a maintained wasm build. Compiling anything from source here would only
 introduce a copy that could drift from the release.
 
 So `build/php_fmt/build.sh` downloads the pinned phar, checks it really is one,
-and brotli-compresses it — 3.5MB down to 0.44MB. The result is committed, so a
+and brotli-compresses it — 3.6MB down to 0.45MB. The result is committed, so a
 fresh clone needs nothing extra.
 
 ## `format()` runs the `fix` command, in-process
