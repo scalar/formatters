@@ -1,0 +1,15 @@
+[package]
+name = "rbcop_fmt"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rbcop = { path = "../rbcop" }
+
+[patch.crates-io]
+ruby-prism = { path = "../rbcop/vendor/ruby-prism" }
+
+[profile.release]
+lto = "thin"
+opt-level = 3

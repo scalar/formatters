@@ -82,3 +82,10 @@ build/swift_fmt/*.wasm
 # and a directory pattern would not match one.
 build/rust_fmt/rust
 build/rust_fmt/*.wasm
+
+# rbcop build scratch (the rbcop checkout, wasi-sdk, the cargo target)
+#
+# `rbcop` has no trailing slash on purpose, matching rust_fmt above.
+build/rbcop_fmt/rbcop
+build/rbcop_fmt/toolchain/
+build/rbcop_fmt/*.wasm
