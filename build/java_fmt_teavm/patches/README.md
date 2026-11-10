@@ -78,6 +78,11 @@ root. The new tests that ship with the fixes (`joining`, the proxy, `\R`,
 `\p{IsAlphabetic}`, the class-initializer reproducer) were also run without
 their fixes on stock upstream, and each fails there.
 
+That run had a twentieth patch on top, a `br_on_null` reset in the Wasm GC
+`WasmTypeInference` that upstream rejected as defensive in the #1224 review. It
+has since been dropped: both formatters build to byte-identical modules without
+it.
+
 The two packages built on it are the end-to-end check: 658 Java files
 byte-identical against google-java-format on a JVM in both styles, and 589 Kotlin
 files byte-identical against ktfmt on a JVM in all three.

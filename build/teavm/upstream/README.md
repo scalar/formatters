@@ -1,7 +1,8 @@
 # Drafts for konsoletyper/teavm
 
 Nothing here has been opened. Each section is one PR or issue, built from one
-patch in `../patches`, in the order to send them. The rules they follow are in
+patch in `../patches`, in the order to send them, except the last section,
+which is for later. The rules they follow are in
 `UPSTREAMING_PLAN.md` on the fork's `claude/funny-cray-am4u3y` branch: one fix
 per PR, a short `area: summary` commit with no body, tests in the existing test
 class, no explanatory comments, no defensive code, and a description that a
@@ -36,9 +37,12 @@ git am ../patches/0001-*.patch
 | 6 | PR | 0005 | classlib: add StringBuilder.repeat(int, int) |
 | 7 | PR | 0006 | classlib: add File.toPath |
 | 8 | PR | 0007 | classlib: add Spliterators.iterator and Spliterators.AbstractSpliterator |
-| 9 | PR | 0008 | classlib: key Charset.forName registry by uppercased name |
 
 The issue goes first because issues are cheap and it is the only change that
 turns wrong output into right output; the PRs follow from easiest to review.
+
+Patch `0008`, the `Charset.forName` registry key, is not on the list: nothing
+upstream registers today exercises it, so it waits to go in one PR with the
+UTF-32 and windows-1251 charsets of patch `0010`. `DRAFTS.md` says why.
 
 See `DRAFTS.md` for the text of each.

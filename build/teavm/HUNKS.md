@@ -1,8 +1,8 @@
 # Where every hunk of the fork went
 
 Generated from `git diff upstream/master origin/master` with `upstream/master` at `bbc601c` and
-`amritk/teavm` `master` at `152a9c3`: 78 files, +3,428/−27, 95 hunks. Of those, 48 went to a patch,
-41 to the shims and 6 were dropped. No hunk is unassigned: the generator refuses to write
+`amritk/teavm` `master` at `152a9c3`: 78 files, +3,428/−27, 95 hunks. Of those, 47 went to a patch,
+41 to the shims and 7 were dropped. No hunk is unassigned: the generator refuses to write
 the table otherwise.
 
 The **evidence** column is checked, not asserted. For each non-comment line a hunk adds, the
@@ -56,7 +56,7 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 | 25 | `classlib/…/java/lang/management/TThreadInfo.java` | 1 | +54 −0 | shim | — | 30/30 code lines in shims; 15 comment lines not compared |
 | 26 | `classlib/…/java/lang/management/TThreadMXBean.java` | 1 | +26 −0 | shim | — | 7/7 code lines in shims; 15 comment lines not compared |
 | 27 | `classlib/…/java/net/TURLClassLoader.java` | 1 | +65 −0 | shim | — | 35/35 code lines in shims; 20 comment lines not compared |
-| 28 | `classlib/…/java/nio/charset/TCharset.java` | 144 | +6 −2 | patch 0008 + 0010 | PR C8 / later: ask about code pages in an issue | 3/3 code lines in patches; 3 comment lines not compared |
+| 28 | `classlib/…/java/nio/charset/TCharset.java` | 144 | +6 −2 | patch 0008 + 0010 | later, in one PR with 0010 / later: ask about code pages in an issue | 3/3 code lines in patches; 3 comment lines not compared |
 | 29 | `classlib/…/java/nio/charset/TStandardCharsets.java` | 17 | +2 −0 | patch 0010 | later: ask about code pages in an issue | 2/2 code lines in patches |
 | 30 | `classlib/…/java/nio/charset/TStandardCharsets.java` | 32 | +23 −0 | patch 0010 | later: ask about code pages in an issue | 19/19 code lines in patches; 3 comment lines not compared |
 | 31 | `classlib/…/java/nio/charset/impl/TSingleByteCharset.java` | 1 | +60 −0 | patch 0010 | later: ask about code pages in an issue | 33/33 code lines in patches; 20 comment lines not compared |
@@ -111,7 +111,7 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 | 80 | `core/…/backend/wasm/generate/classes/WasmGCClassGenerator.java` | 1439 | +1 −1 | dropped | not planned | not carried; for example `private void staticInitialValue(WasmInstructionBuilder builder, Object value, WasmType type) {` |
 | 81 | `core/…/backend/wasm/generate/classes/WasmGCClassGenerator.java` | 1457 | +4 −1 | dropped | not planned | not carried; 3 comment lines not compared; for example `defaultValueOfType(builder, type);` |
 | 82 | `core/…/backend/wasm/model/instruction/WasmTypeInference.java` | 32 | +5 −0 | dropped (comment only) | not planned | not carried; 5 comment lines not compared |
-| 83 | `core/…/backend/wasm/model/instruction/WasmTypeInference.java` | 90 | +2 −0 | patch 0020 | not planned: rejected in #1224 as defensive | 2/2 code lines in patches |
+| 83 | `core/…/backend/wasm/model/instruction/WasmTypeInference.java` | 90 | +2 −0 | dropped | not planned | not carried |
 | 84 | `core/…/backend/wasm/transformation/CoroutineTransformation.java` | 80 | +18 −0 | dropped | not planned | not carried; 4 comment lines not compared; for example `try {`, `transformImpl(function);` … |
 | 85 | `core/…/backend/wasm/transformation/CoroutineTransformation.java` | 119 | +0 −8 | dropped | not planned | not carried |
 | 86 | `core/…/model/optimization/ClassInitElimination.java` | 60 | +12 −1 | patch 0009 | issue first, with reproducer | 3/3 code lines in patches; 9 comment lines not compared |
@@ -136,7 +136,7 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 | 0005 | StringBuilder.repeat | PR C5 |
 | 0006 | File.toPath | PR C6 |
 | 0007 | Spliterators | PR C7 |
-| 0008 | Charset.forName key | PR C8 |
+| 0008 | Charset.forName key | later, in one PR with 0010 |
 | 0009 | ClassInitElimination | issue first, with reproducer |
 | 0010 | UTF-32, windows-1251 | later: ask about code pages in an issue |
 | 0011 | system properties | later: ask per-backend values |
@@ -148,7 +148,6 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
 | 0017 | ResourceBundle.Control | later, one PR per class |
 | 0018 | ConcurrentHashMap.KeySetView | later, one PR per class |
 | 0019 | FileSystemProvider.newFileChannel | later, one PR per class |
-| 0020 | br_on_null depth reset | not planned: rejected in #1224 as defensive |
 
 ## Dropped
 
@@ -156,5 +155,6 @@ python3 -I tools/hunks_md.py /tmp/coverage.jsonl HUNKS.md
   internal compiler error, and rejected as defensive in the #1224 review.
 - `WasmGCClassGenerator.staticInitialValue`: emitting the global's own default rather than a
   string-typed null. The fork's own commit called it defensive rather than a reproducible failure.
-- The `WasmTypeInference` javadoc on `getDepthBeforeLastInstructionOut`. The code half of that hunk
-  is patch 0020, which the same review rejected; it is last in the series so it drops cleanly.
+- `WasmTypeInference`: resetting `depthBeforeLastInstructionOut` when `br_on_null` meets an empty
+  stack, and the javadoc on `getDepthBeforeLastInstructionOut`. Rejected as defensive in the #1224
+  review; both formatters build to byte-identical modules without it.

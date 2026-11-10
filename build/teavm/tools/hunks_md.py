@@ -11,7 +11,7 @@ P = {  # patch number -> (short name, upstream plan)
     '0005': ('StringBuilder.repeat', 'PR C5'),
     '0006': ('File.toPath', 'PR C6'),
     '0007': ('Spliterators', 'PR C7'),
-    '0008': ('Charset.forName key', 'PR C8'),
+    '0008': ('Charset.forName key', 'later, in one PR with 0010'),
     '0009': ('ClassInitElimination', 'issue first, with reproducer'),
     '0010': ('UTF-32, windows-1251', 'later: ask about code pages in an issue'),
     '0011': ('system properties', 'later: ask per-backend values'),
@@ -23,7 +23,6 @@ P = {  # patch number -> (short name, upstream plan)
     '0017': ('ResourceBundle.Control', 'later, one PR per class'),
     '0018': ('ConcurrentHashMap.KeySetView', 'later, one PR per class'),
     '0019': ('FileSystemProvider.newFileChannel', 'later, one PR per class'),
-    '0020': ('br_on_null depth reset', 'not planned: rejected in #1224 as defensive'),
 }
 C = 'classlib/src/main/java/org/teavm/classlib/java/'
 T = 'tests/src/test/java/org/teavm/classlib/java/'
@@ -61,7 +60,7 @@ for i, h in enumerate(hunks, 1):
     f = h['file']
     dest = by_file.get(f)
     if f.endswith('WasmTypeInference.java'):
-        dest = 'dropped (comment only)' if h['code_in_patches'] == 0 and h['code_missing'] == 0 else 'patch 0020'
+        dest = 'dropped (comment only)' if h['code_in_patches'] == 0 and h['code_missing'] == 0 else 'dropped'
     elif f.startswith(C + 'nio/charset/impl/'):
         dest = 'patch 0010'
     elif dest is None and f.startswith(C) and h['removed'] == 0:
@@ -121,8 +120,9 @@ out = ['# Where every hunk of the fork went', '',
        '  internal compiler error, and rejected as defensive in the #1224 review.',
        '- `WasmGCClassGenerator.staticInitialValue`: emitting the global\'s own default rather than a',
        '  string-typed null. The fork\'s own commit called it defensive rather than a reproducible failure.',
-       '- The `WasmTypeInference` javadoc on `getDepthBeforeLastInstructionOut`. The code half of that hunk',
-       '  is patch 0020, which the same review rejected; it is last in the series so it drops cleanly.',
+       '- `WasmTypeInference`: resetting `depthBeforeLastInstructionOut` when `br_on_null` meets an empty',
+       '  stack, and the javadoc on `getDepthBeforeLastInstructionOut`. Rejected as defensive in the #1224',
+       '  review; both formatters build to byte-identical modules without it.',
        '']
 open(out_path, 'w').write('\n'.join(out))
 print(len(rows), counts)
