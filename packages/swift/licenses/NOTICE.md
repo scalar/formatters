@@ -12,7 +12,7 @@ Built by `build/swift_fmt/build.sh`; the versions are pinned there.
 | swift-syntax | pinned by swift-format's `Package.resolved` | Apache-2.0 with Runtime Library Exception | same text |
 | swift-markdown | pinned by swift-format's `Package.resolved` | Apache-2.0 with Runtime Library Exception | same text |
 | swift-cmark | pinned by swift-format's `Package.resolved` | BSD-2-Clause | `swift-cmark-LICENSE` |
-| Swift standard library and Foundation | 6.4.0 | Apache-2.0 with Runtime Library Exception | `swift-runtime-LICENSE` |
+| Swift standard library and Foundation | 6.4.2 | Apache-2.0 with Runtime Library Exception | `swift-runtime-LICENSE` |
 
 Every one of these is permissive and asks only for attribution.
 

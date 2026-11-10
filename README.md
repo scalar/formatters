@@ -132,7 +132,7 @@ arrives: fetched rather than read from disk.
 
 **Run it in a worker.** Every one of these compiles multi-megabyte wasm and holds
 tens to hundreds of megabytes of linear memory. On the main thread that is a
-frozen tab, and Swift — 12.5 MB over the wire, 49.5 MB of wasm — is one you want
+frozen tab, and Swift — 12.5 MB over the wire, 49.4 MB of wasm — is one you want
 behind an explicit user action rather than on page load.
 
 ### Where the bytes come from

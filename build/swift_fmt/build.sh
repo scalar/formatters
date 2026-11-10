@@ -12,16 +12,16 @@
 #
 # Linux x86_64/aarch64 only. The Swift SDK for WebAssembly is cross-platform,
 # but the *host* toolchain URL below is a Linux tarball; on macOS install a
-# matching Swift 6.4.0 toolchain and set SWIFT_BIN to its bin directory.
+# matching Swift 6.4.2 toolchain and set SWIFT_BIN to its bin directory.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 # swift-format's release tags track Swift's own: 604.0.0 is the Swift 6.4 one.
 # The toolchain, the Swift SDK and swift-format all have to agree - from Swift
 # 6.1 the SDK's version must match the toolchain's exactly.
-SWIFT_VERSION="${SWIFT_VERSION:-6.4.0}"
+SWIFT_VERSION="${SWIFT_VERSION:-6.4.2}"
 SWIFT_FORMAT_VERSION="${SWIFT_FORMAT_VERSION:-604.0.0}"
-BINARYEN_VERSION="${BINARYEN_VERSION:-123}"
+BINARYEN_VERSION="${BINARYEN_VERSION:-133}"
 
 TOOLCHAIN="$PWD/toolchain"
 OUT="../../packages/swift/swift_fmt.wasm.br"

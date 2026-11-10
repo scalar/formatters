@@ -502,7 +502,7 @@ Swift global.
 default wasm stack overflows on ordinary Swift — swift-syntax's own
 `UnicodeScalarExtensions.swift` is 10KB and chains ~70 `||` operators into one
 expression, and walking a tree that deep traps with `memory access out of
-bounds`. And the SDK must be named by **id** (`swift-6.4.0-RELEASE_wasm`), not
+bounds`. And the SDK must be named by **id** (`swift-6.4.2-RELEASE_wasm`), not
 by triple: the normal and embedded SDKs both declare `wasm32-unknown-wasip1`,
 and the ambiguity resolves to the embedded one, which fails deep inside
 swift-syntax with "unavailable in embedded Swift".
