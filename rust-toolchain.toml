@@ -10,7 +10,8 @@
 [toolchain]
 channel = "1.99.1"
 profile = "minimal"
-# rustc-dev, llvm-tools and rust-src are for build/rust_fmt; rbcop needs only
-# the wasm target.
-components = ["rustc-dev", "llvm-tools", "rust-src"]
+# rustc-dev, llvm-tools and rust-src are for build/rust_fmt, and rustfmt is
+# the native binary packages/rust/test/native-conformance.test.ts compares the
+# wasm build against. rbcop needs only the wasm target.
+components = ["rustc-dev", "llvm-tools", "rust-src", "rustfmt"]
 targets = ["wasm32-wasip1"]

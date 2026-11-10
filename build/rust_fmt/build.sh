@@ -41,7 +41,7 @@ echo "==> toolchain $RUST_TOOLCHAIN"
 # them - rustup publishes rustc-dev for 34 host targets and no wasm target,
 # which is the whole reason this script exists.
 rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
-  --component rustc-dev,llvm-tools,rust-src --target "$TARGET"
+  --component rustc-dev,llvm-tools,rust-src,rustfmt --target "$TARGET"
 
 echo "==> rust-lang/rust @ ${RUST_COMMIT:0:9}"
 if [ ! -d "$CHECKOUT/.git" ]; then
