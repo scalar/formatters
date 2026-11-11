@@ -286,6 +286,16 @@ end
    \\z/nox =~ str.dup.force_encoding('BINARY') ? true : false
 end
 `,
+  // A `case/in` guard too long for one line, which syntax_tree wraps after the
+  // operator. Prism wraps the guard in an if/unless node and rbcop took that
+  // for a keyword condition, aligning the operand with it; the parser gem has
+  // an `unless_guard` there, so RuboCop indents it 2 from the `in` line. Fixed
+  // in rbcop itself, on the fork build/rbcop_fmt/build.sh pins.
+  'a wrapped operand of a case/in guard': `case [content_type, body]
+in [:jsonl, Enumerable] unless Very::Long::Namespace::Path::To::FileInput === body_with_a_long_name_here
+  body
+end
+`,
   'already clean': `x = 1
 `,
   // RuboCop 1.84.1 through 1.91 flattened a chain inside a block that is a hash
