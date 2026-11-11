@@ -127,3 +127,10 @@ say so.
   identically without it, because they need gems this machine lacks. With the
   fix, all 2,754 files match native RuboCop 1.92.2, and so do the 300 above. It
   is worth reporting upstream so the patch can retire.
+- A `case/in` guard continued over lines (`in x if a &&` then `b`) came back
+  aligned with the guard's condition, where RuboCop indents it 2 from the `in`.
+  Prism wraps the guard in an if node, and the Layout/Multiline*Indentation
+  cops took it for a keyword condition; the parser gem's `if_guard` is never
+  one. The fix is in rbcop itself, so `build.sh` builds from
+  [amritk/rbcop](https://github.com/amritk/rbcop) at a commit carrying it, until
+  it lands upstream.

@@ -100,7 +100,10 @@ Run over a second corpus of 2,754 files it found one rbcop bug, on 10 of them:
 `Layout/MultilineOperationIndentation` re-indented the wrapped operand of a
 regex literal's `=~`, which RuboCop never looks at. The build fixes it (see
 `build/rbcop_fmt/rbcop-wasm.patch`), the test now pins both shapes, and with the
-fix both corpora match the real binary on every file.
+fix both corpora match the real binary on every file. A second bug, a `case/in`
+guard continued over lines being aligned with its condition rather than indented
+from the `in`, is fixed in rbcop itself, and the build uses a fork carrying that
+fix until it lands upstream.
 
 ### Who owns what
 

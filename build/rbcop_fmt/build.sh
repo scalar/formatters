@@ -16,8 +16,11 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # rbcop is not on crates.io, so it is pinned by commit. It targets RuboCop
-# 1.92.2 byte for byte.
-RBCOP_COMMIT="${RBCOP_COMMIT:-90cfdb281402921ffe14bb5fc6041da94f05b143}"
+# 1.92.2 byte for byte. The commit is on amritk/rbcop, a fork of
+# costajohnt/rbcop two commits ahead of upstream 90cfdb2: it stops the
+# Layout/Multiline*Indentation cops treating a `case/in` guard as a keyword
+# condition. Move back to upstream once that fix lands there.
+RBCOP_COMMIT="${RBCOP_COMMIT:-d15b01eeb8a50845fc80af98f07aa8d79280b3c0}"
 WASI_SDK_VERSION="${WASI_SDK_VERSION:-25}"
 
 TARGET="wasm32-wasip1"
@@ -52,7 +55,7 @@ echo "==> rbcop @ ${RBCOP_COMMIT:0:9}"
 if [ ! -d "$CHECKOUT/.git" ]; then
   mkdir -p "$CHECKOUT"
   git -C "$CHECKOUT" init -q
-  git -C "$CHECKOUT" remote add origin https://github.com/costajohnt/rbcop.git
+  git -C "$CHECKOUT" remote add origin https://github.com/amritk/rbcop.git
 fi
 if [ "$(git -C "$CHECKOUT" rev-parse HEAD 2> /dev/null)" != "$RBCOP_COMMIT" ]; then
   git -C "$CHECKOUT" fetch --depth 1 origin "$RBCOP_COMMIT"
