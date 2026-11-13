@@ -202,7 +202,7 @@ See [`packages/ruby`](packages/ruby). It is `rubocop --autocorrect --only Layout
 and nothing else, through [rbcop](https://github.com/costajohnt/rbcop): RuboCop
 1.92.2 reimplemented in Rust on Prism and compiled to a WASI reactor by
 [`build/rbcop_fmt/build.sh`](build/rbcop_fmt/build.sh). One 2.2 MB artifact,
-~2 ms a file, and a boot that is synchronous under Node, so `formatSync` needs
+~2.5 ms a file at the median, and a boot that is synchronous under Node, so `formatSync` needs
 no `init()` there.
 
 It corrects Layout - indentation, alignment, blank lines, spacing, line length -

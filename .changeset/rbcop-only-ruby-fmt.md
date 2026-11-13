@@ -13,6 +13,6 @@ What the formatter does now: it corrects Layout - indentation, alignment, blank 
 - **`formatSync` needs no `init()` under Node**, and never refuses for memory: the module is read, decompressed, compiled and instantiated synchronously, and recovering from a crash in the pass is synchronous too. `init` stays, and is optional under Node. In a browser, `formatSync` still needs one `await init()`.
 - **The browser build's `init` takes `{ url, bytes, encoding }` for `rbcop_fmt.wasm.br`**, at the top level. `init({ rbcop: { … } })` throws, and a top-level `url` no longer means the removed artifact.
 - **`@scalar/ruby-fmt/wasm` resolves to `rbcop_fmt.wasm.br`.** `@scalar/ruby-fmt/rbcop-wasm` still does too.
-- **Cost:** measured over 300 files of real Ruby, the first call drops from ~0.44 s to {{FIRST}}, a file from 17.5 ms to {{MEDIAN}} at the median, and peak memory from ~600 MB to {{RSS}}; the install drops from 9.1 MB to {{INSTALL}}.
+- **Cost:** measured over 300 files of real Ruby, the first call drops from ~0.44 s to ~0.21 s, a file from 17.5 ms to 2.5 ms at the median, and peak memory from ~600 MB to 160 MB; the installed size drops from 9.1 MB to 2.7 MB.
 
 rbcop now builds from upstream (costajohnt/rbcop), at the merge that carries the `case/in` guard fix the build previously took from a fork. That switch on its own changes no code: built from either, the artifact is byte for byte the same.

@@ -74,8 +74,8 @@ export type CorpusResult = {
   medianMs: number
   /**
    * The process's peak resident set size. The instance's own linear memory
-   * plateaus around 11 MB; most of this is the compiled module and the
-   * runtime around it.
+   * grows only to fit the largest file, ~10 MB for typical ones; most of this
+   * is the compiled module and the runtime around it.
    */
   peakRssBytes: number
   failures: CorpusFailure[]

@@ -164,19 +164,25 @@ CRuby compiled to wasm before this pass:
 
 | | 0.8 | now |
 |:---|---:|---:|
-| first `format()` in a fresh process | ~440 ms | **{{FIRST}}** |
-| per file, mean | 23.6 ms | **{{MEAN}}** |
-| per file, median | 17.5 ms | **{{MEDIAN}}** |
-| all 300 files | 7.1 s | **{{TOTAL}}** |
-| peak resident memory, whole run | ~600 MB | **{{RSS}}** |
-| wasm linear memory | ~332 MB, never shrinks | **{{LINEAR}}** |
-| installed, `node_modules` total | 9.1 MB | **{{INSTALL}}** |
+| first `format()` in a fresh process | ~440 ms | **~210 ms** |
+| per file, mean | 23.6 ms | **3.9 ms** |
+| per file, median | 17.5 ms | **2.5 ms** |
+| all 300 files | 7.1 s | **1.2 s** |
+| peak resident memory, whole run | ~600 MB | **160 MB** |
+| wasm linear memory | ~332 MB, never shrinks | **3.3 MB at boot, 10 MB after** |
+| installed, `node_modules` total | 9.1 MB | **2.7 MB** |
 
 The cost is the pass alone now. The instance keeps every config it has
 resolved, so the first format with a given set of options pays ~100 ms to merge
 it over RuboCop's `default.yml` and every later one pays nothing for it. Its
-memory plateaus and nothing has to be recycled: a format allocates and Rust
-frees it.
+linear memory grows to fit the largest file it has been handed and stays there
+— 31 MB after 13 MB of Ruby with files up to 400 KB, and not a byte more when
+the same files go through again — so nothing has to be recycled.
+
+The installed total is the package (2.4 MB, nearly all of it the artifact), the
+WASI shim, and the brotli decoder the browser build imports only where an engine
+lacks native brotli. Under 0.8 it also carried `@ruby/wasm-wasi` and the 5.7 MB
+CRuby artifact.
 
 ---
 
@@ -293,7 +299,11 @@ byte-identical output, at the default width and at 80. Where RuboCop gives up on
 a file, the package has to reject it. Set `RUBY_FMT_CONFORMANCE_CORPUS` to a
 directory of `.rb` and `.rbi` files and it does the same over all of them.
 
-That has been run over {{CORPORA}}. Across every corpus run so far, three rbcop
+Without the reprinter, it has been run over two corpora, each at both widths:
+the 300 files above, and 2,184 `.rb` and `.rbi` files from the Ruby 3.3
+standard library, rubocop, rubocop-ast, parser, syntax_tree and prism's
+generated Sorbet signatures (13 MB). With the patch below, every file matches.
+Before that, with the reprinter in front, it ran over 3,054 files. Across every corpus run so far, three rbcop
 bugs have turned up, all fixed:
 
 - `Layout/MultilineOperationIndentation` re-indented the wrapped operand of

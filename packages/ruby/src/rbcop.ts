@@ -78,7 +78,8 @@ const importsFor = (wasi: WASI): { wasi_snapshot_preview1: WASI['wasiImport'] } 
  * default.yml - is ~30x what a Layout pass on a typical file costs.
  *
  * The instance does not leak: Rust frees what a format allocates, and linear
- * memory plateaus around 11 MB. The one thing that ends an instance is a trap.
+ * memory grows only to fit the largest source it has seen - ~10 MB for typical
+ * files, ~31 MB after files of 400 KB - and stays there. The one thing that ends an instance is a trap.
  * Rust panics abort on wasm, so a panic inside rbcop leaves the instance
  * unusable; the trap is reported as an error and the next call instantiates a
  * fresh one from the module the source has already compiled.
