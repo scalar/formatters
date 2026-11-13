@@ -30,6 +30,10 @@ the parts of it that apply to the crates compiled in here are reproduced below.
 | [google-java-format](https://github.com/google/google-java-format) 1.23.0 — the `Doc`/`Ops` layout engine ktfmt builds on | `ktrs-fmt` | Apache-2.0 |
 | [ec4j](https://github.com/ec4j/ec4j) — `.editorconfig` value parsing | `ktrs-fmt` | Apache-2.0 |
 
+The lexer's Unicode character tables are derived from the char maps in the
+Kotlin compiler's JFlex-generated lexers, so they come under the Kotlin compiler
+entry. JFlex itself places no license on the scanners it generates.
+
 Every component is offered under Apache-2.0, so they share one text:
 `apache-2.0-LICENSE`, beside this file.
 
