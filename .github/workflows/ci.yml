@@ -86,9 +86,9 @@ jobs:
 
       # packages/ruby's conformance test is what backs the "exact by test" claim in the README, and
       # it skips itself when there is no native RuboCop to compare against - so without these
-      # steps it never actually runs here. RuboCop installs in seconds, which makes Ruby the one
-      # reference toolchain cheap enough for CI to carry; the others need a .NET SDK, a Rust
-      # toolchain or a JDK and still skip.
+      # steps it never actually runs here. RuboCop installs in seconds, which makes Ruby one of the
+      # two reference tools cheap enough for CI to carry - ktfmt, below, is the other; the rest
+      # need a .NET SDK, a Rust toolchain or a locally built toolchain and still skip.
       #
       # The Ruby itself does not decide the output: RuboCop parses through the pinned prism gem,
       # because the package targets Ruby 3.4. It is pinned anyway, so a run is reproducible.
@@ -124,7 +124,7 @@ jobs:
     timeout-minutes: 20
 
     # Both ends of the supported range, because each one catches what the other cannot. 24.15.0 is
-    # the floor the Java and Kotlin packages declare in `engines`, and running it here is the only
+    # the floor the Java package declares in `engines`, and running it here is the only
     # thing that keeps that number honest. The newest release catches the reverse: a Node that
     # stops running an artifact these packages promise it runs.
     #

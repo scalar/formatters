@@ -28,7 +28,7 @@ Composer, no native binaries, no postinstall downloads.
 |:---|:---|---:|:---|:---|
 | [`@scalar/ruby-fmt`](packages/ruby) | RuboCop (Layout) | 2.2 MB | ✅ exact by test | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
-| [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
+| [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.20 MB | ✅ exact by test | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
 | [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.5 MB | ✅ exact | ✅ |
 | [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.45 MB | ✅ exact | — |
@@ -37,7 +37,7 @@ Composer, no native binaries, no postinstall downloads.
 Artifact is the brotli-compressed module as committed and published — the whole
 tool, its parser and its language runtime in one file. The JavaScript that loads
 it is small by comparison: nothing for Ruby, Swift, PHP and Rust, a 16 KB
-generated runtime for Java and Kotlin, and 0.46 MB of .NET loader scripts for C#.
+generated runtime for Java, and 0.46 MB of .NET loader scripts for C#.
 
 Ruby's reference is `rubocop --autocorrect --only Layout`: the package corrects
 Layout within the line structure it is handed and does not reprint, which suits
@@ -50,13 +50,19 @@ not a reimplementation of it. A reimplementation drifts, because a formatter's
 line-breaking heuristics are emergent from its implementation rather than
 specified anywhere, and the drift stays invisible until a consumer's CI fails.
 
-Ruby is the one package that is a reimplementation: it runs
-[rbcop](https://github.com/costajohnt/rbcop), RuboCop 1.92.2 reimplemented in
-Rust, so it is not exact by the definition above. It is **exact by test**: a
-conformance test holds it byte-identical to the real `rubocop` 1.92.2, over its
-samples and over any corpus it is given, at two line widths. Corpus runs have
-found three rbcop bugs, each fixed and pinned by a sample — [details
-below](#ruby).
+Two packages are reimplementations, so they are not exact by the definition
+above. They are **exact by test** instead: each has a conformance test that runs
+the real tool and asserts byte-identical output, over its samples and over any
+corpus it is given.
+
+- Ruby runs [rbcop](https://github.com/costajohnt/rbcop), RuboCop 1.92.2
+  reimplemented in Rust, held to the real `rubocop` 1.92.2 at two line widths.
+  Corpus runs have found three rbcop bugs, each fixed and pinned by a sample —
+  [details below](#ruby).
+- Kotlin runs [ktrs](https://github.com/Hexay/ktrs), ktfmt reimplemented in
+  Rust, held to the real ktfmt 0.65 jar in every style. Over okhttp and
+  kotlinx.coroutines (1,699 files) every file matched in every style —
+  [details](packages/kotlin#the-output-is-ktfmts-held-there-by-test).
 
 Browser is the same claim held to the same standard: ✅ means the package has a
 `browser` export condition and `bun run test:browser` loads that build in real
@@ -103,7 +109,8 @@ const formatted: string = formatSync('x=[1,2,3].map{|n| n*2}')
 Booting is the one thing that cannot be made synchronous — the wasm has to be
 read or fetched, and compiled — so `init` covers it once and `formatSync` throws
 until it has. Everything after that already was synchronous; `format` was only
-ever awaiting the boot.
+ever awaiting the boot. Under Node, Ruby and Kotlin read and compile their
+artifact synchronously as well, so their `formatSync` needs no `init()` at all.
 
 Prefer `format` where you can await: it needs no setup call and cannot throw that
 error. Ruby carries one extra caveat — see [its README](packages/ruby#readme) —

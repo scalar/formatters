@@ -3,10 +3,12 @@
 | File | Applied to | Applied by |
 |---|---|---|
 | `google-java-format.patch` | the `-sources` jar of google-java-format 1.36.1 | `../build.sh` |
-| `ktfmt.patch` | the `-sources` jar of ktfmt 0.64 | `../kotlin-probe/ktfmt.sh` |
 
-Both are diffs against a pinned upstream release, so the change stays reviewable
+It is a diff against a pinned upstream release, so the change stays reviewable
 and can be dropped the moment it lands upstream.
+
+A second one, `ktfmt.patch`, went with the TeaVM ktfmt build when
+`@scalar/kotlin-fmt` moved to ktrs; it is in git history with that build.
 
 ## The TeaVM changes live in `../../teavm`
 
@@ -23,8 +25,9 @@ now a patch series and a shims jar applied to a pinned upstream
 - `HUNKS.md` - where every hunk of the fork's diff went;
 - `upstream/` - drafts of the PRs and issues to send.
 
-Both builds call `../../teavm/apply.sh`, so Java and Kotlin still compile with one
-TeaVM.
+`../build.sh` calls `../../teavm/apply.sh`. The Kotlin package used to compile
+with the same TeaVM, and some of the patches there were made for it; they stay,
+because the Java module is built with them and removing one changes it.
 
 ### Still unreported, with no fix
 
@@ -34,8 +37,9 @@ JS strings. If `WasmGCJSRuntime.stringToJs` falls inside the async closure, the
 coroutine prologue runs `Fiber.current()` and then `isResuming()` on it — at
 instantiation, before any fiber exists — and the module traps on load with
 `dereferencing a null pointer`. Any WasmGC program that both uses threads and
-exports anything hits this. Found via `../kotlin-probe`, where the closure
-covered 7,055 of 20,513 methods. Upstream's async-off default avoids it here,
+exports anything hits this. Found via the retired TeaVM ktfmt build
+(`build/java_fmt_teavm/kotlin-probe` in git history), where the closure covered
+7,055 of 20,513 methods. Upstream's async-off default avoids it here,
 since nothing is coroutine-transformed; it does not fix it.
 
 **`\P{...}` negation is broken** for every char class implemented as an anonymous
@@ -80,11 +84,12 @@ their fixes on stock upstream, and each fails there.
 
 That run had three patches since dropped. One was a `br_on_null` reset in the
 Wasm GC `WasmTypeInference`, which upstream rejected as defensive in the #1224
-review; both formatters build to byte-identical modules without it. The other
+review; both formatters built to byte-identical modules without it. The other
 two were the `Charset.forName` registry key and the UTF-32 and windows-1251
 charsets, which nothing on the formatting path asks for any more
 (`../../teavm/README.md`, "Which patch each formatter needs").
 
-The two packages built on it are the end-to-end check: 658 Java files
-byte-identical against google-java-format on a JVM in both styles, and 589 Kotlin
-files byte-identical against ktfmt on a JVM in all three.
+The packages built on it were the end-to-end check: 658 Java files
+byte-identical against google-java-format on a JVM in both styles and, while
+the Kotlin package still used TeaVM, 589 Kotlin files byte-identical against
+ktfmt on a JVM in all three.

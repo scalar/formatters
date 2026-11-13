@@ -16,8 +16,8 @@ output against the real tool.
 
 ## Getting set up
 
-You need [Bun](https://bun.sh) and Node 24.15 or newer — `bun run test:node` loads the Java and
-Kotlin artifacts, and Node 24.0 through 24.14 will not compile them. The repo pins 26.7.0 in
+You need [Bun](https://bun.sh) and Node 24.15 or newer — `bun run test:node` loads the Java
+artifact, and Node 24.0 through 24.14 will not compile it. The repo pins 26.7.0 in
 `.nvmrc` and installs that in CI, so `nvm use` gets you the Node everything is developed against;
 24.15 is only the floor, and CI runs both ends. Nothing else — the wasm artifacts are committed,
 so a fresh clone builds and tests without any language toolchain.

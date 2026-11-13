@@ -6,10 +6,5 @@
   // downloads its own toolchain into a gitignored subdirectory, and a glob would pull whatever
   // TypeScript those contain into this project.
   "extends": "./tsconfig.json",
-  "include": [
-    "scripts/**/*.ts",
-    "build/java_fmt_teavm/*.ts",
-    "build/java_fmt_teavm/kotlin-probe/*.ts",
-    "build/java_fmt_teavm/kotlin-probe/teavm-bug/*.ts"
-  ]
+  "include": ["scripts/**/*.ts", "build/java_fmt_teavm/*.ts"]
 }

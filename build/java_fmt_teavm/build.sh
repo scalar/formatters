@@ -22,8 +22,8 @@ cd "$(dirname "$0")"
 
 GJF_VERSION="${GJF_VERSION:-1.36.1}"
 
-# The same TeaVM the Kotlin package uses: upstream at a pinned commit plus the
-# patches and shims in ../teavm. See ../teavm/README.md.
+# Upstream TeaVM at a pinned commit plus the patches and shims in ../teavm.
+# See ../teavm/README.md.
 TEAVM_VERSION="${TEAVM_VERSION:-$(cat ../teavm/TEAVM_VERSION)}"
 
 TOOLCHAIN="$PWD/toolchain"
