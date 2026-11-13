@@ -1,10 +1,9 @@
 /**
- * Options accepted by `format`.
+ * Options accepted by `format` and `formatSync`.
  *
- * Every default is ktfmt's own rather than one we picked - the package *is*
- * ktfmt, so `format(source)` has to mean `ktfmt <file>`. That includes the
- * style: ktfmt's help says "If none of the style options are passed, Meta's
- * style is used."
+ * Every default is ktfmt's own rather than one we picked: `format(source)`
+ * has to mean `ktfmt <file>`. That includes the style - ktfmt's help says "If
+ * none of the style options are passed, Meta's style is used."
  *
  * The three styles differ only in indentation and trailing commas, and each
  * field below overrides whichever style is in effect.
@@ -41,32 +40,48 @@ export type FormatOptions = {
 }
 
 /**
- * The function KtFmt.format parks on the module's exports.
+ * Supplies the compiled module, however this environment gets hold of it.
  *
- * Both arguments are strings because that is what survives the boundary
- * cheaply: the second is an encoded option spec rather than an object, since
- * reading typed fields out of a JSObject costs more Java code than splitting
- * seven values. The result carries a leading status character - see `format`.
+ * There are two implementations - one reads the artifact from disk, one fetches
+ * it - and each caches the compiled module itself, so a recovered trap
+ * re-instantiates rather than re-reading anything.
  */
-export type FormatFunction = (source: string, options: string) => string
+export type ArtifactSource = {
+  /** The compiled module, read or fetched on the first call. */
+  compile: () => Promise<WebAssembly.Module>
+  /**
+   * The compiled module without awaiting, or `undefined` where it cannot be had
+   * without awaiting.
+   *
+   * Under Node this always answers - it reads, decompresses and compiles
+   * synchronously on the first call - which is what lets `formatSync` work with
+   * no `init()`. In a browser it answers only once `compile` has resolved,
+   * because a fetch cannot be waited on synchronously.
+   */
+  compileSync: () => WebAssembly.Module | undefined
+}
 
-/**
- * TeaVM's generated runtime module, whose `load` compiles and instantiates the
- * wasm. It ships beside the artifact as `kotlin_fmt.runtime.mjs` and is exported
- * from this package as `./runtime`.
- */
-export type Runtime = {
-  load: (source: ArrayBuffer, options: Record<string, unknown>) => Promise<{ exports: Record<string, unknown> }>
+/** A booted instance of the module: the formatter over one source. */
+export type KotlinFormatter = {
+  /** Formats `source`, throwing ktfmt's diagnostic on source it cannot parse. */
+  format: (source: string, options: FormatOptions) => string
 }
 
 /**
- * Supplies the module's exports, however this environment gets hold of the wasm.
+ * An instance's lifecycle, as `createKotlinFormatter` hands it over.
  *
- * There are two implementations - one reads the artifact from disk, one fetches
- * it - and each caches the loaded module itself, so this is called once per boot
- * rather than once per format.
+ * There is no `recycle`, because the module does not leak. The one thing that
+ * ends an instance is a trap, after which either call instantiates a fresh one.
  */
-export type ModuleLoader = () => Promise<Record<string, unknown>>
+export type KotlinFormatterBoot = {
+  /** The instance, instantiated on demand. */
+  boot: () => Promise<KotlinFormatter>
+  /**
+   * The instance without awaiting, or `undefined` where the module has not been
+   * fetched yet - a browser before `init`.
+   */
+  bootSync: () => KotlinFormatter | undefined
+}
 
 /** The package's asynchronous entry point, exported by both builds as `format`. */
 export type Formatter = (source: string, options?: FormatOptions) => Promise<string>
@@ -74,39 +89,28 @@ export type Formatter = (source: string, options?: FormatOptions) => Promise<str
 /**
  * The package's synchronous entry point, exported by both builds as `formatSync`.
  *
- * Usable only once `init` has resolved, because booting cannot be made
- * synchronous - the wasm has to be read or fetched, and compiled - and throws
- * with that instruction until then.
+ * Under Node it needs nothing first. In a browser it needs `await init()` once,
+ * because the artifact has to be fetched and nothing can wait on a fetch
+ * synchronously.
  */
 export type FormatterSync = (source: string, options?: FormatOptions) => string
 
 /**
- * Boots the module, so that `formatSync` can be called afterwards.
+ * Boots the module ahead of the first format.
  *
- * Optional for `format`, which boots on demand, and required exactly once before
- * the first `formatSync`. Awaiting it twice is harmless - the boot is cached, so
- * the second call resolves against the first. The browser build's `init` takes
- * an {@link InitOptions} as well, for pointing the package at its artifact.
+ * Optional under Node, where both `format` and `formatSync` boot on demand;
+ * awaiting it only moves the cold start to a moment of the caller's choosing.
+ * Required in a browser before the first `formatSync`. Awaiting it twice is
+ * harmless. The browser build's `init` takes an {@link InitOptions}, for
+ * pointing the package at its artifact.
  */
 export type InitFunction = () => Promise<void>
 
-/** What `createFormat` returns: the package's public functions over one module loader. */
+/** What `createFormat` returns: the package's public functions over one module. */
 export type Formatters = {
   format: Formatter
   formatSync: FormatterSync
   init: InitFunction
-}
-
-/**
- * The lifecycle `createBootModule` hands back.
- *
- * `peek` is what makes a synchronous format possible: it answers "is the module
- * ready" without an await, so a synchronous caller can be told to init rather
- * than being handed a promise it cannot use.
- */
-export type BootModule = {
-  boot: () => Promise<FormatFunction>
-  peek: () => FormatFunction | undefined
 }
 
 /**

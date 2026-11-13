@@ -33,9 +33,15 @@ await format('fun  f( ) {\nval x=listOf(1,2,3)\n}')
 // }
 ```
 
-Async because the first call decompresses the artifact, compiles it and
-instantiates the module. That work is cached, so every later call is tens of
-milliseconds.
+The output is ktfmt's, byte for byte, held to the real ktfmt 0.65 by a
+conformance test. It comes from [ktrs](https://github.com/Hexay/ktrs), a Rust
+reimplementation of ktfmt compiled to WebAssembly, not from ktfmt itself; see
+[below](#the-output-is-ktfmts-held-there-by-test) for what that means and how
+it is checked.
+
+The first call decompresses, compiles and instantiates a 200 KB module, which
+takes about 15 ms under Node. Later calls reuse it: okhttp's 617 files format
+at about 1.5 ms each.
 
 Options, all defaulting to ktfmt's own values rather than anything we picked:
 
@@ -46,99 +52,92 @@ Options, all defaulting to ktfmt's own values rather than anything we picked:
 | `blockIndent` | per style | `blockIndent` |
 | `continuationIndent` | per style | `continuationIndent` |
 | `trailingCommas` | per style | `trailingCommaManagementStrategy` |
-| `removeUnusedImports` | `true` | `removeUnusedImports` |
+| `removeUnusedImports` | `true` | `removeUnusedImports` (`--do-not-remove-unused-imports`) |
 | `preserveLambdaBreaks` | `true` | `preserveLambdaBreaks` |
 
 `meta` is 2-space blocks with 4-space continuations; `google` is 2 and 2;
 `kotlinlang` is 4 and 4. ktfmt's own help says "If none of the style options are
-passed, Meta's style is used", so that is the default here too.
+passed, Meta's style is used", so that is the default here too. An option
+value the package does not know throws rather than falling back to a default.
 
-Source ktfmt cannot parse throws, carrying ktfmt's diagnostic including line and
-column:
+Source is parsed as a script, which is how ktfmt reads standard input: it
+accepts everything a `.kt` file can hold, and top-level statements besides. A
+leading byte-order mark is dropped, as ktfmt's CLI drops it. Source ktfmt cannot
+parse throws ktfmt's diagnostic, line and column included, as the CLI prints it
+minus the file name:
 
 ```js
 await format('fun f( {')
-// Error: com.facebook.ktfmt.format.ParseError: 1:7: error: Expecting ')'
+// Error: 1:7: error: Expecting ')'
 ```
 
-**Node 24.15 or newer**, and it is a hard floor: below it V8 does not compile
-the module at all. Not a WasmGC floor — Node 22 has WasmGC — but a question of
-how V8 types wasm exception handling. TeaVM emits `try_table` over `exnref`, and
-`wasm-opt` leaves `catch_ref` branching to a block typed with a non-nullable
-`(ref exn)`, which is what the spec calls for; V8 used to type it as nullable and
-reject the module, on Node 22 and on 24.0 through 24.14 alike. JavaScriptCore
-accepts it throughout, so bun is fine. The package checks and says so rather than
-failing obscurely; the check compiles a 52-byte probe of that exact shape rather
-than reading a version number, so bun — reporting a Node version of its own — is
-judged on what its engine actually does. See
-[`packages/java`](../java#readme) for the long version; both packages are TeaVM
-output and hit the same thing.
+Any Node from 18 on. The module imports nothing, and the wasm features it uses
+(bulk memory, multi-value, reference types, sign extension, non-trapping
+float-to-int) have all been in V8 since well before Node 18.
 
-## The version it carries
+## The versions it carries
 
 ```js
-import { ktfmtVersion } from '@scalar/kotlin-fmt'
+import { ktfmtVersion, ktrsVersion } from '@scalar/kotlin-fmt'
 
-ktfmtVersion // '0.64'
+ktfmtVersion // '0.65'  - the ktfmt release the output matches
+ktrsVersion // '0.5.3' - the ktrs release the artifact is compiled from
 ```
 
-"Exact against ktfmt" is a claim about a named release, so the release is
+"Identical to ktfmt" is a claim about a named release, so the release is
 readable rather than something you look up. It is what a consumer needs to
-install the matching jar — to verify its own committed bytes in CI, or to pin a
-container image — and having it here means that number is not maintained twice,
-once in your repository and once in ours.
+install the matching jar, to verify its own committed bytes in CI or to pin a
+container image.
 
-`src/version.test.ts` reads `KTFMT_VERSION` out of the build script and fails if
-the two ever disagree, so the export cannot go stale across a bump.
+`src/version.test.ts` reads both pins out of `build/kotlin_fmt/build.sh` and
+fails if either export disagrees, so neither can go stale across a bump.
 
 ## Formatting without awaiting
 
-`formatSync` is for callers with no `await` to give — a code generator that
+`formatSync` is for callers with no `await` to give: a code generator that
 formats each file inside the synchronous builder that emits it, a template
 renderer, a plugin hook that has to return a string.
 
 ```js
-import { formatSync, init } from '@scalar/kotlin-fmt'
+import { formatSync } from '@scalar/kotlin-fmt'
 
-await init()
 const formatted = formatSync(source)
 ```
 
-Booting is the one thing that cannot be made synchronous, so `init` covers it
-once and `formatSync` throws until it has. Everything after that already was
-synchronous — `format` was only ever awaiting the boot, and both produce the
-same bytes.
-
-Prefer `format` where you can await: it needs no setup call and cannot throw that
-error.
+Under Node it needs nothing first: reading, decompressing and compiling the
+module are all synchronous there, so `format` and `formatSync` run the same
+code. `init()` is accepted and only moves the ~15 ms cold start to a moment of
+your choosing. In a browser, `formatSync` needs one `await init()` first,
+because the artifact has to be fetched.
 
 ## It runs in the browser too
 
-The import does not change — bundlers and browsers pick the `browser` export
+The import does not change. Bundlers and browsers pick the `browser` export
 condition on their own, and `format` has the same signature and returns the same
 bytes. Only the wasm's route in differs: fetched rather than read from disk.
 
 ```js
-import { format, init } from '@scalar/kotlin-fmt'
+import { format, formatSync, init } from '@scalar/kotlin-fmt'
 
-// Optional. The artifact resolves next to the module by default, which Vite,
-// Rollup, webpack and a plain CDN handle unaided. esbuild does not rewrite
+// Optional for `format`, required once before `formatSync`. The artifact
+// resolves next to the module by default, which Vite, Rollup, webpack and a
+// plain CDN handle unaided. esbuild does not rewrite
 // `new URL(..., import.meta.url)`, so there it needs naming.
 await init({ url: '/assets/kotlin_fmt.wasm.br' })
 
 await format(source)
+formatSync(source)
 ```
 
-Run it in a worker. Booting compiles 3.4 MB of wasm, which is a visibly frozen
-tab if it happens on the main thread.
+The module is 864 KB, so it is fine on the main thread: a browser refuses
+synchronous compilation only above 8 MB. It needs the wasm features Rust's
+`wasm32-unknown-unknown` target turns on by default, the newest of them
+reference types, so Chrome 96, Firefox 79 or Safari 15 at the earliest. Older
+engines refuse to compile it.
 
-The engine floor is checked at boot and is real: the module uses the final wasm
-exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
-earliest.
-
-The browser reads the same brotli artifact as Node (0.81 MB over the wire) and
+The browser reads the same brotli artifact as Node (200 KB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
-208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
+208 KB wasm decoder where it does not (Chrome, today). Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
 entirely:
 
@@ -146,74 +145,47 @@ entirely:
 await init({ url: '/assets/kotlin_fmt.wasm', encoding: 'none' })
 ```
 
-## This is the real ktfmt, and the output is exact
+## The output is ktfmt's, held there by test
 
-This is **actual [ktfmt](https://github.com/facebook/ktfmt) 0.64** — including
-the Kotlin compiler's own PSI parser, which is what it uses to read Kotlin —
-compiled to WebAssembly by [TeaVM](https://teavm.org). It is not a
-reimplementation, so it does not drift.
+This package is **not ktfmt compiled**. It is
+[ktrs](https://github.com/Hexay/ktrs), which reimplements ktfmt in Rust, the
+Kotlin compiler's lexer and parser included, and whose own parity gates run it
+against the ktfmt jar nightly. A reimplementation is only exact while something
+keeps checking it, so this package checks it too, against the real tool.
 
-The claim is checked in two halves, because there are two places output could
-change, and both are byte-for-byte over the same 589 real Kotlin files from
-kotlin-stdlib, kotlinx-coroutines and ktfmt itself, in all three styles:
+`test/ktfmt-conformance.test.ts` runs ktfmt 0.65's release jar over the same
+input and **asserts** byte-identical output: formatted source where ktfmt
+formats, and the same diagnostic where it refuses. It covers every style and
+`--do-not-remove-unused-imports`, over its own samples and over any corpus
+named by `KOTLIN_FMT_CONFORMANCE_CORPUS`. CI downloads the jar, through
+`build/kotlin_fmt/ktfmt.sh`, which checks it against a pinned checksum, so the
+test runs there rather than skipping.
 
-| | What it asks | Result |
-|---|---|---|
-| `build/java_fmt_teavm/kotlin-probe/gate2.sh` | does the one patched file change ktfmt's output, on a JVM? | 1767/1767 identical, diagnostics included |
-| `build/java_fmt_teavm/kotlin-probe/conformance.sh` | does compiling that to wasm change it? | 1767/1767 identical |
+Over the corpora ktrs itself pins, every file in every configuration matched:
 
-Together those chain: stock ktfmt on a JVM → patched ktfmt on a JVM → this
-module. Failures are compared too, encoded the same way on both sides, so a
-reworded diagnostic would count as a divergence.
+| Corpus | Files | Identical (meta / google / kotlinlang / keeping imports) |
+|---|--:|---|
+| [square/okhttp](https://github.com/square/okhttp) @ `40a3b87` | 617 | 617 / 617 / 617 / 617 |
+| [Kotlin/kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) @ `bd2e9a1` | 1,082 | 1,082 / 1,082 / 1,082 / 1,082 |
 
-### The one patched file, and why it does not affect that claim
+What is *not* compared against the jar: `maxWidth`, `blockIndent`,
+`continuationIndent`, `trailingCommas` and `preserveLambdaBreaks` set apart
+from a style. ktfmt's CLI has no flags for them, so only its library API could
+be the oracle. ktrs ports them as the same `FormattingOptions` fields the styles
+are made of, and the unit tests cover them.
 
-ktfmt opens a `KotlinCoreEnvironment` to parse. That is the *compiler's* CLI
-environment: it resolves a JVM classpath, opens jars, and registers extension
-points named by string in an XML descriptor. An ahead-of-time compiler cannot
-follow any of that, and parsing does not need it.
+### What changed from the previous version
 
-So `Parser`'s initializer — 20 lines of one file — builds the smallest container
-that can hold a PSI file instead, which is the same one `KotlinCoreEnvironment`
-builds underneath. Everything below it is ktfmt's, unchanged: the same
-`LightVirtualFile` with the same name, and the same `PsiManager` lookup, so the
-tree that comes out is the tree ktfmt formats. `gate2.sh` is the evidence, and
-the diff is `build/java_fmt_teavm/patches/ktfmt.patch`.
+Up to 0.4, this package was ktfmt 0.64 itself, compiled to WasmGC by a patched
+TeaVM. That was exact by construction, but it cost a 0.82 MB artifact, a Node
+24.15 floor set by how V8 typed wasm exception handling, an async-only boot, a
+fork of TeaVM with a dozen patches, and stand-ins for the threads IntelliJ's
+parser environment started. ktrs is a quarter of the size, boots synchronously,
+runs on any current engine, and matched every corpus file above.
 
-### TeaVM is patched too
-
-It is built from upstream TeaVM at a pinned commit plus the patch series and
-shims in `build/teavm`, shared with `@scalar/java-fmt`. Most of the patches are
-ordinary bug fixes or missing class-library members; one fixes a miscompile.
-`ClassInitElimination` treated an instance call as initializing the class it
-names, which deleted an interface's initializer that a later read of one of its
-fields depended on. `build/teavm/README.md` lists them, and
-`build/teavm/upstream/` drafts each one for upstream; none has landed yet.
-
-The single-threaded part is a deliberate divergence rather than a fix, and it
-lives outside TeaVM. The `java.util.concurrent` executors, locks and
-`LockSupport` in `build/teavm/shims` do nothing or throw, because this module has
-one thread. Three calls that would otherwise reach a blocking `@Async` method
-(`Thread.yield` in kotlinx-coroutines and in an IntelliJ map, `Thread.sleep` in
-IntelliJ's `TimeoutUtil`) are deleted at build time by
-`build/java_fmt_teavm/kotlin-probe/plugin/kprobe/SingleThreadedCalls.java`. None
-is on a path formatting takes. That keeps TeaVM's async support off, its
-default. A single reachable `Thread.yield()` used to make a third of the program
-a coroutine and the module 37% larger.
-
-`LockSupport.park` is one of those stand-ins, and it used to be audible. Opening
-ktfmt's parser builds an IntelliJ `CoreProjectEnvironment`, which launches two
-coroutines and so starts kotlinx-coroutines' scheduler; its workers park waiting
-for work, the stand-in throws, and TeaVM's default handler wrote the resulting
-stack trace to `console.error` — once per process, on the timer turns after the
-first `format` had already resolved. Formatting was correct throughout. The
-module now installs a handler that drops exactly that — an
-`UnsupportedOperationException` whose message is one of the stand-ins refusing,
-"would block the only thread" or "cannot be satisfied with one thread" — and
-prints everything else, because those coroutines are real and a genuine failure
-on one is the only way it would ever be seen. `packages/kotlin/test/quiet.test.ts`
-formats in a child process and asserts its stderr is empty, so if TeaVM rewords a
-refusal the noise comes back rather than the silence spreading.
+The cost is the one the exactness rule names: a reimplementation can drift where
+a compiled tool cannot. The conformance test is how drift would be caught.
+Bump the ktrs pin only with a corpus run.
 
 ## Building it
 
@@ -221,14 +193,19 @@ refusal the noise comes back rather than the silence spreading.
 bun run kotlin:build
 ```
 
-Needs a JDK 21, Maven, git and Node; it fetches TeaVM, ktfmt, Binaryen and the
-repo's pinned Node into a gitignored `toolchain/`. TeaVM's output then goes
-through `wasm-opt -O3`, which takes the artifact from 0.91 MB to 0.82 MB and
-formats about 14% faster; `conformance.sh` is what says it changed no output.
-See [`packages/java`](../java#readme) for why that pass was skipped until
-recently — it was a V8 bug, not a Binaryen one. Around 15 minutes cold, most of it
-compiling TeaVM. The artifact is committed, so this only needs rerunning when a
-pin or a patch changes.
+Needs rustup, git and Node. It installs the repo's pinned Rust toolchain and the
+`wasm32-unknown-unknown` target, clones ktrs at the pinned commit into a
+gitignored `build/kotlin_fmt/ktrs`, and builds `build/kotlin_fmt/entry`, a small
+crate that exposes ktrs's formatter as plain wasm exports. It takes about 20
+seconds. The artifact is committed, so this only needs rerunning when a pin or
+the entry crate changes.
+
+To run the conformance test locally, fetch the oracle first (it needs a JDK 17
+or newer):
+
+```bash
+bun run kotlin:ktfmt
+```
 
 ## Community
 
@@ -238,6 +215,8 @@ We are API nerds. You too? Let's chat on Discord: <https://discord.gg/scalar>
 
 MIT, for the TypeScript in this package.
 
-The wasm artifact embeds ktfmt, the Kotlin compiler's PSI, google-java-format's
-layout engine, Guava and TeaVM's class library — all Apache-2.0. See
-`licenses/NOTICE.md`.
+The wasm artifact is ktrs (MIT OR Apache-2.0), with ec4rs, text-size and the
+Rust standard library linked in. It carries code ktrs ported from the Kotlin
+compiler, the IntelliJ Platform, ktfmt, google-java-format and ec4j, all
+Apache-2.0. Everything in it is distributed under Apache-2.0, with no copyleft
+component. See `licenses/NOTICE.md`.

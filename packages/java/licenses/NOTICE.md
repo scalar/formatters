@@ -13,19 +13,36 @@ it.
 | google-java-format | 1.36.1 | Apache-2.0 | `apache-2.0-LICENSE` |
 | Guava | bundled with the above | Apache-2.0 | `apache-2.0-LICENSE` |
 | Checker Framework qualifiers | bundled with the above | MIT | `checker-qual-LICENSE` |
-| TeaVM class library and runtime | master + patches, see `build/teavm/UPSTREAM_REF` | Apache-2.0 | `apache-2.0-LICENSE` |
+| commonmark-java (`commonmark`, `commonmark-ext-gfm-tables`) | 0.28.0, bundled with the above | BSD-2-Clause | `commonmark-LICENSE` |
+| JSpecify, Error Prone and J2ObjC annotations | bundled with the above | Apache-2.0 | `apache-2.0-LICENSE` |
+| TeaVM class library and runtime | master + patches, see `build/teavm/UPSTREAM_REF` | Apache-2.0 | `apache-2.0-LICENSE`, `teavm-NOTICE` |
+| `java.*` shims for TeaVM (`build/teavm/shims`) | this repository | Apache-2.0 | `apache-2.0-LICENSE` |
 | javac (`java.compiler`, `jdk.compiler`) | OpenJDK 21 | GPLv2 with the Classpath Exception | `openjdk-GPLv2`, `openjdk-ADDITIONAL_LICENSE_INFO`, `openjdk-ASSEMBLY_EXCEPTION` |
 
 The Apache-2.0 entries share one text: google-java-format ships its dependencies
 shaded into a single `-all-deps` jar, which carries exactly one copy of the
 license, and TeaVM is under the same license.
 
+**commonmark-java** is how google-java-format reads Markdown doc comments
+(`///`), and its classes are in the module. That jar carries no license file for
+it, so `commonmark-LICENSE` is taken from commonmark-java's own repository at the
+tagged release. Its BSD-2-Clause terms ask that a binary distribution reproduce
+the copyright notice, conditions and disclaimer, which that file does.
+
+**TeaVM ships a `NOTICE` file**, and Apache-2.0 §4(d) asks that a distribution
+carry it. `teavm-NOTICE` is that file at the pinned upstream commit. It credits
+Alexey Andreev, the Apache Software Foundation (TeaVM's class library descends
+from Apache Harmony) and Joda.org.
+
+The annotation libraries are listed because their class names appear in the
+module's metadata. Their annotations are not executable code.
+
 ## What the terms allow
 
 The artifact is permissively redistributable, including inside a product you
 charge for.
 
-Everything in it is Apache-2.0 except javac's parser, which google-java-format
+Everything in it is Apache-2.0, MIT or BSD-2-Clause except javac's parser, which google-java-format
 uses to read Java. That is OpenJDK code under **GPLv2 with the Classpath
 Exception**, and the exception exists for exactly this case — Oracle's own
 description of it, from `openjdk-ADDITIONAL_LICENSE_INFO`:
@@ -36,7 +53,8 @@ description of it, from `openjdk-ADDITIONAL_LICENSE_INFO`:
 > licensed under the GPLv2.
 
 The independent modules here are google-java-format and TeaVM's class library,
-both Apache-2.0, and the combination is the wasm module. The three OpenJDK texts
+both Apache-2.0, and the libraries bundled with them, and the combination is the
+wasm module. The three OpenJDK texts
 alongside this file are the ones the JDK itself ships in `legal/`: the GPLv2, the
 clarification above, and the assembly exception.
 

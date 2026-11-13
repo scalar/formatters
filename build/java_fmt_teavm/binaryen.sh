@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Runs wasm-opt over a TeaVM WasmGC module, in place of nothing.
 #
-# Shared by both builds - build.sh for google-java-format, kotlin-probe/build.sh
-# for ktfmt - because they emit the same shape of module from the same compiler
-# and so want the same pass. Binaryen is fetched into ../toolchain alongside
+# Called by build.sh for google-java-format. It was shared with a ktfmt build
+# from the same compiler until @scalar/kotlin-fmt moved to ktrs, which is why
+# it is a script of its own. Binaryen is fetched into ../toolchain alongside
 # TeaVM and the JDK, so nothing has to be installed first.
 #
 # This used to be skipped. The comment that replaced it said Binaryen rewrote
@@ -18,7 +18,7 @@
 # pin like any other.
 #
 # Optimises in place, deliberately. Every other consumer of the build tree -
-# conformance.sh, kotlin-probe/format-all.ts, kotlin-probe/run.ts - resolves
+# conformance.sh, corpus-check.ts - resolves
 # `classes.wasm` by name, so writing beside it would leave all of them checking
 # bytes the package no longer ships. There is one module in the tree and it is
 # the shipped one.

@@ -28,7 +28,7 @@ Composer, no native binaries, no postinstall downloads.
 |:---|:---|---:|:---|:---|
 | [`@scalar/ruby-fmt`](packages/ruby) | rbcop | 2.2 MB | ✅ exact by test | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.76 MB | ✅ exact | ✅ |
-| [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.81 MB | ✅ exact | ✅ |
+| [`@scalar/kotlin-fmt`](packages/kotlin) | ktrs | 0.20 MB | ✅ exact by test | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
 | [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.5 MB | ✅ exact | ✅ |
 | [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.45 MB | ✅ exact | — |
@@ -36,8 +36,8 @@ Composer, no native binaries, no postinstall downloads.
 
 Artifact is the brotli-compressed module as committed and published — the whole
 tool, its parser and its language runtime in one file. The JavaScript that loads
-it is small by comparison: nothing for Ruby, Swift, PHP and Rust, a 17 KB
-generated runtime for Java and Kotlin, and 0.46 MB of .NET loader scripts for C#.
+it is small by comparison: nothing for Ruby, Kotlin, Swift, PHP and Rust, a 17 KB
+generated runtime for Java, and 0.46 MB of .NET loader scripts for C#.
 
 Ruby runs rbcop, and the reference it is held to is
 `rubocop --autocorrect --only Layout`: the package corrects
@@ -51,13 +51,19 @@ not a reimplementation of it. A reimplementation drifts, because a formatter's
 line-breaking heuristics are emergent from its implementation rather than
 specified anywhere, and the drift stays invisible until a consumer's CI fails.
 
-Ruby is the one package that is a reimplementation: it runs
-[rbcop](https://github.com/costajohnt/rbcop), RuboCop 1.92.2 reimplemented in
-Rust, so it is not exact by the definition above. It is **exact by test**: a
-conformance test holds it byte-identical to the real `rubocop` 1.92.2, over its
-samples and over any corpus it is given, at two line widths. Corpus runs have
-found three rbcop bugs, each fixed and pinned by a sample — [details
-below](#ruby).
+Two packages are reimplementations, so they are not exact by the definition
+above. They are **exact by test** instead: each has a conformance test that runs
+the real tool and asserts byte-identical output, over its samples and over any
+corpus it is given.
+
+- Ruby runs [rbcop](https://github.com/costajohnt/rbcop), RuboCop 1.92.2
+  reimplemented in Rust, held to the real `rubocop` 1.92.2 at two line widths.
+  Corpus runs have found three rbcop bugs, each fixed and pinned by a sample —
+  [details below](#ruby).
+- Kotlin runs [ktrs](https://github.com/Hexay/ktrs), ktfmt reimplemented in
+  Rust, held to the real ktfmt 0.65 jar in every style. Over okhttp and
+  kotlinx.coroutines (1,699 files) every file matched in every style —
+  [details](packages/kotlin#the-output-is-ktfmts-held-there-by-test).
 
 Browser is the same claim held to the same standard: ✅ means the package has a
 `browser` export condition and `bun run test:browser` loads that build in real
@@ -107,9 +113,10 @@ until it has. Everything after that already was synchronous; `format` was only
 ever awaiting the boot.
 
 Prefer `format` where you can await: it needs no setup call and cannot throw that
-error. The one exception to the `init` rule is Ruby under Node, whose module
-boots synchronously, so there `formatSync` works straight away — see
-[its README](packages/ruby#formatting-without-awaiting).
+error. The exceptions to the `init` rule are Ruby and Kotlin under Node, whose
+modules boot synchronously, so there `formatSync` works straight away — see
+[Ruby's](packages/ruby#formatting-without-awaiting) and
+[Kotlin's](packages/kotlin#formatting-without-awaiting) READMEs.
 
 ## Browsers
 
@@ -280,28 +287,28 @@ one - enough for `format()`, but it rules out shipping the CLI itself.
 
 ## Kotlin
 
-See [`packages/kotlin`](packages/kotlin). It runs the real ktfmt 0.64 - the
-Kotlin compiler's own PSI parser included - compiled to WasmGC by
-[TeaVM](https://teavm.org), with the same patched TeaVM as the Java package.
-The claim is checked in two halves over 589 real Kotlin files (kotlin-stdlib,
-kotlinx-coroutines and ktfmt itself) in all three styles: the one patched file
-leaves ktfmt's output unchanged on a JVM, and compiling that to wasm leaves it
-unchanged again - 1767 of 1767 identical at each step, diagnostics included. A
-conformance test asserts byte-identical output against the real ktfmt jar.
+See [`packages/kotlin`](packages/kotlin). It runs
+[ktrs](https://github.com/Hexay/ktrs) 0.5.3, ktfmt reimplemented in Rust with its
+own port of the Kotlin compiler's lexer and parser, compiled to a plain wasm
+module that imports nothing. It is not ktfmt compiled, so it is **exact by
+test**, not exact: a conformance test runs the real ktfmt 0.65 jar and asserts
+byte-identical output, and the same diagnostic where ktfmt refuses the input, in
+all three styles and with unused imports kept. Over okhttp and
+kotlinx.coroutines, 1,699 files, every file matched in every configuration. CI
+downloads the jar, checked against a pinned checksum, so the test runs there
+rather than skipping.
 
-The patch is 20 lines of ktfmt's `Parser`. ktfmt parses through the compiler's
-`KotlinCoreEnvironment`, which resolves a JVM classpath, opens jars and registers
-extension points named in XML - none of which an ahead-of-time compiler can
-follow, and none of which parsing needs - so the patch builds the smaller
-container that environment builds underneath, and everything below it is
-ktfmt's own.
+It replaced ktfmt 0.64 compiled to WasmGC by TeaVM, which was exact by
+construction but cost a Node 24.15 floor, an async-only boot, a 0.81 MB artifact
+and a patched ktfmt `Parser`. ktrs is 0.20 MB, runs on Node 18 and any browser
+from Chrome 96, Firefox 79 or Safari 15, and boots synchronously under Node in
+about 15 ms.
 
-Like Java it exports the release it carries, as `ktfmtVersion`, and a test reads
-the build script so that export cannot go stale across a bump. It ships as a
-0.81 MB `kotlin_fmt.wasm.br` plus the same TeaVM runtime as Java, both committed;
-`bun run kotlin:build` rebuilds them from a JDK 21, Maven, git and Node. It shares
-Java's caveat too: **Node 24.15 or newer**, for the same exception-handling
-reason.
+It exports the ktfmt release it is held to as `ktfmtVersion`, and the ktrs
+release it is built from as `ktrsVersion`; a test reads the build script so
+neither can go stale across a bump. `bun run kotlin:build` rebuilds the artifact
+from rustup, git and Node in about 20 seconds, and `bun run kotlin:ktfmt` fetches
+the jar the conformance test compares against.
 
 ## C#
 
@@ -452,7 +459,7 @@ trap on deeply nested expressions native handles fine.
 bun install
 bun run build      # compile each package's TypeScript to dist/
 bun run test       # bun test suite
-bun run test:node  # load the built packages under plain Node (24.15+ for Java and Kotlin)
+bun run test:node  # load the built packages under plain Node (24.15+ for Java)
 bun run test:browser  # load the built browser packages in real Chromium
 bun run check      # biome lint + format check
 bun run types:check

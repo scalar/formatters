@@ -103,8 +103,8 @@ const importMap = (packageDirectory: string): Record<string, string> => {
     return [specifier, `/${path.relative(ROOT, resolved)}`] as const
   })
 
-  // Self-references, for the subpaths a package exports to itself - Java and
-  // Kotlin import TeaVM's runtime as `<name>/runtime` so a bundler can follow a
+  // Self-references, for the subpaths a package exports to itself - Java
+  // imports TeaVM's runtime as `<name>/runtime` so a bundler can follow a
   // literal specifier. A bundler resolves those through `exports`; here they go
   // in the import map alongside everything else.
   const own = Object.entries(manifest.exports ?? {})

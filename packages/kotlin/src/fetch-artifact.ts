@@ -1,48 +1,49 @@
 import { decompressBrotli } from './decompress-brotli'
-import type { InitOptions, ModuleLoader, Runtime } from './types'
+import { toArtifactBytes } from './to-artifact-bytes'
+import type { ArtifactSource, InitOptions } from './types'
 
 /**
- * The module loader for the browser build: fetches the wasm instead of reading
- * it, and expands it with the platform rather than with `node:zlib`.
+ * The artifact source for the browser build: fetches the wasm instead of
+ * reading it, and expands it with the platform rather than with `node:zlib`.
  *
- * The default URL is resolved against this module, so `new URL(..., import.meta.url)`
- * is what a bundler sees. Vite, Rollup and webpack recognise that form, emit
- * `kotlin_fmt.wasm.br` as an asset with a hashed name and rewrite the URL to match;
- * loading the package straight from a CDN resolves it the same way with no build
- * step at all.
+ * `defaultUrl` is a function so that the caller can write the
+ * `new URL('../kotlin_fmt.wasm.br', import.meta.url)` form literally, which is
+ * what a bundler looks for. Vite, Rollup and webpack recognise it, emit the
+ * artifact as an asset with a hashed name and rewrite the URL to match; loading
+ * the package straight from a CDN resolves it the same way with no build step
+ * at all. A function also means the default is never resolved for a caller who
+ * hands over `bytes` instead.
  *
  * esbuild is the exception - it leaves `new URL(..., import.meta.url)` alone -
  * so an esbuild build has to copy the artifact next to its output or name it
  * with `init({ url })`. That is what `init` is for.
- *
- * TeaVM's runtime is imported by its package subpath rather than by a URL, which
- * matters: a bundler can follow a literal specifier and include the file, where
- * a dynamic `import(someUrl)` would be left as a runtime fetch of a path nothing
- * ever emitted. Unbundled, the subpath resolves through the same import map that
- * resolves every other bare specifier.
  */
-export const createArtifactLoader = (): {
-  loadModule: ModuleLoader
+export const createArtifactLoader = ({
+  defaultUrl,
+  compile = (bytes) => WebAssembly.compile(bytes),
+}: {
+  /** Where the artifact is when `init` names nowhere else. */
+  defaultUrl: () => URL
+  /** Compiles the expanded bytes. A parameter so that tests never touch a real artifact. */
+  compile?: (bytes: Uint8Array) => Promise<WebAssembly.Module>
+}): {
+  source: ArtifactSource
   init: (options?: InitOptions) => Promise<void>
 } => {
-  let exportsPromise: Promise<Record<string, unknown>> | undefined
+  let modulePromise: Promise<WebAssembly.Module> | undefined
+  let compiled: WebAssembly.Module | undefined
   let options: InitOptions = {}
 
   /** Reads the configured source down to raw wasm bytes. */
-  const readBytes = async (): Promise<ArrayBuffer> => {
+  const readBytes = async (): Promise<Uint8Array> => {
     if (options.bytes) {
-      const view = options.bytes
-      // Sliced to the exact bytes either way: a view's `.buffer` is only the
-      // whole artifact when it happens to start at zero and run to the end.
-      return (
-        ArrayBuffer.isView(view) ? view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) : view.slice(0)
-      ) as ArrayBuffer
+      return toArtifactBytes(options.bytes)
     }
 
-    const url = options.url ?? new URL('../kotlin_fmt.wasm.br', import.meta.url)
+    const url = options.url ?? defaultUrl()
     const response = await fetch(url)
     if (!response.ok) {
-      throw new Error(`could not fetch the ktfmt artifact from ${String(url)} (HTTP ${response.status})`)
+      throw new Error(`could not fetch the ktrs artifact from ${String(url)} (HTTP ${response.status})`)
     }
 
     const body = new Uint8Array(await response.arrayBuffer())
@@ -50,60 +51,66 @@ export const createArtifactLoader = (): {
     // `none` covers both of the ways a caller can hand over expanded bytes: a
     // server that set `Content-Encoding: br`, which the browser unwraps before
     // we ever see it, and a URL pointing at an uncompressed `.wasm`.
-    const wasm = options.encoding === 'none' ? body : await decompressBrotli(body)
-
-    // Slice to the exact bytes: a view's `.buffer` is only the whole artifact
-    // when it happens to start at zero and run to the end.
-    return wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength) as ArrayBuffer
+    return options.encoding === 'none' ? body : decompressBrotli(body)
   }
 
   /**
-   * Compiles and instantiates the module, resolving to its exports, once per page.
+   * Fetches, decompresses and compiles the artifact, once per page.
+   *
+   * Compiled with the asynchronous `WebAssembly.compile` even though the module
+   * is under 1 MB, well inside the 8 MB a browser main thread allows a
+   * synchronous compile: the fetch is asynchronous anyway, and the async
+   * compile is the one engines stream and run off the main thread.
+   *
+   * Compilation is cached separately from instantiation because they have very
+   * different lifetimes: the compiled module is immutable and worth keeping
+   * forever, while an instance is dropped and replaced whenever a format traps.
    */
-  const loadModule: ModuleLoader = () => {
+  const compileArtifact = (): Promise<WebAssembly.Module> => {
     // The rejection is not cached. A transient fetch failure would otherwise
     // stick for the life of the page - every later call awaiting the same dead
     // promise - with `init` refusing to run again because something was already
     // in flight. Dropping it on failure is what leaves a retry possible.
-    exportsPromise ??= (async () => {
-      const [runtime, wasm] = await Promise.all([import('@scalar/kotlin-fmt/runtime') as Promise<Runtime>, readBytes()])
-      const { exports } = await runtime.load(wasm, {})
-      return exports
-    })().catch((error: unknown) => {
-      exportsPromise = undefined
-      throw error
-    })
+    modulePromise ??= readBytes()
+      .then(compile)
+      .then((module) => {
+        compiled = module
+        return module
+      })
+      .catch((error: unknown) => {
+        modulePromise = undefined
+        throw error
+      })
 
-    return exportsPromise
+    return modulePromise
   }
 
   /**
-   * Points the loader at a different artifact, and optionally warms it.
+   * Points the loader at a different artifact, and warms it.
    *
-   * Calling this is optional - `format` works without it - and it exists for the
-   * two cases the default cannot cover: a bundler or CDN that puts the artifact
-   * somewhere this module cannot derive, and a caller who would rather pay the
-   * download before the first format than during it.
+   * Calling this is optional for `format` and it exists for the two cases the
+   * default cannot cover: a bundler or CDN that puts the artifact somewhere this
+   * module cannot derive, and a caller who would rather pay the download before
+   * the first format than during it.
    *
-   * It must be called before the first `format`, because that is what loads the
-   * module; afterwards it throws rather than silently doing nothing.
+   * Options only take effect before the artifact is first read; afterwards they
+   * are refused rather than silently ignored.
    */
   const init = async (next: InitOptions = {}): Promise<void> => {
-    // Calling this again is not only allowed, it is the documented way to
-    // recover: `formatSync` asks for another `init` when it cannot rebuild the
-    // instance itself. Only *re-pointing* is refused, and only once the artifact
-    // has been read - by then the bytes are loaded and a new `url` could not
-    // take effect, so saying so beats appearing to work.
-    if (exportsPromise && Object.keys(next).length > 0) {
+    // Calling this again is allowed, and harmless. Only *re-pointing* is
+    // refused, and only once the artifact has been read - by then the bytes are
+    // compiled and a new `url` could not take effect, so saying so beats
+    // appearing to work.
+    if (modulePromise && Object.keys(next).length > 0) {
       throw new Error(
         'init can only be given options before the first format - the artifact has already been read. ' +
           'Call init() with no arguments to boot again.',
       )
     }
 
-    if (!exportsPromise) options = next
-    await loadModule()
+    if (!modulePromise) options = next
+    await compileArtifact()
   }
 
-  return { loadModule, init }
+  return { source: { compile: compileArtifact, compileSync: () => compiled }, init }
 }

@@ -6,7 +6,7 @@
 // against what the runtime actually exposes rather than derived from it: TeaVM emits no
 // declarations of its own.
 
-/** Exports vary by pom - `pom.xml` exports `parse`, `pom-ktfmt.xml` exports `format`. */
+/** Exports vary by build; the formatter exports `format`. */
 export type TeaVmExports = {
   /** Returns a status character followed by the formatted source, or by the failure text. */
   format?: (source: string, spec: string) => string
@@ -19,7 +19,8 @@ export type TeaVmModule = {
 
 /**
  * Frames resolve to Java method names only when both the `.teadbg` line tables and the
- * deobfuscator module are passed; see the comment in `kotlin-probe/run.ts`.
+ * deobfuscator module are passed. TeaVM's deobfuscator resolves every frame of a minified
+ * module to `Throwable.<init>`, so a module built with `minifying=false` is the readable one.
  */
 export type TeaVmLoadOptions = {
   stackDeobfuscator?: {

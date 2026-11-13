@@ -217,8 +217,8 @@ the bytes in git are the bytes the tests run against.
 
 **The build compiles a patched TeaVM**: upstream
 [`konsoletyper/teavm`](https://github.com/konsoletyper/teavm) at a pinned commit,
-plus a patch series and a jar of `java.*` shims, both in `build/teavm` — the same
-TeaVM `@scalar/kotlin-fmt` uses. The patches add class-library members javac needs
+plus a patch series and a jar of `java.*` shims, both in `build/teavm`, which
+`@scalar/kotlin-fmt` also used until it moved to ktrs. The patches add class-library members javac needs
 (`StringBuilder.repeat`, `File.toPath`, `Spliterators.iterator` and
 `AbstractSpliterator`), four class-library bug fixes and a class-initializer
 miscompile fix, one change per patch. The shims supply the classes upstream has

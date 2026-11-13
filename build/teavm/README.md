@@ -1,8 +1,10 @@
 # TeaVM: upstream, a patch series, and a shims jar
 
-Both TeaVM builds here (`../java_fmt_teavm/build.sh` for `@scalar/java-fmt`,
-`../java_fmt_teavm/kotlin-probe/build.sh` for `@scalar/kotlin-fmt`) compile with
-the TeaVM this directory produces. It replaces the `amritk/teavm` fork:
+The TeaVM build here (`../java_fmt_teavm/build.sh` for `@scalar/java-fmt`)
+compiles with the TeaVM this directory produces. A second build compiled ktfmt
+for `@scalar/kotlin-fmt` until that package moved to ktrs, a Rust reimplementation
+(`../kotlin_fmt`); it is in git history as `../java_fmt_teavm/kotlin-probe`, and
+the sections below that mention Kotlin record what it showed. It replaces the `amritk/teavm` fork:
 
 | | What | Where it goes when it is done |
 |---|---|---|
@@ -63,10 +65,9 @@ rm ../../patches/*.patch && git format-patch --no-signature --zero-commit -o ../
 git rev-parse <new> > ../../UPSTREAM_REF
 ```
 
-Then `./apply.sh` from this directory, rebuild both formatters and run their
-conformance suites (`bun run java:conformance`, `bun run kotlin:conformance`):
-those corpora, not the TeaVM test suite, are what show the formatting is
-unchanged. Commit the rebuilt artifacts with the new pin.
+Then `./apply.sh` from this directory, rebuild the formatter and run its
+conformance suite (`bun run java:conformance`): that corpus, not the TeaVM test
+suite, is what shows the formatting is unchanged. Commit the rebuilt artifacts with the new pin.
 
 ## The shims
 
@@ -110,8 +111,10 @@ the case in point (`Charset.forName` resolves through a registry inside
 
 ## Which patch each formatter needs
 
-Every patch was taken out on its own, TeaVM rebuilt, both formatters rebuilt,
-and both conformance corpora run. Rebuilds reproduced the shipped modules byte
+Measured while both formatters were built here. Every patch was taken out on
+its own, TeaVM rebuilt, both formatters rebuilt, and both conformance corpora
+run. The Kotlin column is history now; the patches it alone needed stay, because
+removing one changes the Java module. Rebuilds reproduced the shipped modules byte
 for byte throughout, so a module that comes out byte-identical without a patch
 shows the patch does nothing for that formatter.
 
@@ -139,8 +142,8 @@ compiled in, so the member has to exist.
 
 0008 is the one kept without a corpus failure to show for it. Without it the
 modules change, which means the optimization deletes class initializers that
-both formatters' code currently keeps, and the Kotlin probe once failed on exactly
-that (`../java_fmt_teavm/kotlin-probe/README.md`, "A sixth TeaVM bug"). That the
+both formatters' code kept, and the Kotlin probe once failed on exactly that
+(`../java_fmt_teavm/kotlin-probe/README.md` in git history, "A sixth TeaVM bug"). That the
 corpora happen not to read an uninitialized field today is not a reason to ship a
 miscompile.
 
@@ -192,20 +195,18 @@ implementations.
 
 Neither formatter sets `asyncEnabled`, on purpose. With it off TeaVM skips the
 coroutine transformation altogether, and that transformation is what made the
-Kotlin module trap on load (`../java_fmt_teavm/kotlin-probe/README.md`, "the wasm
-start function can call a coroutine"). Turning it on would bring that back.
+Kotlin module trap on load (`../java_fmt_teavm/kotlin-probe/README.md` in git
+history, "the wasm start function can call a coroutine"). Turning it on would bring that back.
 
 - **google-java-format reaches no `@Async` method.** It builds as it is.
-- **ktfmt reached two**: `Thread.sleep` and `Thread.switchContext`, through three
+- **ktfmt reached two**, when it was built here: `Thread.sleep` and `Thread.switchContext`, through three
   call sites in kotlinx-coroutines and IntelliJ that formatting never executes.
-  `../java_fmt_teavm/kotlin-probe/plugin/kprobe/SingleThreadedCalls.java`, a
-  `ClassHolderTransformer` named in `pom-ktfmt.xml`, deletes exactly those
-  three calls, so the fix stays in that build instead of changing `Thread` for
-  every TeaVM program.
+  `SingleThreadedCalls.java` in that build's plugin, a `ClassHolderTransformer`
+  named in its `pom-ktfmt.xml`, deleted exactly those three calls, so
+  the fix stayed in that build instead of changing `Thread` for every TeaVM
+  program.
 
 Keep it that way. If a dependency bump makes a new `@Async` method reachable,
 TeaVM writes no module and reports "is async, but async support is disabled"
-with the call stack. The Java build stops there. The Kotlin build runs Maven
-with `-q` and `stopOnErrors=false`, so it fails one step later, when `wasm-opt`
-finds no `classes.wasm`. Rerun `mvn -f pom-ktfmt.xml package` without `-q` to
-see the stack, and look at the call site before adding it to the transformer.
+with the call stack, and the Java build stops there. Look at the call site
+before working around it.
