@@ -80,6 +80,9 @@ describe('format', () => {
     expect(format('class A{}', { style: 'android' as 'meta' })).rejects.toThrow(/unknown style/)
     expect(format('class A{}', { trailingCommas: 'always' as 'none' })).rejects.toThrow(/unknown trailingCommas/)
     expect(format('class A{}', { maxWidth: -1 })).rejects.toThrow(/maxWidth must be a non-negative integer/)
+    // Names that exist on every object's prototype are still unknown options.
+    expect(format('class A{}', { style: 'toString' as 'meta' })).rejects.toThrow(/unknown style/)
+    expect(format('class A{}', { trailingCommas: 'constructor' as 'none' })).rejects.toThrow(/unknown trailingCommas/)
   })
 
   it('recovers from source nested past what the engine’s stack can follow', async () => {

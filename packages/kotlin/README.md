@@ -71,7 +71,9 @@ await format('fun f( {')
 // Error: 1:7: error: Expecting ')'
 ```
 
-Any Node from 18 on. The module imports nothing and uses no recent wasm feature.
+Any Node from 18 on. The module imports nothing, and the wasm features it uses
+(bulk memory, multi-value, reference types, sign extension, non-trapping
+float-to-int) have all been in V8 since well before Node 18.
 
 ## The versions it carries
 
@@ -128,8 +130,10 @@ formatSync(source)
 ```
 
 The module is 864 KB, so it is fine on the main thread: a browser refuses
-synchronous compilation only above 8 MB. Any engine with WebAssembly runs it;
-there is no engine floor to check.
+synchronous compilation only above 8 MB. It needs the wasm features Rust's
+`wasm32-unknown-unknown` target turns on by default, the newest of them
+reference types, so Chrome 96, Firefox 79 or Safari 15 at the earliest. Older
+engines refuse to compile it.
 
 The browser reads the same brotli artifact as Node (200 KB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
@@ -177,7 +181,7 @@ TeaVM. That was exact by construction, but it cost a 0.82 MB artifact, a Node
 24.15 floor set by how V8 typed wasm exception handling, an async-only boot, a
 fork of TeaVM with a dozen patches, and stand-ins for the threads IntelliJ's
 parser environment started. ktrs is a quarter of the size, boots synchronously,
-runs on any engine, and matched every corpus file above.
+runs on any current engine, and matched every corpus file above.
 
 The cost is the one the exactness rule names: a reimplementation can drift where
 a compiled tool cannot. The conformance test is how drift would be caught.

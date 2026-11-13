@@ -16,7 +16,7 @@ JAR="work/ktfmt-${KTFMT_VERSION}-with-dependencies.jar"
 
 if [ ! -f "$JAR" ]; then
   mkdir -p work
-  curl -fsSL -o "$JAR.part" \
+  curl -fsSL --retry 3 -o "$JAR.part" \
     "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/ktfmt/${KTFMT_VERSION}/ktfmt-${KTFMT_VERSION}-with-dependencies.jar"
   mv "$JAR.part" "$JAR"
 fi

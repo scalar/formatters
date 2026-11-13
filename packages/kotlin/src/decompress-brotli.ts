@@ -2,7 +2,7 @@
  * Brotli decompression for the browser build.
  *
  * The artifact is stored brotli-compressed because that is what keeps the
- * install small (see `compile-artifact.ts`), and the browser build reads the
+ * install small (see `index.ts`), and the browser build reads the
  * very same file rather than a second copy in a friendlier format. Shipping a
  * gzip twin would cost 41% more over the wire for this package and would double
  * what every Node install carries for a file it never opens.

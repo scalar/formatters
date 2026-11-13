@@ -16,6 +16,7 @@ type KotlinFmtExports = {
   kotlin_fmt_alloc: (length: number) => number
   kotlin_fmt_format: (
     source: number,
+    capacity: number,
     sourceLength: number,
     style: number,
     maxWidth: number,
@@ -29,13 +30,19 @@ type KotlinFmtExports = {
   kotlin_fmt_result_len: () => number
 }
 
-const STYLES: Record<NonNullable<FormatOptions['style']>, number> = { meta: 0, google: 1, kotlinlang: 2 }
+// Maps rather than object literals, so that a lookup cannot find `toString` or
+// `constructor` on a prototype and hand the module a function for a number.
+const STYLES = new Map<string, number>([
+  ['meta', 0],
+  ['google', 1],
+  ['kotlinlang', 2],
+])
 
-const TRAILING_COMMAS: Record<NonNullable<FormatOptions['trailingCommas']>, number> = {
-  none: 0,
-  onlyAdd: 1,
-  complete: 2,
-}
+const TRAILING_COMMAS = new Map<string, number>([
+  ['none', 0],
+  ['onlyAdd', 1],
+  ['complete', 2],
+])
 
 /** `kotlin_fmt_format`'s arguments after the source, in its order. */
 type EncodedOptions = [
@@ -48,7 +55,6 @@ type EncodedOptions = [
   preserveLambdaBreaks: number,
 ]
 
-const integer = (value: number | undefined): number => (value === undefined ? INHERIT : value)
 const flag = (value: boolean | undefined): number => (value === undefined ? INHERIT : Number(value))
 
 /**
@@ -59,10 +65,10 @@ const flag = (value: boolean | undefined): number => (value === undefined ? INHE
  * and look like it had worked.
  */
 const encodeOptions = (options: FormatOptions): EncodedOptions => {
-  const style = STYLES[options.style ?? 'meta']
+  const style = STYLES.get(options.style ?? 'meta')
   if (style === undefined) throw new TypeError(`unknown style ${JSON.stringify(options.style)}`)
 
-  const trailingCommas = options.trailingCommas === undefined ? INHERIT : TRAILING_COMMAS[options.trailingCommas]
+  const trailingCommas = options.trailingCommas === undefined ? INHERIT : TRAILING_COMMAS.get(options.trailingCommas)
   if (trailingCommas === undefined) {
     throw new TypeError(`unknown trailingCommas ${JSON.stringify(options.trailingCommas)}`)
   }
@@ -76,9 +82,9 @@ const encodeOptions = (options: FormatOptions): EncodedOptions => {
 
   return [
     style,
-    integer(options.maxWidth),
-    integer(options.blockIndent),
-    integer(options.continuationIndent),
+    options.maxWidth ?? INHERIT,
+    options.blockIndent ?? INHERIT,
+    options.continuationIndent ?? INHERIT,
     trailingCommas,
     flag(options.removeUnusedImports),
     flag(options.preserveLambdaBreaks),
@@ -118,14 +124,17 @@ export const createKotlinFormatter = (source: ArtifactSource): KotlinFormatterBo
       format: (input, options) => {
         // Before touching the instance, so a bad option fails without costing it.
         const encoded = encodeOptions(options)
-        const bytes = encoder.encode(String(input))
+        const text = String(input)
+        // UTF-8 takes at most three bytes per UTF-16 code unit, so this much
+        // always fits, and the source is encoded straight into the module.
+        const capacity = text.length * 3
 
         let status: number
         try {
-          const pointer = exports.kotlin_fmt_alloc(bytes.length)
-          new Uint8Array(exports.memory.buffer, pointer, bytes.length).set(bytes)
+          const pointer = exports.kotlin_fmt_alloc(capacity)
+          const { written } = encoder.encodeInto(text, new Uint8Array(exports.memory.buffer, pointer, capacity))
           // The module takes ownership of the buffer and frees it.
-          status = exports.kotlin_fmt_format(pointer, bytes.length, ...encoded)
+          status = exports.kotlin_fmt_format(pointer, capacity, written, ...encoded)
         } catch (error) {
           // A trap leaves the instance in whatever state it stopped in, so it is
           // never used again. Dropping it here is what makes the next call

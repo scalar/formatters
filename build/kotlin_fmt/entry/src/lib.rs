@@ -1,7 +1,7 @@
 //! ktrs's ktfmt-identical formatter as a wasm module, for `@scalar/kotlin-fmt`.
 //!
 //! The boundary is plain exports and integers, with no bindgen layer: the host
-//! copies UTF-8 source into a buffer from [`kotlin_fmt_alloc`], calls
+//! encodes UTF-8 source into a buffer from [`kotlin_fmt_alloc`], calls
 //! [`kotlin_fmt_format`] with it and the options, and reads the result through
 //! [`kotlin_fmt_result_ptr`] and [`kotlin_fmt_result_len`]. The result stays
 //! owned by the module until the next format replaces it, so the host never
@@ -28,15 +28,19 @@ thread_local! {
     static RESULT: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
-/// A buffer of `len` bytes for the host to fill, handed back to
+/// A buffer of exactly `len` bytes for the host to fill, handed back to
 /// [`kotlin_fmt_format`], which takes ownership of it.
+///
+/// A boxed slice rather than `Vec::with_capacity`, whose capacity is only
+/// promised to be *at least* `len`: freeing it later needs the exact size it
+/// was allocated with, and a boxed slice's length is that size by definition.
 #[unsafe(no_mangle)]
 pub extern "C" fn kotlin_fmt_alloc(len: usize) -> *mut u8 {
-    let mut buffer = std::mem::ManuallyDrop::new(Vec::<u8>::with_capacity(len));
-    buffer.as_mut_ptr()
+    Box::into_raw(vec![0u8; len].into_boxed_slice()).cast::<u8>()
 }
 
-/// Formats the `len` bytes at `source`, freeing them, and returns [`OK`] or
+/// Formats the first `len` bytes of the `capacity`-byte buffer at `source`,
+/// freeing it, and returns [`OK`] or
 /// [`ERROR`]. The result - formatted source or the error message - is read
 /// through [`kotlin_fmt_result_ptr`] and [`kotlin_fmt_result_len`].
 ///
@@ -44,13 +48,19 @@ pub extern "C" fn kotlin_fmt_alloc(len: usize) -> *mut u8 {
 /// argument overrides the style when it is not negative: `trailing_commas` is
 /// 0 none, 1 only add, 2 complete, and the two flags are 0 or 1.
 ///
+/// The two sizes differ because the host encodes straight into the buffer:
+/// it asks for the most bytes the source could take as UTF-8 and only learns
+/// how many it used afterwards. The buffer is freed at `capacity`, the size it
+/// was allocated with.
+///
 /// # Safety
-/// `source` must be a buffer from [`kotlin_fmt_alloc`]`(len)` whose `len` bytes
-/// are initialized.
+/// `source` must be a buffer from [`kotlin_fmt_alloc`]`(capacity)`, and
+/// `len <= capacity`.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn kotlin_fmt_format(
     source: *mut u8,
+    capacity: usize,
     len: usize,
     style: u32,
     max_width: i32,
@@ -60,7 +70,8 @@ pub unsafe extern "C" fn kotlin_fmt_format(
     remove_unused_imports: i32,
     preserve_lambda_breaks: i32,
 ) -> u32 {
-    let input = unsafe { Vec::from_raw_parts(source, len, len) };
+    let mut input: Vec<u8> = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(source, capacity)) }.into_vec();
+    input.truncate(len);
     let options = Options {
         style,
         max_width,

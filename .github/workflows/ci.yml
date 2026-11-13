@@ -109,6 +109,15 @@ jobs:
       # packages/kotlin is ktrs, a reimplementation of ktfmt, so it is held to the real ktfmt the same
       # way: test/ktfmt-conformance.test.ts skips without the jar. The jar is the pinned release,
       # checked against a pinned checksum, and runs on the JDK the runner image already carries.
+      # Cached, because the jar is 71 MB and never changes for a given pin: the key is the script,
+      # which holds the checksum, and build.sh, which holds the version. The script still verifies
+      # the checksum of a restored jar.
+      - name: Cache the ktfmt jar
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: build/kotlin_fmt/work
+          key: ktfmt-${{ hashFiles('build/kotlin_fmt/ktfmt.sh', 'build/kotlin_fmt/build.sh') }}
+
       - name: Download the ktfmt that ktrs is held to
         run: build/kotlin_fmt/ktfmt.sh
 

@@ -11,11 +11,15 @@
 // `.kt` file would hold ktfmt to a stricter grammar than the package. A source
 // ktfmt rejects has to be rejected here too, with the same diagnostic.
 //
-// Skipped unless a native ktfmt of the *pinned* version is available - the one
+// Skipped unless ktfmt's jar of the *pinned* version is available - the one
 // ktrs ports, which src/version.test.ts holds to build/kotlin_fmt/build.sh.
-// Three ways to provide it, in order: a `ktfmt` on PATH reporting that version,
-// a jar named by KTFMT_JAR, or the jar build/kotlin_fmt/ktfmt.sh downloads.
-// CI runs that script, so this runs there rather than quietly skipping.
+// Two ways to provide it, in order: a jar named by KTFMT_JAR, or the one
+// build/kotlin_fmt/ktfmt.sh downloads. CI runs that script, so this runs there
+// rather than quietly skipping.
+//
+// Only a jar, never a `ktfmt` on PATH. ktrs installs a drop-in `ktfmt` binary
+// that answers `--version` with `ktfmt version 0.65`, so a PATH lookup could
+// hand this test ktrs itself, and comparing ktrs with ktrs passes vacuously.
 //
 // Set KOTLIN_FMT_CONFORMANCE_CORPUS to a directory of .kt and .kts files to run
 // the same comparison over all of them as well, in every style. That is how the
@@ -39,7 +43,7 @@ type NativeCommand = { file: string; args: string[] }
 /** What ktfmt did with one source: formatted it, or rejected it with a diagnostic. */
 type Outcome = { output: string } | { error: string }
 
-/** Resolves the command that runs a native ktfmt of the pinned version, if one exists. */
+/** Resolves the command that runs ktfmt's jar of the pinned version, if one exists. */
 const nativeCommand = (): NativeCommand | undefined => {
   const reports = (command: NativeCommand): boolean => {
     const result = spawnSync(command.file, [...command.args, '--version'], { encoding: 'utf8' })
@@ -47,7 +51,7 @@ const nativeCommand = (): NativeCommand | undefined => {
     return new RegExp(`^ktfmt version ${ktfmtVersion.replaceAll('.', '\\.')}$`, 'm').test(result.stdout ?? '')
   }
 
-  const candidates: NativeCommand[] = [{ file: 'ktfmt', args: [] }]
+  const candidates: NativeCommand[] = []
   const jars = [
     process.env['KTFMT_JAR'],
     path.join(here, '..', '..', '..', 'build', 'kotlin_fmt', 'work', `ktfmt-${ktfmtVersion}-with-dependencies.jar`),
@@ -92,8 +96,15 @@ const nativeFormatAll = (sources: string[], options: FormatOptions): Outcome[] =
     fs.writeFileSync(argfile, [...flagsFor(options), '--quiet', ...files].join('\n'))
     const result = spawnSync(native.file, [...native.args, `@${argfile}`], { encoding: 'utf8' })
 
+    // A parse error comes back as `<path>:<diagnostic>`; any other exception
+    // as `Error formatting <path>: <message>; skipping.` Both are rejections.
     const errors = new Map<string, string>()
     for (const line of (result.stderr ?? '').split('\n')) {
+      const failed = /^Error formatting (?<file>.+?): (?<message>.*); skipping\.$/.exec(line)?.groups
+      if (failed?.['file'] && files.includes(failed['file'])) {
+        errors.set(failed['file'], failed['message'] ?? '')
+        continue
+      }
       const file = files.find((candidate) => line.startsWith(`${candidate}:`))
       if (file) errors.set(file, line.slice(file.length + 1))
     }
