@@ -26,9 +26,9 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | RuboCop (Layout) | 2.2 MB | ✅ exact by test | ✅ |
-| [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
-| [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.20 MB | ✅ exact by test | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | rbcop | 2.2 MB | ✅ exact by test | ✅ |
+| [`@scalar/java-fmt`](packages/java) | google-java-format | 0.76 MB | ✅ exact | ✅ |
+| [`@scalar/kotlin-fmt`](packages/kotlin) | ktrs | 0.20 MB | ✅ exact by test | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
 | [`@scalar/swift-fmt`](packages/swift) | swift-format | 12.5 MB | ✅ exact | ✅ |
 | [`@scalar/php-fmt`](packages/php) | PHP CS Fixer | 0.45 MB | ✅ exact | — |
@@ -36,10 +36,11 @@ Composer, no native binaries, no postinstall downloads.
 
 Artifact is the brotli-compressed module as committed and published — the whole
 tool, its parser and its language runtime in one file. The JavaScript that loads
-it is small by comparison: nothing for Ruby, Swift, PHP and Rust, a 16 KB
+it is small by comparison: nothing for Ruby, Kotlin, Swift, PHP and Rust, a 17 KB
 generated runtime for Java, and 0.46 MB of .NET loader scripts for C#.
 
-Ruby's reference is `rubocop --autocorrect --only Layout`: the package corrects
+Ruby runs rbcop, and the reference it is held to is
+`rubocop --autocorrect --only Layout`: the package corrects
 Layout within the line structure it is handed and does not reprint, which suits
 line-structured input such as generated code. See
 [`packages/ruby`](packages/ruby#what-it-does-and-what-it-does-not).
@@ -90,8 +91,8 @@ const formatted: string = await format('x=[1,2,3].map{|n| n*2}', options)
 // x = [1, 2, 3].map { |n| n * 2 }
 ```
 
-`format` is async because the first call boots a Ruby VM. The VM is cached, so
-every later call is milliseconds.
+`format` is async because the first call has to load and compile the wasm. That
+work is cached, so every later call is milliseconds.
 
 ### Formatting without awaiting
 
@@ -109,12 +110,13 @@ const formatted: string = formatSync('x=[1,2,3].map{|n| n*2}')
 Booting is the one thing that cannot be made synchronous — the wasm has to be
 read or fetched, and compiled — so `init` covers it once and `formatSync` throws
 until it has. Everything after that already was synchronous; `format` was only
-ever awaiting the boot. Under Node, Ruby and Kotlin read and compile their
-artifact synchronously as well, so their `formatSync` needs no `init()` at all.
+ever awaiting the boot.
 
 Prefer `format` where you can await: it needs no setup call and cannot throw that
-error. Ruby carries one extra caveat — see [its README](packages/ruby#readme) —
-because recycling its VM is asynchronous too.
+error. The exceptions to the `init` rule are Ruby and Kotlin under Node, whose
+modules boot synchronously, so there `formatSync` works straight away — see
+[Ruby's](packages/ruby#formatting-without-awaiting) and
+[Kotlin's](packages/kotlin#formatting-without-awaiting) READMEs.
 
 ## Browsers
 
@@ -261,7 +263,7 @@ reproduces that at every pass, which means formatting here and then verifying
 with the jar compares pass one against pass two and looks like a divergence that
 is not one. `packages/java/README.md` has the detail and the two ways out.
 
-It ships as a 0.77 MB `java_fmt.wasm.br` plus TeaVM's generated runtime, which
+It ships as a 0.76 MB `java_fmt.wasm.br` plus TeaVM's generated runtime, which
 supplies the module's imports. Both are committed, so a fresh clone needs
 nothing extra; `bun run java:build:teavm` rebuilds them from a JDK 21, Maven,
 git and Node.
@@ -282,6 +284,31 @@ does not compile the module at all, because of how it used to type the wasm
 exception handling TeaVM emits. bun is unaffected. And the module
 has no filesystem and no stdin, so source goes in as a string and comes back as
 one - enough for `format()`, but it rules out shipping the CLI itself.
+
+## Kotlin
+
+See [`packages/kotlin`](packages/kotlin). It runs
+[ktrs](https://github.com/Hexay/ktrs) 0.5.3, ktfmt reimplemented in Rust with its
+own port of the Kotlin compiler's lexer and parser, compiled to a plain wasm
+module that imports nothing. It is not ktfmt compiled, so it is **exact by
+test**, not exact: a conformance test runs the real ktfmt 0.65 jar and asserts
+byte-identical output, and the same diagnostic where ktfmt refuses the input, in
+all three styles and with unused imports kept. Over okhttp and
+kotlinx.coroutines, 1,699 files, every file matched in every configuration. CI
+downloads the jar, checked against a pinned checksum, so the test runs there
+rather than skipping.
+
+It replaced ktfmt 0.64 compiled to WasmGC by TeaVM, which was exact by
+construction but cost a Node 24.15 floor, an async-only boot, a 0.81 MB artifact
+and a patched ktfmt `Parser`. ktrs is 0.20 MB, runs on Node 18 and any browser
+from Chrome 96, Firefox 79 or Safari 15, and boots synchronously under Node in
+about 15 ms.
+
+It exports the ktfmt release it is held to as `ktfmtVersion`, and the ktrs
+release it is built from as `ktrsVersion`; a test reads the build script so
+neither can go stale across a bump. `bun run kotlin:build` rebuilds the artifact
+from rustup, git and Node in about 20 seconds, and `bun run kotlin:ktfmt` fetches
+the jar the conformance test compares against.
 
 ## C#
 
@@ -331,14 +358,14 @@ read and passed in.
 It ships as a 12.5 MB `swift_fmt.wasm.br`, built by
 [`build/swift_fmt/build.sh`](build/swift_fmt/build.sh), which downloads its own
 Swift toolchain and SDK. It is committed, so a fresh clone needs nothing extra;
-`bun run swift:build` rebuilds it. Three times the size of the other packages,
+`bun run swift:build` rebuilds it. Three times the size of the next largest package,
 almost all of it swift-syntax - `-Osize` and `wasm-opt -Oz` were both tried and
 moved the compressed total by under 60KB, so it is built with `-O` instead, which
 spends about 20% less time formatting.
 
 Two caveats worth knowing. The module is a **WASI reactor**: instantiated once,
 then `run` per format, which measured 2.5x faster than a fresh instance each
-time and, unlike the Ruby VM, does not leak - memory plateaus at 75MB and stays
+time and does not leak - memory plateaus at 75MB and stays
 there. And **the licence is unrestricted**, unlike the Java package: everything
 embedded is Apache-2.0 with the Runtime Library Exception, so a paid product may
 ship a copy.
@@ -353,8 +380,8 @@ sources and the Symfony, ReactPHP and PSR components vendored into its phar),
 all of which came out identical - 1100 of them files the fixer actually
 rewrote.
 
-It is also the one package with a synchronous entry point. PHP on wasm has none
-and cannot be given one - both builds suspend through Asyncify or JSPI, so every
+It is also the one package whose `formatSync()` cannot just run the module
+synchronously. PHP on wasm has no synchronous entry point and cannot be given one - both builds suspend through Asyncify or JSPI, so every
 export returns a promise - so `formatSync()` gets its synchrony from the thread
 instead: PHP runs in a worker and the calling thread parks on `Atomics.wait`
 until the result lands in shared memory. Same fixer, byte-identical output, and
@@ -432,7 +459,7 @@ trap on deeply nested expressions native handles fine.
 bun install
 bun run build      # compile each package's TypeScript to dist/
 bun run test       # bun test suite
-bun run test:node  # load the built packages under plain Node (24+ for Java)
+bun run test:node  # load the built packages under plain Node (24.15+ for Java)
 bun run test:browser  # load the built browser packages in real Chromium
 bun run check      # biome lint + format check
 bun run types:check
