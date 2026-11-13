@@ -98,6 +98,17 @@ pub unsafe extern "C" fn rbcop_correct(source: *mut u8, source_len: usize, confi
 
 fn correct(source: Vec<u8>, config: Vec<u8>) -> Result<String, String> {
     let config = String::from_utf8(config).map_err(|_| "the RuboCop config is not valid UTF-8".to_string())?;
+
+    // Source that does not parse is refused before RuboCop sees it. RuboCop
+    // reports it as a Lint/Syntax offense and corrects nothing, so without this
+    // the input would come back unchanged and fail the output check below,
+    // which blames the pass for a problem that was in the input all along.
+    if let Some(error) = ruby_prism::parse(&source).errors().next() {
+        let offset = error.location().start_offset();
+        let line = 1 + source[..offset.min(source.len())].iter().filter(|&&byte| byte == b'\n').count();
+        return Err(format!("the source is not valid Ruby, so it was not formatted: line {line}: {}", error.message()));
+    }
+
     let resolved = resolve(&config)?;
 
     let input = Path::new(INPUT_PATH);
@@ -119,8 +130,7 @@ fn correct(source: Vec<u8>, config: Vec<u8>) -> Result<String, String> {
         None => String::from_utf8(source).map_err(|_| "the source is not valid UTF-8".to_string())?,
     };
 
-    // The same promise the syntax_tree pass makes: never hand back Ruby that
-    // Ruby cannot read. RuboCop re-parses after every round and would report a
+    // Never hand back Ruby that Ruby cannot read. RuboCop re-parses after every round and would report a
     // correction that broke the syntax as Lint/Syntax, not refuse it, so the
     // check is made here, with the parser rbcop itself runs on.
     if ruby_prism::parse(text.as_bytes()).errors().next().is_some() {

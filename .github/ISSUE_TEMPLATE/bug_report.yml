@@ -67,7 +67,7 @@ body:
       label: What the reference tool produces
       description: >-
         Run the same input through the real tool and paste the result with its version —
-        `stree format`, `google-java-format`, `ktfmt`, `csharpier`, `swift-format`,
+        `rubocop --autocorrect --only Layout`, `google-java-format`, `ktfmt`, `csharpier`, `swift-format`,
         `php-cs-fixer fix`, `rustfmt`. If you cannot run it, say what you expected and why.
       render: text
     validations:

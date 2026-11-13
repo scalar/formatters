@@ -22,8 +22,8 @@ real Chromium. It is an addition to the rule above, never a relaxation: the Node
 entry stays the default, and `src/index.browser.ts` is the only file that may not
 touch `node:` built-ins — while `src/index.ts` is the only one that may.
 
-Each package exports `format` (async), `formatSync` (needs `await init()` first)
-and `init`. Booting is the only asynchronous step, so the two formatters run the
+Each package exports `format` (async), `formatSync` (needs `await init()` first,
+except Ruby under Node, which boots synchronously) and `init`. Booting is the only asynchronous step, so the two formatters run the
 same code and produce the same bytes.
 
 ## Exactness is a claim about a named tool

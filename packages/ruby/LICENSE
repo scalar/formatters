@@ -23,9 +23,10 @@ SOFTWARE.
 ---
 
 The above covers this package's own source. It does not cover the compiled
-artifact it ships: `ruby_fmt.wasm.br` embeds CRuby and the `logger` gem (Ruby
-License / BSD-2-Clause), syntax_tree, prettier_print and the `js` gem (MIT), and
-statically links wasi-libc (Apache-2.0-with-LLVM-exception / MIT).
+artifact it ships: `rbcop_fmt.wasm.br` embeds rbcop, RuboCop's configuration and
+that of seven RuboCop plugins (MIT), and the Rust crates it links - MIT where a
+crate offers it, otherwise BSD-2-Clause, Unicode-3.0 or BSL-1.0 - and statically
+links wasi-libc (MIT, with BSD parts).
 
-Every one of those is permissive and asks only for attribution. The notices, the
-full texts, and one known gap in them are in `licenses/NOTICE.md`.
+Every one of those is permissive and asks at most for attribution. The notices
+and the full texts are in `licenses/NOTICE.md`.

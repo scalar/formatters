@@ -1,398 +1,197 @@
-// Imports the wired entry point rather than `createFormat`, because `format`
-// bound to the on-disk artifact is what a Node consumer actually gets.
-import { createBootVm } from './boot-vm'
-import { compileArtifact, compileRbcopArtifact } from './compile-artifact'
+import { nodeArtifact } from './compile-artifact'
 import { createFormat } from './format'
+// The wired entry point, because `format` bound to the on-disk artifact is what
+// a Node consumer actually gets. `createFormat` is used directly only where a
+// test needs a formatter nothing else has booted.
 import { format, formatSync, init } from './index'
 import { createRbcop } from './rbcop'
 import type { FormatOptions } from './types'
-import { beforeAll, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 
 /**
- * Generous, because this decompresses and compiles two wasm artifacts before
- * it boots anything.
+ * Inputs that between them reach most of what the pass does: indentation,
+ * blank lines, spacing, alignment of wrapped calls and chains, heredocs,
+ * multi-byte text, and lines long enough for Layout/LineLength to break.
  */
-const WARMUP_TIMEOUT_MS = 120_000
+const SAMPLES: Record<string, string> = {
+  'class body': 'class A\n  def initialize(b)\n@b=b\n  end\nend',
+  'attribute accessor then method': 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n',
+  'guard clause': 'def call(user)\n  return unless user\n  user.name\nend\n',
+  'spacing inside a block and a hash': 'x=[1,2,3].map{|n| n*2}\ny={a:1,b:2}\n',
+  'wrapped arguments': 'register(a_reasonably_long_argument,\n        another_long_argument,\n    and_a_third)\n',
+  'wrapped chain': 'result = some_object\n  .method_one\n      .method_two(argument)\n',
+  heredoc: 'def usage\n  puts <<~TEXT\n    Usage: client [options]\n  TEXT\nend\n',
+  'multi-byte text': 'class A\n  LABEL = "café 🌍"\n    def x\n  1\n    end\nend\n',
+  'a long call': `result = client.request(method: :get, path: "/v1/items", query: { page: 1, per_page: 100 }, headers: { "accept" => "json" })\n`,
+}
 
-// Warmed up front rather than left to whichever test happens to run first, so
-// that the compile lands here instead of on an arbitrary test whose timeout was
-// sized for a format.
-beforeAll(async () => {
-  await init()
-}, WARMUP_TIMEOUT_MS)
+/**
+ * A Sorbet `.rbi`: `sig` blocks in both spellings and empty method bodies, in
+ * both of theirs. Nothing about it needs special handling - it is Ruby, and the
+ * pass treats it as Ruby - which is the claim the tests below hold.
+ */
+const RBI = `# typed: strict
+class Client
+  extend T::Sig
+  sig { params(base_url: String, token: T.nilable(String)).void }
+  def initialize(base_url:, token: nil); end
+  sig do
+    params(
+      path: String,
+        query: T::Hash[Symbol, T.untyped]
+    ).returns(T.untyped)
+  end
+  def get(path, query: {})
+  end
+    sig { returns(String) }
+  def base_url; end
+end
+`
+
+const LONG_CALL = SAMPLES['a long call'] ?? ''
 
 describe('format', () => {
   it('formats a class body', async () => {
-    const out = await format('class A\n  def initialize(b)\n@b=b\n  end\nend')
-    expect(out).toBe('class A\n  def initialize(b)\n    @b = b\n  end\nend\n')
-  })
-
-  it('is idempotent', async () => {
-    const once = await format('x=[1,2,3].map{|n| n*2}')
-    expect(await format(once)).toBe(once)
-  })
-
-  // The source is written into the guest filesystem rather than interpolated
-  // into Ruby code. If it were embedded in a double-quoted Ruby string, #{...}
-  // would be evaluated by the VM - JSON escaping does not escape '#'.
-  it('does not evaluate #{} interpolation in the input', async () => {
-    const out = await format('puts "hi #{name}"')
-    expect(out).toMatch(/#\{name\}/)
-  })
-
-  it('does not evaluate a command-substitution attempt', async () => {
-    const out = await format('x = "#{`echo pwned`}"')
-    expect(out).toMatch(/echo pwned/)
-  })
-
-  it('preserves comments', async () => {
-    const out = await format('# leading comment\nclass A # trailing\nend')
-    expect(out).toMatch(/# leading comment/)
-    expect(out).toMatch(/# trailing/)
-  })
-
-  it('respects printWidth', async () => {
-    const source = 'foo(aaaaaaaaaa, bbbbbbbbbb, cccccccccc, dddddddddd, eeeeeeeeee)'
-    expect((await format(source, { printWidth: 100 })).trim()).toBe(source)
-    expect((await format(source, { printWidth: 20 })).split('\n').length).toBeGreaterThan(2)
-  })
-
-  // printWidth reaches Ruby by string interpolation, and the types only bind
-  // TypeScript callers - a JavaScript caller can pass anything at all.
-  it('rejects a printWidth that is not a positive integer', async () => {
-    const injected = { printWidth: '80; system("echo pwned")' } as unknown as FormatOptions
-    expect(format('a=1', injected)).rejects.toThrow(TypeError)
-    expect(format('a=1', { printWidth: 0 })).rejects.toThrow(TypeError)
-    expect(format('a=1', { printWidth: Number.NaN })).rejects.toThrow(TypeError)
-  })
-
-  it('handles UTF-8 without corrupting bytes', async () => {
-    const out = await format('x = "héllo wörld 🌍"')
-    expect(out).toMatch(/héllo wörld 🌍/)
-  })
-
-  it('reuses one VM across calls', async () => {
-    const [a, b] = await Promise.all([format('a=1'), format('b=2')])
-    expect(a).toBe('a = 1\n')
-    expect(b).toBe('b = 2\n')
-  })
-
-  it('rejects invalid syntax', async () => {
-    expect(format('def broken(')).rejects.toThrow()
-  })
-
-  // Stock syntax_tree 6.3.0 drops the `then` here and hands back source Ruby
-  // cannot parse. These three cover the shapes that reach it - an alternative,
-  // a hash pattern it unwraps, and one where the endless range is not last -
-  // because each one arrives at the trailing `..` by a different route.
-  it('keeps then when an alternative pattern ends in an endless range', async () => {
-    const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n', { rubocop: false })
-    expect(out).toBe('case s\nin 300.. | 400.. then\n  a\nend\n')
-  })
-
-  it('keeps then when unwrapping a hash pattern leaves a trailing endless range', async () => {
-    const out = await format('case s\nin { status: 400.. } then\n  a\nend\n', { rubocop: false })
-    expect(out).toBe('case s\nin status: 400.. then\n  a\nend\n')
-  })
-
-  it('omits then when the endless range is not the last thing in the pattern', async () => {
-    const out = await format('case s\nin { status: 400.., body: String } then\n  a\nend\n', { rubocop: false })
-    expect(out).toBe('case s\nin { status: 400.., body: String }\n  a\nend\n')
-  })
-
-  // A string that happens to end in dots is not an endless range. Deciding on
-  // the rendered pattern rather than on its node types is what keeps this from
-  // growing a stray `then`.
-  it('does not add then for a literal that merely ends in dots', async () => {
-    const out = await format('case s\nin { m: "ends.." } then\n  a\nend\n', { rubocop: false })
-    expect(out).toBe('case s\nin m: "ends.."\n  a\nend\n')
-  })
-
-  // Every case/in shape above is only interesting because the output has to be
-  // parseable, so assert that directly on the one that used to break.
-  it('returns Ruby that parses for endless range patterns', async () => {
-    const out = await format('case s\nin 300.. | 400.. then\n  a\nend\n', { rubocop: false })
-    expect(format(out, { rubocop: false })).resolves.toBe(out)
-  })
-
-  // A guard cannot be fixed with `then` - the guard already sits where `then`
-  // would go, and `in 400.. then if g` is not Ruby. The parentheses the author
-  // wrote are the only legal spelling, and syntax_tree drops them: the clause
-  // reaches the formatter as an `IfNode` with no record that they were there.
-  //
-  // Each of these arrives at a trailing `..` by a different route, and the last
-  // two are the ones plain parentheses would not have fixed on their own - a
-  // bare hash pattern has to keep its braces inside them.
-  const GUARDED: Record<string, [source: string, expected: string]> = {
-    'a bare endless range': ['case s\nin (400..) if g\n  a\nend\n', 'case s\nin (400..) if g\n  a\nend\n'],
-    'an unless guard': ['case s\nin (400..) unless g\n  a\nend\n', 'case s\nin (400..) unless g\n  a\nend\n'],
-    'an alternative': ['case s\nin Foo | (500..) if g\n  a\nend\n', 'case s\nin (Foo | 500..) if g\n  a\nend\n'],
-    'a hash pattern': ['case s\nin {x: (500..)} if g\n  a\nend\n', 'case s\nin ({ x: 500.. }) if g\n  a\nend\n'],
-    'a bare double splat': ['case s\nin {**} if g\n  a\nend\n', 'case s\nin ({ ** }) if g\n  a\nend\n'],
-  }
-
-  for (const [shape, [source, expected]] of Object.entries(GUARDED)) {
-    it(`keeps the parentheses a guarded clause needs around ${shape}`, async () => {
-      const out = await format(source, { rubocop: false })
-
-      expect(out).toBe(expected)
-      // Re-formatting is the real assertion: the VM re-parses before it returns,
-      // so a second pass that comes back unchanged is the output parsing.
-      expect(await format(out, { rubocop: false })).toBe(out)
-    })
-  }
-
-  // Writing `then` defensively does not survive stock syntax_tree either, since
-  // that `then` is not in the tree - so this has to come back parenthesised too.
-  it('handles a guarded clause that already carries a redundant then', async () => {
-    const out = await format('case s\nin (400..) if g then\n  a\nend\n', { rubocop: false })
-
-    expect(out).toBe('case s\nin (400..) if g\n  a\nend\n')
-    expect(await format(out, { rubocop: false })).toBe(out)
-  })
-
-  // A guarded clause whose pattern closes itself needs nothing added, and adding
-  // parentheses anyway would be churn on every file that has one.
-  it('leaves a guarded clause alone when the pattern terminates itself', async () => {
-    const out = await format('case s\nin [1, (500..)] if g\n  a\nend\n', { rubocop: false })
-
-    expect(out).toBe('case s\nin [1, 500..] if g\n  a\nend\n')
-  })
-
-  // stock syntax_tree prints this ` then` inside the braces - `in { a: 1, ** then }`
-  // - which Ruby rejects with "unexpected 'then', expecting '}'". The braces
-  // already do the job the `then` was there for, so it is dropped rather than
-  // moved outside them.
-  it('does not print then inside a hash pattern that has braces', async () => {
-    const out = await format('case r\nin {a: 1, **}\n  x\nend\n', { rubocop: false })
-
-    expect(out).toBe('case r\nin { a: 1, ** }\n  x\nend\n')
-    expect(await format(out, { rubocop: false })).toBe(out)
-  })
-
-  // The one rendering with no braces to close it. Without `then`, `x` on the
-  // next line is read as the splat's name and the clause body silently empties.
-  it('keeps then after a bare double splat that prints without braces', async () => {
-    const out = await format('case r\nin {**}\n  x\nend\n', { rubocop: false })
-
-    expect(out).toBe('case r\nin ** then\n  x\nend\n')
-  })
-
-  // An exponent is an `Op` named `:**` that nothing else consumes, so it sits in
-  // syntax_tree's token list until a later hash pattern's unbounded reverse
-  // search adopts it as a double splat that was never written. `n ** 2` avoids
-  // it, but syntax_tree normalises that back to `n**2`, so it returns next run.
-  const STRAY_SPLAT: Record<string, [source: string, expected: string]> = {
-    'a two-key pattern': [
-      'x = n**2\ncase r\nin {a: 1, b: 2}\n  y\nend\n',
-      'x = n**2\ncase r\nin { a: 1, b: 2 }\n  y\nend\n',
-    ],
-    'a single-key pattern': ['x = n**2\ncase r\nin {a: 1}\n  y\nend\n', 'x = n**2\ncase r\nin a: 1\n  y\nend\n'],
-    'a constant pattern': ['x = n**2\ncase r\nin Foo[a: 1]\n  y\nend\n', 'x = n**2\ncase r\nin Foo[a: 1]\n  y\nend\n'],
-    // `in {}` matches only an empty hash and `in **` matches any hash at all, so
-    // this one parsed fine and meant something else - the worst of the family.
-    'an empty pattern': ['x = n**2\ncase r\nin {}\n  y\nend\n', 'x = n**2\ncase r\nin {}\n  y\nend\n'],
-  }
-
-  for (const [shape, [source, expected]] of Object.entries(STRAY_SPLAT)) {
-    it(`does not adopt an earlier exponent as the double splat of ${shape}`, async () => {
-      expect(await format(source, { rubocop: false })).toBe(expected)
-    })
-  }
-
-  // The same search, from the other direction: here the stray `**` is inside the
-  // pattern rather than before it, and it is refused for the same reason - it
-  // starts before the pattern's last keyword ends.
-  it('does not adopt a pin expression exponent as the double splat', async () => {
-    const out = await format('case r\nin {a: ^(n**2), b: 2}\n  y\nend\n', { rubocop: false })
-
-    expect(out).toBe('case r\nin { a: ^(n**2), b: 2 }\n  y\nend\n')
-    expect(await format(out, { rubocop: false })).toBe(out)
-  })
-
-  // The bound has to leave the genuine article alone, whichever spelling it is
-  // in and whether or not there is an exponent in the file to confuse it with.
-  it('still finds the double splat a pattern really has', async () => {
-    expect(await format('x = n**2\ncase r\nin {a: 1, **}\n  y\nend\n', { rubocop: false })).toBe(
-      'x = n**2\ncase r\nin { a: 1, ** }\n  y\nend\n',
-    )
-    expect(await format('case r\nin {a: 1, **rest}\n  y\nend\n', { rubocop: false })).toBe(
-      'case r\nin { a: 1, **rest }\n  y\nend\n',
-    )
-    expect(await format('case r\nin {a: 1, **nil}\n  y\nend\n', { rubocop: false })).toBe(
-      'case r\nin { a: 1, **nil }\n  y\nend\n',
+    expect(await format('class A\n  def initialize(b)\n@b=b\n  end\nend')).toBe(
+      'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
     )
   })
 
-  // Layout/EmptyLinesAroundAttributeAccessor and Layout/EmptyLineBetweenDefs.
-  // syntax_tree does not insert blank lines at all, so these are corrections it
-  // could never make on its own - which makes this input a clean probe for
-  // whether the RuboCop pass ran.
-  const NEEDS_RUBOCOP = 'class Client\n  attr_reader :base_url\n  def to_s\n    @base_url\n  end\nend\n'
-  const AFTER_RUBOCOP = 'class Client\n  attr_reader :base_url\n\n  def to_s\n    @base_url\n  end\nend\n'
-
-  // The default, and the reason the default is what it is: syntax_tree alone
-  // returns this input unchanged, and RuboCop would reject it.
-  it('runs the rubocop pass when no option is given', async () => {
-    expect(await format(NEEDS_RUBOCOP)).toBe(AFTER_RUBOCOP)
+  // Layout/EmptyLineAfterGuardClause and Layout/EmptyLinesAroundAttributeAccessor:
+  // blank lines are the clearest sign that RuboCop itself ran.
+  it('inserts the blank lines RuboCop wants', async () => {
+    expect(await format(SAMPLES['guard clause'] ?? '')).toBe(
+      'def call(user)\n  return unless user\n\n  user.name\nend\n',
+    )
+    expect(await format(SAMPLES['attribute accessor then method'] ?? '')).toBe(
+      'class Client\n  attr_reader :base_url\n\n  def to_s\n    @base_url\n  end\nend\n',
+    )
   })
 
-  it('runs it when asked for explicitly', async () => {
-    expect(await format(NEEDS_RUBOCOP, { rubocop: true })).toBe(AFTER_RUBOCOP)
+  // The two entry points run the same code once booted, so this is the whole
+  // contract between them, held over every sample and both widths.
+  it('produces the same bytes from format and formatSync', async () => {
+    for (const options of [{}, { printWidth: 60 }] satisfies FormatOptions[]) {
+      for (const source of [...Object.values(SAMPLES), RBI]) {
+        expect(formatSync(source, options)).toBe(await format(source, options))
+      }
+    }
   })
 
-  // The escape hatch, for callers who want syntax_tree on its own and none of
-  // what RuboCop costs.
-  it('skips the pass when opted out, leaving syntax_tree alone', async () => {
-    expect(await format(NEEDS_RUBOCOP, { rubocop: false })).toBe(NEEDS_RUBOCOP)
+  // RuboCop corrects in a loop until nothing changes, so what comes out is
+  // already a fixed point. A consumer formatting on save depends on that.
+  it('leaves its own output unchanged on a second pass', async () => {
+    for (const options of [{}, { printWidth: 60 }, { printWidth: 40 }] satisfies FormatOptions[]) {
+      for (const source of [...Object.values(SAMPLES), RBI]) {
+        const once = await format(source, options)
+        expect(await format(once, options)).toBe(once)
+      }
+    }
   })
 
-  // RuboCop's Style/MultilineInPatternThen removes the `then` a pattern ending in
-  // an endless range cannot do without, and the result does not parse - the next
-  // line is swallowed into the range. It is a Style cop and this pass is
-  // `--only Layout`, so it never runs, but the two tools now ship together and
-  // that is worth holding in place. See the README for the `.rubocop.yml` entry a
-  // consumer running a full `rubocop -a` afterwards wants.
-  it('leaves the mandatory then alone when the rubocop pass runs', async () => {
-    const source = 'case status\nin 500.. then\n  retry_request\nend\n'
-
-    expect(await format(source)).toBe(source)
+  // What this package does not do, held in place so that nobody mistakes it
+  // for a reprinter: RuboCop corrects Layout within the lines it is handed.
+  it('does not reprint one-line definitions into one statement per line', async () => {
+    expect(await format('def x; a; b; end\n')).toBe('def x; a; b; end\n')
   })
 
-  // Layout/EmptyLineAfterGuardClause.
-  it('adds a blank line after a guard clause', async () => {
-    const source = 'def call(user)\n  return unless user\n  user.name\nend\n'
-
-    expect(await format(source)).toBe('def call(user)\n  return unless user\n\n  user.name\nend\n')
+  it('rejects unparseable input rather than returning it', async () => {
+    await expect(format('def broken(')).rejects.toThrow(/not valid Ruby.*line 1/)
+    expect(() => formatSync('class A\n  def x\nend')).toThrow(/not valid Ruby/)
   })
 
-  // Layout/MultilineMethodCallIndentation - the disagreement that accounts for
-  // most of what syntax_tree alone leaves behind. syntax_tree indents the
-  // continuation of a broken chain; RuboCop's default aligns it.
-  it('re-indents a wrapped method chain the way rubocop wants it', async () => {
+  // Native RuboCop 1.92.2 reports "Infinite loop detected" on exactly this
+  // source and config: tab indentation and separator-aligned hashes, broken at
+  // 20 columns, never stop rearranging each other. The pass gives up the same
+  // way, and nothing half-corrected is returned.
+  it('rejects a correction that never settles', async () => {
     const source =
-      'result = some_object.method_one.method_two(argument_one, argument_two).method_three(argument_four)\n'
+      'class Client\n  def initialize(base_url:, token: nil, timeout: 30, retries: 3, logger: nil)\n' +
+      '    @opts = { timeout: timeout, retries: retries, logger: logger, headers: { "a" => 1, "bb" => 2 } }\n' +
+      '  end\n  def call(path, params = {})\n    foo(aaaa,\n      bbbb, cccc)\n    x = if value\n    end\n  end\nend'
+    const options: FormatOptions = {
+      printWidth: 20,
+      rubocopConfig: {
+        'Layout/HashAlignment': { EnforcedHashRocketStyle: 'key', EnforcedColonStyle: 'separator' },
+        'Layout/IndentationStyle': { EnforcedStyle: 'tabs' },
+        'Layout/MultilineHashKeyLineBreaks': { Enabled: true },
+      },
+    }
 
-    expect(await format(source)).toBe(
-      'result =\n  some_object\n  .method_one\n  .method_two(argument_one, argument_two)\n  .method_three(argument_four)\n',
+    await expect(format(source, options)).rejects.toThrow(/could not settle.*Infinite loop detected/)
+    expect(() => formatSync(source, options)).toThrow(/could not settle/)
+  })
+
+  // At RuboCop's default of 120 the call is broken once; at 80 it is broken
+  // earlier. Both breaks are at the argument list, the only place the cop can.
+  it('maps printWidth to Layout/LineLength', async () => {
+    expect(await format(LONG_CALL)).toBe(
+      'result = client.request(method: :get, path: "/v1/items", query: { page: 1, per_page: 100 },\n' +
+        '                        headers: { "accept" => "json" })\n',
+    )
+    expect(await format(LONG_CALL, { printWidth: 80 })).toBe(
+      'result = client.request(method: :get, path: "/v1/items",\n' +
+        '                        query: { page: 1, per_page: 100 }, headers: { "accept" => "json" })\n',
     )
   })
 
-  // RuboCop 1.84.1 through 1.91 flattened a chain like this against its
-  // receiver, because the cop mistook the chain inside the lambda for the value
-  // of the enclosing `run:` pair (rubocop/rubocop#15761). This package carried
-  // a patch for it until the pass moved to RuboCop 1.92.2's behaviour, which
-  // has the fix; test/rubocop-conformance.test.ts holds the native binary to
-  // the same bytes.
-  it('keeps a wrapped chain indented inside a block that is a hash value', async () => {
-    const source =
-      'CASES = [\n  {\n    label: "all params",\n    run: -> do\n      client.beta.messages.batches.results_streaming("message_batch_id", {betas: ["beta"]}).each { |_event| break }\n    end\n  }\n]\n'
+  it('lets a caller Layout/LineLength entry override printWidth', async () => {
+    const options = { printWidth: 80, rubocopConfig: { 'Layout/LineLength': { Max: 200 } } }
 
-    expect(await format(source)).toBe(
+    expect(await format(LONG_CALL, options)).toBe(LONG_CALL)
+  })
+
+  // The cop's autocorrect breaks argument lists and collection literals and
+  // nothing else, so a line with neither stays as long as it was.
+  it('leaves a long string literal long', async () => {
+    const source = `MESSAGE = "${'x'.repeat(150)}"\n`
+
+    expect(await format(source, { printWidth: 80 })).toBe(source)
+  })
+
+  it('formats an .rbi like any other Ruby', async () => {
+    expect(await format(RBI)).toBe(
       [
-        'CASES = [',
-        '  {',
-        '    label: "all params",',
-        '    run: -> do',
-        '      client',
-        '        .beta',
-        '        .messages',
-        '        .batches',
-        '        .results_streaming("message_batch_id", { betas: ["beta"] })',
-        '        .each { |_event| break }',
-        '    end',
-        '  }',
-        ']',
+        '# typed: strict',
+        '',
+        'class Client',
+        '  extend T::Sig',
+        '  sig { params(base_url: String, token: T.nilable(String)).void }',
+        '  def initialize(base_url:, token: nil); end',
+        '  sig do',
+        '    params(',
+        '      path: String,',
+        '      query: T::Hash[Symbol, T.untyped]',
+        '    ).returns(T.untyped)',
+        '  end',
+        '  def get(path, query: {})',
+        '  end',
+        '  sig { returns(String) }',
+        '  def base_url; end',
+        'end',
         '',
       ].join('\n'),
     )
   })
 
-  // The same walk leaves a `proc` block and a `begin` body the same way, so
-  // each gets the indent syntax_tree gave it too.
-  it('keeps a wrapped chain indented inside any body that is a hash value', async () => {
-    const block =
-      'ROUTES = { index: proc { |request| request.params.fetch(:page).to_i.clamp(1, 100).then { |page| paginate(page) } } }\n'
-    const kwbegin =
-      'CONFIG = { value: begin\n  settings.fetch(:connection).fetch(:retries).fetch(:backoff).fetch(:multiplier)\nend }\n'
+  // `sig` before a `def` is ordinary Ruby to RuboCop, so it adds no blank line
+  // between the two, and an empty body on one line stays on one line.
+  it('keeps sig blocks against their methods and empty bodies on one line', async () => {
+    const source = 'class A\n  sig { void }\n  def x; end\n\n  sig { void }\n  def y; end\nend\n'
 
-    expect(await format(block)).toBe(
-      'ROUTES = {\n  index:\n    proc do |request|\n      request\n        .params\n        .fetch(:page)\n        .to_i\n        .clamp(1, 100)\n        .then { |page| paginate(page) }\n    end\n}\n',
-    )
-    expect(await format(kwbegin)).toBe(
-      'CONFIG = {\n  value:\n    begin\n      settings\n        .fetch(:connection)\n        .fetch(:retries)\n        .fetch(:backoff)\n        .fetch(:multiplier)\n    end\n}\n',
-    )
+    expect(await format(source)).toBe(source)
   })
 
-  // What that fix must not undo: a chain that *is* the hash value is still
-  // aligned against its receiver.
-  it('still aligns a wrapped chain that is itself the hash value', async () => {
-    const source =
-      'CONFIG = { value: some_receiver.method_one.method_two(argument_one, argument_two).method_three(argument_four) }\n'
+  it('preserves comments and #{} interpolation as written', async () => {
+    const source = '# leading\nputs "hi #{name}" # trailing\nx = "#{`echo pwned`}"\n'
 
-    expect(await format(source)).toBe(
-      'CONFIG = {\n  value:\n    some_receiver\n    .method_one\n    .method_two(argument_one, argument_two)\n    .method_three(argument_four)\n}\n',
-    )
+    expect(await format(source)).toBe(source)
   })
 
-  // The pipeline has to reach a fixed point, or a consumer formatting on save
-  // would see the file change on every keystroke.
-  it('is idempotent', async () => {
-    const once = await format('class A\n  attr_reader :b\n  def c\n@b\n  end\nend')
-
-    expect(await format(once)).toBe(once)
+  it('handles UTF-8 without corrupting bytes', async () => {
+    expect(await format('x = "héllo wörld 🌍"\n')).toBe('x = "héllo wörld 🌍"\n')
   })
 
-  // The rbcop instance is booted once and stays. Opting out afterwards has to be
-  // unaffected by that.
-  it('honours an opt-out after a rubocop pass has run', async () => {
-    await format(NEEDS_RUBOCOP)
-
-    expect(await format(NEEDS_RUBOCOP, { rubocop: false })).toBe(NEEDS_RUBOCOP)
-  })
-
-  // printWidth belongs to syntax_tree, and RuboCop's Layout/LineLength is off so
-  // that it cannot contradict it. With the cop on at its default Max of 120,
-  // this came back rewrapped at 124 - neither the width asked for nor the cop's.
-  it('honours a printWidth above RuboCop default line length', async () => {
-    const source =
-      'result = some_object.method_one(argument_one_here, argument_two_here, argument_five).method_two(argument_three, argument_four, argument_six)\n'
-
-    expect(await format(source, { printWidth: 200 })).toBe(await format(source, { printWidth: 200, rubocop: false }))
-  })
-
-  // Two Layout offenses that syntax_tree's own output introduces, so the pass is
-  // the thing that should be clearing them. RuboCop 1.74.0 corrected neither:
-  // its Layout/SpaceInsideHashLiteralBraces did not look at hash *patterns*, and
-  // its Layout/SpaceAroundKeyword did not flag the `return(` wrapping syntax_tree
-  // emits when a `return <call>` exceeds printWidth. Both are why the bundled
-  // RuboCop moved to 1.81.6.
-  it('corrects space inside a hash pattern, not only a hash literal', async () => {
-    const config = { rubocopConfig: { 'Layout/SpaceInsideHashLiteralBraces': { EnforcedStyle: 'no_space' } } }
-
-    expect(await format('x = {a: 1, b: 2}', config)).toBe('x = {a: 1, b: 2}\n')
-    expect(await format('case r\nin {event: "error", data: String => data}\n  y\nend\n', config)).toBe(
-      'case r\nin {event: "error", data: String => data}\n  y\nend\n',
-    )
-  })
-
-  // Long enough, and deep enough, that syntax_tree has to break the call - which
-  // is what produces the `return(` this is about.
-  it('corrects the space after return in syntax_tree own wrapping', async () => {
-    const source =
-      'module M\n  class C\n    class D\n      private def f(y, val:, closing:, content_type: nil)\n' +
-      '        case val\n        in FilePart\n' +
-      '          return write_multipart_content(y, val: val.content, closing: closing, content_type: val.content_type)\n' +
-      '        end\n      end\n    end\n  end\nend\n'
-
-    const out = await format(source, { printWidth: 110 })
-
-    expect(out).toContain('return (')
-    expect(out).not.toContain('return(')
-    expect(await format(out, { printWidth: 110 })).toBe(out)
-  })
-
-  // The escape hatch, and the way to put Layout/LineLength back.
   it('merges rubocopConfig over the config this package sets', async () => {
     const source = 'class A\n  def b\n    c = 1\n    c\n  end\nend\n'
 
@@ -401,144 +200,74 @@ describe('format', () => {
     )
   })
 
-  // A caller-supplied config carries strings. Nothing in the pass evaluates
-  // Ruby any more, so this is the claim that nothing started to: the string
-  // stays a string.
-  it('does not evaluate #{} interpolation in a rubocopConfig value', async () => {
-    const source = 'x=1\n'
-
-    expect(
-      await format(source, {
-        rubocopConfig: { 'Layout/IndentationWidth': { Width: 2, Description: '#{`echo pwned`}' } },
-      }),
-    ).toBe('x = 1\n')
-  })
-})
-
-describe('formatSync', () => {
-  it('produces the same bytes as the async format', async () => {
-    const source = 'class A\n  def initialize(b)\n@b=b\n  end\nend'
-    const expected = await format(source)
-    expect(formatSync(source)).toBe(expected)
+  it('rejects a printWidth that is not a positive integer', async () => {
+    await expect(format('a=1', { printWidth: 0 })).rejects.toThrow(TypeError)
+    expect(() => formatSync('a=1', { printWidth: 2.5 })).toThrow(TypeError)
   })
 
-  it('honours the same options', async () => {
-    await init()
-    expect(formatSync('x=1', { printWidth: 100 })).toBe('x = 1\n')
+  // `rubocop: false` used to mean "the reprinter alone". There is nothing left to
+  // run without RuboCop, and returning the input would pass for formatting.
+  it('refuses the removed rubocop: false rather than returning the input', async () => {
+    const removed = { rubocop: false } as FormatOptions
+
+    await expect(format('x=1', removed)).rejects.toThrow(/`rubocop` option has been removed/)
+    expect(() => formatSync('x=1', removed)).toThrow(TypeError)
   })
 
-  it('reports a parse failure rather than returning the source unchanged', async () => {
-    await init()
-    expect(() => formatSync('def (')).toThrow()
+  // `true` is the only behaviour there is, so it is not worth breaking a caller
+  // over.
+  it('accepts rubocop: true as a no-op', async () => {
+    expect(await format('x=1', { rubocop: true } as FormatOptions)).toBe('x = 1\n')
   })
 
-  it('stays usable after a failed format', async () => {
-    await init()
-    expect(() => formatSync('def (')).toThrow()
-    expect(formatSync('class A\n  def initialize(b)\n@b=b\n  end\nend')).toBe(
-      'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
-    )
+  // ERB and remote inherit_from need a Ruby to run, and the pass has none.
+  it('reports a config the pass cannot load, and carries on after it', async () => {
+    const remote = { rubocopConfig: { inherit_from: 'https://example.com/rubocop.yml' } }
+
+    await expect(format('x = 1\n', remote)).rejects.toThrow(/only a Ruby can do/)
+    expect(await format('x=1')).toBe('x = 1\n')
   })
 
-  it('returns a string rather than a promise, which is the whole point', async () => {
-    await init()
+  // Under Node every step of booting is synchronous, so a formatter nothing has
+  // booted - no init, no format - still answers synchronously.
+  it('formats synchronously with no init at all', () => {
+    const fresh = createFormat(createRbcop(nodeArtifact))
+
+    expect(fresh.formatSync('x=1')).toBe('x = 1\n')
+  })
+
+  it('returns a string rather than a promise from formatSync', () => {
     const result = formatSync('x=1') as unknown
+
     expect(result).toBeString()
     expect(result).not.toHaveProperty('then')
   })
 
-  // The synchronous path runs the default pass and produces the same bytes as
-  // the asynchronous one, which is the whole contract: same VM, same tools.
-  it('runs the rubocop pass and produces the same bytes as format', async () => {
+  // Kept for compatibility, and only moves the cold start under Node.
+  it('treats init as optional and repeatable', async () => {
     await init()
-    const source = 'class A\n  attr_reader :b\n  def c\n@b\n  end\nend'
+    await init()
 
-    expect(formatSync(source)).toBe(await format(source))
-  })
-})
-
-describe('rubocopConfig', () => {
-  // ERB in a .rubocop.yml is rendered by running Ruby, and the pass has no Ruby
-  // to run it with. That has to be an error a caller can read, not a crash or a
-  // config silently taken literally.
-  it('reports a config the pass cannot load', async () => {
-    expect(format('x = 1\n', { rubocopConfig: { inherit_from: 'https://example.com/rubocop.yml' } })).rejects.toThrow()
+    expect(formatSync('x=1')).toBe('x = 1\n')
   })
 
-  // A bad config fails that format only, and the next one, with a good config,
-  // goes through.
-  it('stays usable after a config it could not load', async () => {
-    await format('x = 1\n', { rubocopConfig: { inherit_from: 'https://example.com/rubocop.yml' } }).catch(() => {})
-
-    expect(await format('x=1')).toBe('x = 1\n')
-  })
-})
-
-describe('a crash in the RuboCop pass', () => {
   // A config value of the wrong type panics inside rbcop - RuboCop raises a
   // TypeError at the same point - and a Rust panic traps the wasm instance. The
-  // format that hit it has to fail, and the one after it has to work, on a
-  // fresh instance.
-  const BAD = { rubocopConfig: { 'Layout/IndentationWidth': { Width: 'four' } } }
+  // format that hit it fails, and the next one works on a fresh instance,
+  // without anything having to be awaited in between.
+  it('recovers from a crash in the pass synchronously', () => {
+    const bad = { rubocopConfig: { 'Layout/IndentationWidth': { Width: 'four' } } }
+    const source = 'class A\n    def x\n  1\n end\nend\n'
 
-  it('is reported as an error', async () => {
-    expect(format('class A\n    def x\n  1\n end\nend\n', BAD)).rejects.toThrow(/crashed/)
+    expect(() => formatSync(source, bad)).toThrow(/crashed/)
+    expect(formatSync(source)).toBe('class A\n  def x\n    1\n  end\nend\n')
   })
 
-  it('does not take the next format down with it', async () => {
-    await format('class A\n    def x\n  1\n end\nend\n', BAD).catch(() => {})
+  it('recovers from a crash in the pass for format too', async () => {
+    const bad = { rubocopConfig: { 'Layout/IndentationWidth': { Width: 'four' } } }
+    const source = 'class A\n    def x\n  1\n end\nend\n'
 
-    expect(await format('class A\n    def x\n  1\n end\nend\n')).toBe('class A\n  def x\n    1\n  end\nend\n')
+    await expect(format(source, bad)).rejects.toThrow(/crashed/)
+    expect(await format(source)).toBe('class A\n  def x\n    1\n  end\nend\n')
   })
-})
-
-describe('init', () => {
-  // The check that the committed Ruby artifact is pre-initialized with
-  // syntax_tree and nothing else. RuboCop used to be baked into it; the pass is
-  // rbcop now, and a snapshot still carrying RuboCop would be ~7MB of dead Ruby
-  // heap in every install.
-  //
-  // Built on its own modules rather than the shared ones because a fresh boot is
-  // the claim: whatever the module-level VM has been through by now says
-  // nothing about what an artifact hands a caller on the first call.
-  it('boots a VM with syntax_tree and without RuboCop', async () => {
-    const vm = createBootVm(compileArtifact)
-    const own = createFormat(vm, createRbcop(compileRbcopArtifact))
-
-    await own.init()
-
-    expect(vm.peek()?.vm.eval('defined?(SyntaxTree) ? "loaded" : "missing"').toString()).toBe('loaded')
-    expect(vm.peek()?.vm.eval('defined?(RuboCop) ? "loaded" : "missing"').toString()).toBe('missing')
-
-    // A blank line RuboCop's Layout/EmptyLinesAroundAttributeAccessor inserts
-    // and syntax_tree never would, so it is the pass itself being observed and
-    // not a reprint that happens to agree.
-    expect(own.formatSync('class A\n  attr_reader :b\n  def c\n    @b\n  end\nend\n')).toBe(
-      'class A\n  attr_reader :b\n\n  def c\n    @b\n  end\nend\n',
-    )
-  }, 120_000)
-
-  // `rubocop: false` is syntax_tree on its own, and it should not pay for the
-  // module it does not use - in a browser that module is a download.
-  it('does not load rbcop for a format that does not run the pass', async () => {
-    const rbcop = createRbcop(compileRbcopArtifact)
-    const own = createFormat(createBootVm(compileArtifact), rbcop)
-
-    expect(await own.format('x=1', { rubocop: false })).toBe('x = 1\n')
-    expect(rbcop.peek()).toBeUndefined()
-
-    expect(await own.format('x=1')).toBe('x = 1\n')
-    expect(rbcop.peek()).toBeDefined()
-  }, 120_000)
-
-  // formatSync cannot instantiate, so it has to say so rather than skip the
-  // pass when rbcop has not been booted.
-  it('refuses a synchronous RuboCop pass before rbcop has booted', async () => {
-    const own = createFormat(createBootVm(compileArtifact), createRbcop(compileRbcopArtifact))
-
-    await own.format('x=1', { rubocop: false })
-
-    expect(own.formatSync('x=1', { rubocop: false })).toBe('x = 1\n')
-    expect(() => own.formatSync('x=1')).toThrow(/init\(\)/)
-  }, 120_000)
 })

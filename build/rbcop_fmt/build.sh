@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Compiles rbcop's Layout autocorrect pass to the wasm artifact shipped by
-# @scalar/ruby-fmt beside the syntax_tree one.
+# Compiles rbcop's Layout autocorrect pass to the wasm artifact @scalar/ruby-fmt
+# ships - the package's one artifact, and the whole of what it runs.
 #
-# rbcop is RuboCop 1.92.2 reimplemented in Rust on Prism. The package runs
-# syntax_tree first, to reprint, and this second, as
-# `rubocop --autocorrect --only Layout`. See SPIKE.md beside this file for how
-# the build is shaped and what was measured.
+# rbcop is RuboCop 1.92.2 reimplemented in Rust on Prism. The package is
+# `rubocop --autocorrect --only Layout` through it and nothing else. See
+# SPIKE.md beside this file for how the build is shaped and what was measured.
 #
 # Requires rustup, curl, git, node and python3. The repo's Rust toolchain, the
 # wasm target and wasi-sdk are fetched here; rbcop is cloned into ./rbcop, which
@@ -16,11 +15,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # rbcop is not on crates.io, so it is pinned by commit. It targets RuboCop
-# 1.92.2 byte for byte. The commit is on amritk/rbcop, a fork of
-# costajohnt/rbcop two commits ahead of upstream 90cfdb2: it stops the
-# Layout/Multiline*Indentation cops treating a `case/in` guard as a keyword
-# condition. Move back to upstream once that fix lands there.
-RBCOP_COMMIT="${RBCOP_COMMIT:-d15b01eeb8a50845fc80af98f07aa8d79280b3c0}"
+# 1.92.2 byte for byte. The commit is upstream's merge of #718, which stopped
+# the Layout/Multiline*Indentation cops treating a `case/in` guard as a keyword
+# condition; its tree is identical to the fork commit this build pinned before.
+RBCOP_COMMIT="${RBCOP_COMMIT:-8428f9af7b2bac706a3f87c508427ccf977ca485}"
 WASI_SDK_VERSION="${WASI_SDK_VERSION:-25}"
 
 TARGET="wasm32-wasip1"
@@ -55,7 +53,7 @@ echo "==> rbcop @ ${RBCOP_COMMIT:0:9}"
 if [ ! -d "$CHECKOUT/.git" ]; then
   mkdir -p "$CHECKOUT"
   git -C "$CHECKOUT" init -q
-  git -C "$CHECKOUT" remote add origin https://github.com/amritk/rbcop.git
+  git -C "$CHECKOUT" remote add origin https://github.com/costajohnt/rbcop.git
 fi
 if [ "$(git -C "$CHECKOUT" rev-parse HEAD 2> /dev/null)" != "$RBCOP_COMMIT" ]; then
   git -C "$CHECKOUT" fetch --depth 1 origin "$RBCOP_COMMIT"
@@ -68,7 +66,11 @@ echo "==> patching rbcop"
 # Gates rbcop's unix-only file plumbing (descriptor-relative writes, inode
 # identity, terminal size, execute bits) behind cfg(unix), and rubydex's 64-bit
 # struct-size assertions behind target_pointer_width = "64". None of it is on
-# the path a single-file Layout pass takes. See SPIKE.md.
+# the path a single-file Layout pass takes. It also carries two fixes to rbcop's
+# behaviour, each pinned by a sample in packages/ruby's conformance test:
+# Layout/MultilineOperationIndentation re-indenting the operand of `/re/ =~ x`,
+# and Layout/EmptyLineAfterGuardClause skipping `break if a; b` inside a
+# `begin ... end`. See SPIKE.md.
 git -C "$CHECKOUT" apply "$PWD/rbcop-wasm.patch"
 
 SYSROOT="$WASI_SDK/share/wasi-sysroot"
@@ -96,8 +98,8 @@ echo "==> third-party notices"
 # package name exactly what the artifact links. See the script's header.
 python3 ../licenses/collect.py entry rbcop ../../packages/ruby/licenses/NOTICE.md
 
-# Brotli, like the Ruby artifact beside it: 19MB of wasm packs to ~2.5MB, and
-# the runtime decompresses once per process.
+# Brotli: 16MB of wasm packs to ~2.2MB, and the runtime decompresses once per
+# process.
 node -e '
   const fs = require("node:fs"), zlib = require("node:zlib")
   const raw = fs.readFileSync("rbcop_fmt.wasm")

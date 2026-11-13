@@ -7,20 +7,18 @@
 // tests that re-boot per case would cost far more than they do now. Nothing ever
 // drops them, so a root `bun test` ends holding seven language runtimes at once.
 //
-// That turned out to have a cliff in it. The Ruby VM grows its linear memory by
-// ~120MB per format and only a recycle reclaims it (see packages/ruby/src/format.ts),
-// and once enough other wasm instances are resident alongside it, those growths get
-// roughly two orders of magnitude slower: packages/ruby/test/vm-recycle.test.ts runs
-// in 15s on its own and did not finish a quarter of its passes in eight minutes
-// sharing a process with the other six packages. Measured on the same checkout, the
-// whole suite is 57s split by package against 545s shared - and the shared run fails,
-// because vm-recycle's wall-clock budget fires.
+// That turned out to have a cliff in it. The Ruby package used to run a VM whose linear
+// memory grew by ~120MB per format until it was recycled, and once enough other wasm
+// instances were resident alongside it, those growths got roughly two orders of
+// magnitude slower: its recycling test ran in 15s on its own and did not finish a quarter
+// of its passes in eight minutes sharing a process with the other six packages. Measured
+// on the same checkout, the whole suite was 57s split by package against 545s shared - and
+// the shared run failed.
 //
 // The cliff is what made this present as a flake rather than a bug. No single package
-// causes it: five packages plus Ruby is fine, six is not, and dropping either php or
-// swift from the six puts it back under. So which side of the edge a run lands on
-// moves with whatever the other packages happen to allocate that day, and a change to
-// one package could - and did - break a test in another.
+// caused it, so which side of the edge a run landed on moved with whatever the other
+// packages happened to allocate that day, and a change to one package could - and did -
+// break a test in another. That VM is gone, but the lesson is not specific to it.
 //
 // Splitting by package removes the interaction rather than tuning against it. It costs
 // one bun start per package (~30ms) and no extra wasm compilation, since each artifact

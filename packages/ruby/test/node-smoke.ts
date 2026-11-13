@@ -15,26 +15,24 @@ import { test } from 'node:test'
 
 import { format, formatSync, init } from '../dist/index.js'
 
-// The default pipeline is syntax_tree *and* RuboCop, which means two wasm
-// modules - CRuby, and rbcop - and the whole premise of this file is that both
-// work with nothing installed but Node. The blank line after the guard clause is
-// the tell: only the RuboCop pass adds it.
+const SOURCE = 'def call(user)\n  return unless user\n  user.name\nend\n'
+const EXPECTED = 'def call(user)\n  return unless user\n\n  user.name\nend\n'
+
+// First, and on purpose: under Node booting is synchronous, so a fresh process
+// can format without awaiting anything at all. The blank line after the guard
+// clause is Layout/EmptyLineAfterGuardClause, so it is RuboCop's pass that ran.
+test('formats Ruby synchronously under plain Node, with no init', () => {
+  assert.equal(formatSync(SOURCE), EXPECTED)
+})
+
 test('formats Ruby under plain Node', async () => {
-  const out = await format('def call(user)\n  return unless user\n  user.name\nend\n')
-  assert.equal(out, 'def call(user)\n  return unless user\n\n  user.name\nend\n')
+  assert.equal(await format(SOURCE), EXPECTED)
 })
 
-test('formats with syntax_tree alone when opted out, under plain Node', async () => {
-  const out = await format('class A\n  def initialize(b)\n@b=b\n  end\nend', { rubocop: false })
-  assert.equal(out, 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n')
-})
-
-// The synchronous entry point matters most to callers whose seams cannot await -
-// a code generator that formats each file inside the builder that emits it.
-test('formats Ruby synchronously under plain Node, after init', async () => {
+test('accepts init as a harmless no-op under plain Node', async () => {
   await init()
   assert.equal(
-    formatSync('def call(user)\n  return unless user\n  user.name\nend\n'),
-    'def call(user)\n  return unless user\n\n  user.name\nend\n',
+    formatSync('class A\n  def initialize(b)\n@b=b\n  end\nend'),
+    'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
   )
 })

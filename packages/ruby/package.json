@@ -1,15 +1,15 @@
 {
   "name": "@scalar/ruby-fmt",
   "version": "0.8.2",
-  "description": "Ruby formatter (syntax_tree on CRuby/wasm, then RuboCop Layout via rbcop/wasm) - runs on plain Node, no Ruby install",
+  "description": "Ruby formatter (RuboCop's Layout autocorrect via rbcop on wasm) - runs on plain Node, no Ruby install",
   "keywords": [
     "ruby",
     "formatter",
-    "syntax_tree",
     "rubocop",
     "rbcop",
+    "layout",
     "wasm",
-    "prettier",
+    "webassembly",
     "typescript"
   ],
   "homepage": "https://github.com/scalar/formatters/tree/main/packages/ruby#readme",
@@ -37,12 +37,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./wasm": "./ruby_fmt.wasm.br",
+    "./wasm": "./rbcop_fmt.wasm.br",
     "./rbcop-wasm": "./rbcop_fmt.wasm.br"
   },
   "files": [
     "dist",
-    "ruby_fmt.wasm.br",
     "rbcop_fmt.wasm.br",
     "LICENSE",
     "licenses"
@@ -56,12 +55,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json -f",
     "types:check": "tsc -p tsconfig.json --noEmit",
-    "wasm:build": "../../build/ruby_fmt/build.sh && ../../build/rbcop_fmt/build.sh",
+    "wasm:build": "../../build/rbcop_fmt/build.sh",
     "prepack": "node ../../scripts/check-publishable.ts"
   },
   "dependencies": {
     "@bjorn3/browser_wasi_shim": "^0.4.2",
-    "@ruby/wasm-wasi": "^2.10.1",
     "brotli-dec-wasm": "^2.3.2"
   }
 }

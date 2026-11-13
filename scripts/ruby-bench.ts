@@ -1,41 +1,31 @@
 // Measures what @scalar/ruby-fmt costs, so a change to it can be argued with
 // numbers instead of adjectives.
 //
-// Ruby is the slowest package here to get going, and by some distance: the
-// artifact is the largest in the repo, and instantiating a VM from it is not
-// free. What it no longer pays for is loading gems - the artifact is a wizer
-// snapshot of a VM with syntax_tree already required into it (see
-// build/ruby_fmt/preinit.ts), so neither a cold start nor one of the recycles
-// formatting's linear-memory leak forces reads a gem file. The artifact compile
-// is the one part a recycle does not repeat either, because the compiled module
-// is cached for the life of the process.
+// Two measurements, each in its own process, because booting is once per
+// process and whichever runs second would otherwise be timed warm:
 //
-// Three measurements, each in its own process, because they interfere - booting
-// is once per process and formatting leaks, so whatever runs second is timed
-// against a VM the first thing already degraded:
-//
-//   boot     what a cold process pays, with RuboCop and without
-//   recycle  what dropping and re-booting the VM costs, timed directly
+//   boot     what a cold process pays before its first format
 //   corpus   a whole tree formatted in one process
 //
 // A corpus run can also write a hash per formatted file. Snapshot before a
 // rebuild, snapshot after, `--compare` the two - `--only corpus` on both, since
-// the comparison needs neither of the other measurements. That is the corpus
+// the comparison does not need the boot measurement. That is the corpus
 // comparison CONTRIBUTING.md asks for, and `ruby-bench-compare.ts` is what
 // refuses to call it a pass when it has not earned one.
 //
-// `--help` prints the invocations. Bring your own corpus - several MB of real,
-// unformatted Ruby in a mix of file sizes. Generated SDK output is ideal because
-// that is what consumers put through this package, but any large Ruby codebase
-// measures the same thing.
+// `--help` prints the invocations. Bring your own corpus - several MB of real
+// Ruby in a mix of file sizes. Generated SDK output is ideal because that is
+// what consumers put through this package, but any large Ruby codebase measures
+// the same thing.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { accessSync, constants, existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 
+import { DEFAULT_PRINT_WIDTH } from '../packages/ruby/src/rubocop'
 import { type Snapshot, compareSnapshots, isRecordOfStrings } from './ruby-bench-compare'
-import type { BenchRequest, BenchResult, BootResult, CorpusResult, RecycleResult } from './ruby-bench-measure'
+import type { BenchRequest, BenchResult, BootResult, CorpusResult } from './ruby-bench-measure'
 
 /**
  * The result that goes with a request, so a caller does not have to assert one.
@@ -52,13 +42,13 @@ type ResultFor<R extends BenchRequest> = Extract<BenchResult, { measurement: R['
 type Options = {
   corpus: string | undefined
   only: string[]
-  rubocop: boolean
+  printWidth: number
   limit: number | null
   snapshot: string | undefined
 }
 
 /** Every measurement, in the order the report prints them. */
-const MEASUREMENTS = ['boot', 'recycle', 'corpus'] as const
+const MEASUREMENTS = ['boot', 'corpus'] as const
 
 /**
  * Flags this accepts, and whether each takes a value. Anything else on the
@@ -71,39 +61,29 @@ const FLAGS = new Map<string, 'value' | 'pair' | 'switch'>([
   ['files', 'value'],
   ['snapshot', 'value'],
   ['compare', 'pair'],
-  ['no-rubocop', 'switch'],
+  ['print-width', 'value'],
   ['help', 'switch'],
 ])
 
 /** How many following arguments each kind of flag consumes. */
 const VALUES_TAKEN = { switch: 0, value: 1, pair: 2 }
 
-/**
- * How many recycles the recycle measurement times.
- *
- * Three is enough for a median to mean something and short enough that the
- * measurement stays short - every round grows the VM past the recycle ceiling,
- * drops it and boots a new one from the cached module.
- */
-const RECYCLE_ROUNDS = 3
-
 const USAGE = `Usage:
-  bun run ruby:bench --corpus <dir> [--only boot,recycle,corpus] [--no-rubocop] [--files <n>] [--snapshot <file>]
-  bun run ruby:bench --only boot,recycle
+  bun run ruby:bench --corpus <dir> [--only boot,corpus] [--print-width <n>] [--files <n>] [--snapshot <file>]
+  bun run ruby:bench --only boot
   bun run ruby:bench --only corpus --corpus <dir> --snapshot before.json
   bun run ruby:bench --compare <before.json> <after.json>
 
-  --corpus <dir>      directory of .rb files to format (required by the corpus measurement)
+  --corpus <dir>      directory of .rb and .rbi files to format (required by the corpus measurement)
   --only <list>       run a subset of ${MEASUREMENTS.join(',')}
-  --no-rubocop        run the recycle and corpus measurements with { rubocop: false }
-                      (the boot measurement always reports both, since that is its point)
+  --print-width <n>   the printWidth the corpus is formatted at (default ${DEFAULT_PRINT_WIDTH})
   --files <n>         format only the first n files of the corpus, for a quick check
   --snapshot <file>   write the corpus run's output hashes here
   --compare <a> <b>   diff two snapshots and exit non-zero if any file differs`
 
 const MEASURE = path.join(import.meta.dir, 'ruby-bench-measure.ts')
 
-const ARTIFACT = path.join(import.meta.dir, '..', 'packages', 'ruby', 'ruby_fmt.wasm.br')
+const ARTIFACT = path.join(import.meta.dir, '..', 'packages', 'ruby', 'rbcop_fmt.wasm.br')
 
 /**
  * Prints why this cannot continue, and stops.
@@ -171,7 +151,7 @@ const parseArgs = (args: string[]): { compare: [string, string] | undefined; opt
 
     return {
       compare: [first, second],
-      options: { corpus: undefined, only: [], rubocop: true, limit: null, snapshot: undefined },
+      options: { corpus: undefined, only: [], printWidth: DEFAULT_PRINT_WIDTH, limit: null, snapshot: undefined },
     }
   }
 
@@ -189,9 +169,14 @@ const parseArgs = (args: string[]): { compare: [string, string] | undefined; opt
   const limit = requested === undefined ? null : Number(requested)
   if (limit !== null && limit < 1) fail('--files takes a number of at least 1')
 
+  const width = values.get('print-width')?.[0]
+  if (width !== undefined && !/^[0-9]+$/.test(width)) fail(`--print-width takes a whole number, received "${width}"`)
+  const printWidth = width === undefined ? DEFAULT_PRINT_WIDTH : Number(width)
+  if (printWidth < 1) fail('--print-width takes a number of at least 1')
+
   const corpus = values.get('corpus')?.[0]
   if (only.includes('corpus') && !corpus) {
-    fail('--corpus <dir> is required by the corpus measurement. Use --only boot,recycle to skip it.')
+    fail('--corpus <dir> is required by the corpus measurement. Use --only boot to skip it.')
   }
 
   // Checked here rather than left to the child, which would otherwise report a
@@ -204,17 +189,10 @@ const parseArgs = (args: string[]): { compare: [string, string] | undefined; opt
   // Flags that only the corpus measurement reads are refused when it is not
   // going to run, rather than silently dropped.
   const snapshot = values.get('snapshot')?.[0]
-  for (const name of ['snapshot', 'corpus', 'files']) {
+  for (const name of ['snapshot', 'corpus', 'files', 'print-width']) {
     if (values.has(name) && !only.includes('corpus')) {
       fail(`--${name} is only read by the corpus measurement, which --only did not select`)
     }
-  }
-
-  // The boot measurement reports both columns whatever this says, so on its own
-  // the flag would quietly do nothing - and quietly doing nothing is the thing
-  // this parser exists to stop.
-  if (values.has('no-rubocop') && !only.includes('corpus') && !only.includes('recycle')) {
-    fail('--no-rubocop has no effect on the boot measurement, which always reports both columns')
   }
 
   return {
@@ -225,7 +203,7 @@ const parseArgs = (args: string[]): { compare: [string, string] | undefined; opt
       // two processes.
       corpus: corpus === undefined ? undefined : path.resolve(corpus),
       only,
-      rubocop: !values.has('no-rubocop'),
+      printWidth,
       limit,
       snapshot,
     },
@@ -274,7 +252,7 @@ const ensureWritable = (target: string): void => {
  */
 const readArtifact = async (): Promise<string> => {
   if (!existsSync(ARTIFACT)) {
-    fail(`${ARTIFACT} is missing. It is committed to the repository; build/ruby_fmt/build.sh regenerates it.`)
+    fail(`${ARTIFACT} is missing. It is committed to the repository; build/rbcop_fmt/build.sh regenerates it.`)
   }
 
   return createHash('sha256')
@@ -319,17 +297,9 @@ const isBenchResult = (value: unknown): value is BenchResult => {
     return areNumbers(fields, ['compileMs', 'bootMs', 'firstFormatMs', 'warmFormatMs', 'coldTotalMs'])
   }
 
-  if (fields['measurement'] === 'recycle') {
-    return (
-      typeof fields['rubocop'] === 'boolean' &&
-      areNumbers(fields, ['rounds', 'warmFormatMs', 'recycleMs', 'reloadMs', 'costMs', 'outgoingMemoryBytes'])
-    )
-  }
-
   return (
     fields['measurement'] === 'corpus' &&
-    typeof fields['rubocop'] === 'boolean' &&
-    areNumbers(fields, ['files', 'bytes', 'totalMs', 'msPerKb', 'recycles', 'largestVmMemoryBytes']) &&
+    areNumbers(fields, ['printWidth', 'files', 'bytes', 'totalMs', 'msPerKb', 'medianMs', 'peakRssBytes']) &&
     isFailureList(fields['failures']) &&
     // Checked with the predicate the snapshot reader uses, because this map is
     // what a snapshot's `files` is written from.
@@ -393,68 +363,32 @@ const measure = <R extends BenchRequest>(request: R): ResultFor<R> => {
   return parsed as ResultFor<R>
 }
 
-const reportBoot = (withRuboCop: BootResult, withoutRuboCop: BootResult): void => {
-  console.log('\n=== cold start, one fresh process per column ===\n')
-  row('', 'rubocop', 'no rubocop')
-  row('artifact compile', ms(withRuboCop.compileMs), ms(withoutRuboCop.compileMs))
-  row('VM boot', ms(withRuboCop.bootMs), ms(withoutRuboCop.bootMs))
-  row('first format', ms(withRuboCop.firstFormatMs), ms(withoutRuboCop.firstFormatMs))
-  row('cold total', ms(withRuboCop.coldTotalMs), ms(withoutRuboCop.coldTotalMs))
-  row('warm format', ms(withRuboCop.warmFormatMs), ms(withoutRuboCop.warmFormatMs))
+const reportBoot = (result: BootResult): void => {
+  console.log('\n=== cold start, one fresh process ===\n')
+  row('artifact compile', ms(result.compileMs))
+  row('rbcop instantiate', ms(result.bootMs))
+  row('first format', ms(result.firstFormatMs))
+  row('cold total', ms(result.coldTotalMs))
+  row('warm format', ms(result.warmFormatMs))
 
-  // The `first format` cells are subtracted rather than the totals: the compile
-  // and boot rows differ by the rbcop module, which has rows of its own above.
-  // What is left is the work only a RuboCop run does on its first call: merging
-  // the config over RuboCop's own `default.yml`, plus the pass over the snippet.
-  console.log(`\nRuboCop's share of the first format: ${ms(withRuboCop.firstFormatMs - withoutRuboCop.firstFormatMs)}`)
+  console.log("\nthe first format carries the config merge over RuboCop's default.yml")
   console.log('cold totals are measured with the artifact already in the page cache')
 }
 
-const reportRecycle = (result: RecycleResult): void => {
-  console.log(`\n=== VM recycle, RuboCop ${result.rubocop ? 'on' : 'off'} ===\n`)
-  row('recycle (boot)', ms(result.recycleMs))
-  row('first format after', ms(result.reloadMs))
-  row('warm format', ms(result.warmFormatMs))
-  row('cost per recycle', ms(result.costMs))
-  console.log(
-    `\nmedian of ${result.rounds} rounds, dropping a VM grown to at most ${megabytes(result.outgoingMemoryBytes)}`,
-  )
-}
-
-/**
- * Prints the corpus run, and attributes recycle time when the recycle
- * measurement ran alongside it.
- *
- * Attribution is a multiplication rather than an estimate teased out of the
- * per-file timings, because the recycle measurement already timed the same event
- * directly: it grows a VM past the same ceiling `format()` recycles at and drops
- * it while the outgoing memory is still live. It is still a different process,
- * so the product is an estimate - but of a measured cost rather than a modelled
- * one. The two runs share the `rubocop` setting, without which a recycle's
- * per-VM RuboCop config merge would be priced into a corpus that never ran the
- * RuboCop pass at all.
- */
-const reportCorpus = (result: CorpusResult, recycle: RecycleResult | undefined): void => {
+const reportCorpus = (result: CorpusResult): void => {
   const kilobytes = result.bytes / 1024
 
-  console.log(`\n=== corpus, one process, RuboCop ${result.rubocop ? 'on' : 'off'} ===\n`)
+  console.log(`\n=== corpus, one process, printWidth ${result.printWidth} ===\n`)
   row('files formatted', (result.files - result.failures.length).toLocaleString('en-US'))
   row('input', `${Math.round(kilobytes).toLocaleString('en-US')} KB`)
 
   // `format time`, not wall-clock: it is the sum of the `format()` calls, and
   // reading the files off disk is deliberately outside it, because that is this
-  // script's cost rather than the package's. It is also the denominator the
-  // recycle share below is taken against.
+  // script's cost rather than the package's.
   row('format time', `${(result.totalMs / 1000).toFixed(1)} s`)
-  row('per KB', result.bytes === 0 ? 'n/a' : `${result.msPerKb.toFixed(1)} ms`)
-  row('recycles', result.recycles)
-  row('largest VM', megabytes(result.largestVmMemoryBytes))
-
-  if (recycle && result.recycles > 0) {
-    const spent = result.recycles * recycle.costMs
-    const share = result.totalMs === 0 ? 0 : (spent / result.totalMs) * 100
-    console.log(`\nrecycles cost about ${(spent / 1000).toFixed(1)}s of that, ${share.toFixed(0)}% of the run`)
-  }
+  row('per file, median', `${result.medianMs.toFixed(1)} ms`)
+  row('per KB', result.bytes === 0 ? 'n/a' : `${result.msPerKb.toFixed(2)} ms`)
+  row('peak RSS', megabytes(result.peakRssBytes))
 
   if (result.failures.length > 0) {
     console.error(`\n${result.failures.length} of ${result.files} file(s) failed to format:`)
@@ -465,9 +399,9 @@ const reportCorpus = (result: CorpusResult, recycle: RecycleResult | undefined):
 
 const args = process.argv.slice(2)
 
-// Bare invocation prints the usage rather than picking a default. Every
-// measurement here costs at least a VM boot and the corpus one costs minutes,
-// so "what would you like measured" is a better answer than guessing.
+// Bare invocation prints the usage rather than picking a default: the corpus
+// measurement needs a corpus, and "what would you like measured" is a better
+// answer than guessing.
 if (args.includes('--help') || args.length === 0) {
   console.log(USAGE)
   process.exit(0)
@@ -486,25 +420,15 @@ if (options.snapshot) ensureWritable(options.snapshot)
 
 const artifact = await readArtifact()
 
-const boot = options.only.includes('boot')
-  ? {
-      withRuboCop: measure({ measurement: 'boot', rubocop: true }),
-      withoutRuboCop: measure({ measurement: 'boot', rubocop: false }),
-    }
-  : undefined
-
-const recycle = options.only.includes('recycle')
-  ? measure({ measurement: 'recycle', rounds: RECYCLE_ROUNDS, rubocop: options.rubocop })
-  : undefined
+const boot = options.only.includes('boot') ? measure({ measurement: 'boot' }) : undefined
 
 const corpus =
   options.corpus && options.only.includes('corpus')
-    ? measure({ measurement: 'corpus', corpus: options.corpus, rubocop: options.rubocop, limit: options.limit })
+    ? measure({ measurement: 'corpus', corpus: options.corpus, printWidth: options.printWidth, limit: options.limit })
     : undefined
 
-if (boot) reportBoot(boot.withRuboCop, boot.withoutRuboCop)
-if (recycle) reportRecycle(recycle)
-if (corpus) reportCorpus(corpus, recycle)
+if (boot) reportBoot(boot)
+if (corpus) reportCorpus(corpus)
 
 if (options.snapshot && corpus) {
   await Bun.write(
@@ -512,7 +436,7 @@ if (options.snapshot && corpus) {
     `${JSON.stringify(
       {
         artifact,
-        rubocop: corpus.rubocop,
+        printWidth: corpus.printWidth,
         files: corpus.outputs,
         failures: corpus.failures.map(({ file }) => file),
       } satisfies Snapshot,

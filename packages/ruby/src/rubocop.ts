@@ -1,3 +1,5 @@
+import type { FormatOptions } from './types'
+
 /**
  * The Ruby version RuboCop is told to target.
  *
@@ -11,41 +13,58 @@
 const TARGET_RUBY_VERSION = 3.4
 
 /**
- * The configuration this package gives RuboCop, before anything the caller adds.
+ * The line length when the caller names none.
  *
- * Deliberately tiny. Everything about which cops run and how they behave comes
- * from RuboCop's own `config/default.yml`, so what this produces is what stock
- * RuboCop produces. Only two things are stated, and both are here because the
- * default would be wrong rather than because we prefer something else:
- *
- * - `TargetRubyVersion`, which RuboCop cannot discover inside the module.
- * - `Layout/LineLength`, which is **off**, because line width belongs to
- *   syntax_tree. syntax_tree reprints, so it is the tool that can actually
- *   honour `printWidth`; RuboCop only rebreaks what it is handed. With the cop
- *   on, the two disagreed whenever `printWidth` went above RuboCop's `Max: 120`
- *   default - `{ printWidth: 200 }` came back rewrapped at 124, which is
- *   neither width. Turning it off costs nothing measurable: over 397 files of
- *   real Ruby at the default width it changes none of them, and the 9 files
- *   with a line over 120 have one either way, because the cop's autocorrect
- *   could not fix them regardless.
+ * 120 because it is RuboCop's own `Layout/LineLength` default, which makes the
+ * no-options output exactly what stock `rubocop --autocorrect --only Layout`
+ * writes. The 80 this package used to default to was its old reprinter's, and
+ * meant a printer's width; here the number is a cop's limit, and a lower one
+ * only means the cop rebreaks more of the line structure the caller chose.
  */
-const BASE_CONFIG: Record<string, unknown> = {
-  AllCops: { TargetRubyVersion: TARGET_RUBY_VERSION },
-  'Layout/LineLength': { Enabled: false },
+export const DEFAULT_PRINT_WIDTH = 120
+
+/**
+ * Reads `printWidth` off the options, checked.
+ *
+ * Coerced and checked rather than trusted, because the types are advisory to a
+ * JavaScript caller and RuboCop would take a fractional or negative `Max` and
+ * do something unhelpful with it rather than refuse it.
+ */
+const printWidthOf = (options: FormatOptions): number => {
+  const printWidth = Number(options.printWidth ?? DEFAULT_PRINT_WIDTH)
+  if (!Number.isInteger(printWidth) || printWidth < 1) {
+    throw new TypeError(`printWidth must be a positive integer, received ${String(options.printWidth)}`)
+  }
+  return printWidth
 }
 
 /**
- * Builds the `.rubocop.yml` the RuboCop pass loads, with a caller's overrides
- * merged over {@link BASE_CONFIG}.
+ * Builds the `.rubocop.yml` the RuboCop pass loads for one set of options.
+ *
+ * Deliberately tiny. Everything about which cops run and how they behave comes
+ * from RuboCop's own `config/default.yml`, so what this produces is what stock
+ * RuboCop produces. Only two things are stated:
+ *
+ * - `TargetRubyVersion`, which RuboCop cannot discover inside the module.
+ * - `Layout/LineLength`'s `Max`, from `printWidth`. Only `Max`: the cop's other
+ *   settings, `Enabled` among them, keep RuboCop's defaults.
+ *
+ * `rubocopConfig` is merged over that one level deep, matching how a
+ * `.rubocop.yml` is read: a caller naming `Layout/LineLength` replaces this
+ * package's whole entry for it rather than having its keys folded in, so the
+ * caller's entry wins over `printWidth`. `printWidth` is still checked in that
+ * case, so that a bad value fails the same way whatever else is passed.
  *
  * Emitted as JSON, which is valid YAML and which RuboCop's own loader reads
  * happily. That is not a shortcut: it is what makes an arbitrary caller-supplied
  * object safe to serialise, because JSON escaping is exact where hand-rolled
  * YAML quoting is a guess.
- *
- * Merging is one level deep, matching how a `.rubocop.yml` is read: a caller
- * naming `Layout/LineLength` replaces that whole entry rather than having its
- * keys folded into ours, which is what makes the cop above re-enablable.
  */
-export const buildRuboCopConfig = (overrides: Record<string, unknown> = {}): string =>
-  `${JSON.stringify({ ...BASE_CONFIG, ...overrides }, null, 2)}\n`
+export const buildRuboCopConfig = (options: FormatOptions = {}): string => {
+  const base: Record<string, unknown> = {
+    AllCops: { TargetRubyVersion: TARGET_RUBY_VERSION },
+    'Layout/LineLength': { Max: printWidthOf(options) },
+  }
+
+  return `${JSON.stringify({ ...base, ...options.rubocopConfig }, null, 2)}\n`
+}

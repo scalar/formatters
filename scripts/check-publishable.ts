@@ -51,7 +51,7 @@ if (missing.length > 0) {
   console.error(
     `${manifest.name} is not publishable - the manifest points at files that do not exist:\n` +
       `${missing.map((entry) => `  - ${entry}`).join('\n')}\n` +
-      'Run `bun run build` (and `bun run ruby:build` if the wasm artifact is missing) first.',
+      "Run `bun run build` (and the package's `wasm:build` if a wasm artifact is missing) first.",
   )
   process.exit(1)
 }
