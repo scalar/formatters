@@ -1,5 +1,11 @@
 # @scalar/java-fmt
 
+## 0.4.3
+
+### Patch Changes
+
+- 39bf384: Complete the third-party notices: list commonmark-java 0.28.0 (BSD-2-Clause), which google-java-format bundles and which is compiled into the artifact, with its license text. Also ship TeaVM's `NOTICE` file, as Apache-2.0 asks. No change to the artifact or its output.
+
 ## 0.4.2
 
 ### Patch Changes
