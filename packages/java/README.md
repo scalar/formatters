@@ -124,14 +124,14 @@ await init({ url: '/assets/java_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 3.3 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 3.2 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 The engine floor is checked at boot and is real: the module uses the final wasm
 exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
 earliest.
 
-The browser reads the same brotli artifact as Node (0.77 MB over the wire) and
+The browser reads the same brotli artifact as Node (0.76 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
@@ -202,7 +202,7 @@ replicates all four, in that order.
 
 `build/java_fmt_teavm/build.sh` produces two files, both committed:
 
-- `java_fmt.wasm.br` — the module, 0.77MB brotli-compressed (3.3MB raw)
+- `java_fmt.wasm.br` — the module, 0.76MB brotli-compressed (3.2MB raw)
 - `java_fmt.runtime.mjs` — TeaVM's generated runtime, which supplies the
   module's imports and the string and exception bridges
 

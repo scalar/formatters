@@ -129,14 +129,14 @@ await init({ url: '/assets/kotlin_fmt.wasm.br' })
 await format(source)
 ```
 
-Run it in a worker. Booting compiles 3.5 MB of wasm, which is a visibly frozen
+Run it in a worker. Booting compiles 3.4 MB of wasm, which is a visibly frozen
 tab if it happens on the main thread.
 
 The engine floor is checked at boot and is real: the module uses the final wasm
 exception-handling opcodes, so Chrome 137, Firefox 131 or Safari 18.4 at the
 earliest.
 
-The browser reads the same brotli artifact as Node (0.82 MB over the wire) and
+The browser reads the same brotli artifact as Node (0.81 MB over the wire) and
 expands it with `DecompressionStream('brotli')` where the engine has it, or a
 208 KB wasm decoder where it does not — Chrome, today. Serving the artifact with
 `Content-Encoding: br`, or serving an uncompressed `.wasm`, skips the decoder
