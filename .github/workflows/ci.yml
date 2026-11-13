@@ -84,25 +84,18 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
-      # packages/ruby's conformance tests are what back the "exact" claim in the README, and they
-      # skip themselves when there is no native tool to compare against - so without these steps
-      # they never actually run here. syntax_tree and RuboCop are pure Ruby and install in
-      # seconds, which makes Ruby the one reference toolchain cheap enough for CI to carry; the
-      # others need a .NET SDK, a Rust toolchain or a JDK and still skip.
+      # packages/ruby's conformance test is what backs the "exact by test" claim in the README, and
+      # it skips itself when there is no native RuboCop to compare against - so without these
+      # steps it never actually runs here. RuboCop installs in seconds, which makes Ruby the one
+      # reference toolchain cheap enough for CI to carry; the others need a .NET SDK, a Rust
+      # toolchain or a JDK and still skip.
       #
-      # Ruby 4.0 because that is what build/ruby_fmt/build.sh bakes into the artifact. Ripper is
-      # part of CRuby rather than the gem, so a different Ruby here could diverge for reasons that
-      # are nothing to do with this package.
-      - name: Setup Ruby to match the artifact
+      # The Ruby itself does not decide the output: RuboCop parses through the pinned prism gem,
+      # because the package targets Ruby 3.4. It is pinned anyway, so a run is reproducible.
+      - name: Setup Ruby
         uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
         with:
           ruby-version: '4.0'
-
-      # The version comes from the Gemfile the artifact is built from rather than being written
-      # out again here, so the native side and the wasm side cannot drift apart. The test reads
-      # the same pin and skips rather than compares if what is installed does not match it.
-      - name: Install the pinned syntax_tree
-        run: gem install syntax_tree --no-document -v "$(sed -n 's/^gem "syntax_tree", "\(.*\)"$/\1/p' build/ruby_fmt/Gemfile)"
 
       # The RuboCop pass is rbcop, a reimplementation, so the real RuboCop is the oracle it is held
       # to. build/rbcop_fmt/Gemfile pins the four gems rbcop's own parity gates ran against; each

@@ -106,7 +106,7 @@ and AOT:
 |:---|---:|---:|
 | 24 files in `_framework` | 21.5MB | **4.40MB** |
 
-For scale: `ruby_fmt.wasm.br` is 3.8MB and `java_fmt.wasm.br` is 4.4MB. Before
+For scale: `java_fmt.wasm.br` is 4.4MB. Before
 tuning it was 23.9MB raw / 6.4MB brotli.
 
 Timing, Node 22 on 4 cores, both builds measured on the same corpus:

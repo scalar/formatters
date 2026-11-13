@@ -39,9 +39,7 @@ updates:
       prefix: chore
     ignore:
       # The runtime dependencies of published packages are deliberate pins, not stale ones.
-      # `@php-wasm/node-8-4` is the PHP that PHP CS Fixer runs on and `@ruby/wasm-wasi` is
-      # the shim around the Ruby VM: both decide formatter output, which this repo claims is
-      # byte-identical to the reference tool. They move when someone re-runs the conformance
-      # test against the new runtime, not on a schedule.
+      # `@php-wasm/node-8-4` is the PHP that PHP CS Fixer runs on: it decides formatter output,
+      # which this repo claims is byte-identical to the reference tool. It moves when someone
+      # re-runs the conformance test against the new runtime, not on a schedule.
       - dependency-name: '@php-wasm/*'
-      - dependency-name: '@ruby/wasm-wasi'

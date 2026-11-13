@@ -3,8 +3,8 @@
 //
 // This is the gate `CONTRIBUTING.md` asks every output-affecting change to
 // answer - "say how you know it did not" - for the Ruby package. The
-// package *is* syntax_tree and RuboCop compiled to wasm, so output that moves is
-// a bug rather than a tradeoff, and the only passing answer is zero files.
+// package is held byte-identical to RuboCop's Layout pass, so output that moves
+// is a bug rather than a tradeoff, and the only passing answer is zero files.
 //
 // A gate that cannot fail is worse than no gate, so most of this file is about
 // refusing to report a pass it has not earned: an empty snapshot, a snapshot
@@ -27,7 +27,7 @@ import path from 'node:path'
  */
 export type Snapshot = {
   artifact: string
-  rubocop: boolean
+  printWidth: number
   files: Record<string, string>
   failures: string[]
 }
@@ -81,19 +81,19 @@ const readSnapshot = async (file: string): Promise<Snapshot> => {
   // Destructured as `unknown` rather than as a `Partial<Snapshot>`: asserting
   // each field's type on the line before checking it would be the one piece of
   // trust this whole function exists to withhold.
-  const { artifact, rubocop, files, failures } = parsed as Partial<Record<keyof Snapshot, unknown>>
+  const { artifact, printWidth, files, failures } = parsed as Partial<Record<keyof Snapshot, unknown>>
 
   // `failures` is checked as strictly as the rest. Reading a non-array as "then
   // nothing failed" would turn a truncated or hand-mangled snapshot into a clean
   // one, which is the failure this whole function is here to refuse.
   if (
     typeof artifact !== 'string' ||
-    typeof rubocop !== 'boolean' ||
+    typeof printWidth !== 'number' ||
     !isRecordOfStrings(files) ||
     !Array.isArray(failures) ||
     !failures.every((entry) => typeof entry === 'string')
   ) {
-    throw new Error(`${file} is not a ruby-bench snapshot - it needs "artifact", "rubocop", "files" and "failures"`)
+    throw new Error(`${file} is not a ruby-bench snapshot - it needs "artifact", "printWidth", "files" and "failures"`)
   }
 
   // A file cannot both have been formatted and have failed. Nothing this writes
@@ -113,7 +113,7 @@ const readSnapshot = async (file: string): Promise<Snapshot> => {
     throw new Error(`${file} lists the same failed file more than once`)
   }
 
-  return { artifact, rubocop, files, failures }
+  return { artifact, printWidth, files, failures }
 }
 
 /** Prints a capped list of file names to whichever stream the section went to. */
@@ -132,10 +132,10 @@ export const compareSnapshots = async (beforePath: string, afterPath: string): P
   const before = await readSnapshot(beforePath)
   const after = await readSnapshot(afterPath)
 
-  if (before.rubocop !== after.rubocop) {
+  if (before.printWidth !== after.printWidth) {
     console.error(
-      `these snapshots were taken with different options (rubocop ${String(before.rubocop)} vs ` +
-        `${String(after.rubocop)}), so any difference between them says nothing about the artifact`,
+      `these snapshots were taken with different options (printWidth ${before.printWidth} vs ` +
+        `${after.printWidth}), so any difference between them says nothing about the artifact`,
     )
     process.exit(1)
   }

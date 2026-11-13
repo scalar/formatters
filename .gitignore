@@ -30,13 +30,6 @@ yarn.lock
 # Agent worktrees (Claude Code background agents)
 .claude/worktrees/
 
-# rbwasm build scratch (CRuby source, wasi-sdk toolchain, bundled gems)
-build/ruby_fmt/build/
-build/ruby_fmt/rubies/
-build/ruby_fmt/vendor/
-build/ruby_fmt/.bundle/
-build/ruby_fmt/*.wasm
-
 # native-image build scratch (Oracle GraalVM, Binaryen, the gjf jar)
 build/java_fmt/toolchain/
 build/java_fmt/classes/

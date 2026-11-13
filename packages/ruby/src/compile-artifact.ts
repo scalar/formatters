@@ -8,61 +8,50 @@ import type { ArtifactSource } from './types'
 const here = path.dirname(fileURLToPath(import.meta.url))
 
 /**
- * Builds the Node artifact source for one of the package's two artifacts.
+ * rbcop's Layout pass, built by build/rbcop_fmt/build.sh.
  *
- * Both are stored brotli-compressed, because both pack down several times over:
- * the Ruby one is Ruby source text and a serialized Ruby heap, the rbcop one is
- * a Rust binary carrying RuboCop's default.yml. Brotli is in node:zlib, so this
- * adds no dependency, and the cost is one decompression per process, not per
- * format.
+ * Stored brotli-compressed, because a Rust binary carrying RuboCop's
+ * default.yml packs 16 MB down to 2.2 MB. Brotli is in node:zlib, so this adds
+ * no dependency, and the cost is one decompression per process, not per format.
  *
  * One directory up from this file resolves to the package root whether we are
  * running from `dist` (published) or from `src` (tests), so the same path works
  * in both.
- *
- * The compiled module is kept, so that dropping an instance - the Ruby VM is
- * recycled because formatting leaks its memory, and an rbcop instance is
- * replaced after a trap - does not re-read, re-decompress and re-compile it. A
- * `WebAssembly.Module` is instantiable any number of times and each instance
- * gets its own memory, which is exactly what both need.
- *
- * Async, and compiled with `WebAssembly.compile` rather than the `Module`
- * constructor, so that this matches the browser source's signature and so no
- * caller is built around a synchronous compile. That last part is what makes a
- * browser build possible at all: a browser main thread refuses a synchronous
- * compile above 8MB - "WebAssembly.Compile is disallowed on the main thread, if
- * the buffer size is larger than 8MB", measured on Chrome 141 - and both
- * artifacts are larger than that.
  */
-const createArtifactSource = (fileName: string, buildScript: string): ArtifactSource => {
-  const artifact = path.join(here, '..', fileName)
-  let modulePromise: Promise<WebAssembly.Module> | undefined
+const ARTIFACT = path.join(here, '..', 'rbcop_fmt.wasm.br')
 
-  return () => {
-    if (modulePromise) return modulePromise
-
-    if (!fs.existsSync(artifact)) {
-      throw new Error(
-        `${fileName} is missing from ${path.dirname(artifact)}. It is committed to the repository and ships ` +
-          `inside the published package, so this usually means a partial checkout; ${buildScript} regenerates it.`,
-      )
-    }
-
-    modulePromise = WebAssembly.compile(zlib.brotliDecompressSync(fs.readFileSync(artifact)))
-    return modulePromise
-  }
-}
+let compiled: WebAssembly.Module | undefined
 
 /**
- * CRuby with syntax_tree already required into it, built by
- * build/ruby_fmt/build.sh. The gem lives inside the artifact at /bundle rather
- * than being mounted from disk at boot, so there is nothing to resolve at
- * runtime and no dependency on a separately published ruby.wasm distribution.
+ * Reads, decompresses and compiles the artifact, once per process, without
+ * awaiting.
+ *
+ * Synchronous on purpose, and only here: under Node nothing limits the size of
+ * a synchronous compile - the 8 MB cap is a browser main thread's - and doing
+ * it this way is what lets `formatSync` work with no `init()` at all. It costs
+ * ~70 ms of decompression and ~30 ms of compilation, once.
+ *
+ * The compiled module is kept, so that replacing an instance after a trap does
+ * not re-read, re-decompress and re-compile it. A `WebAssembly.Module` is
+ * instantiable any number of times and each instance gets its own memory.
  */
-export const compileArtifact: ArtifactSource = createArtifactSource('ruby_fmt.wasm.br', 'build/ruby_fmt/build.sh')
+const compileSync = (): WebAssembly.Module => {
+  if (compiled) return compiled
 
-/** rbcop's Layout pass, built by build/rbcop_fmt/build.sh. */
-export const compileRbcopArtifact: ArtifactSource = createArtifactSource(
-  'rbcop_fmt.wasm.br',
-  'build/rbcop_fmt/build.sh',
-)
+  if (!fs.existsSync(ARTIFACT)) {
+    throw new Error(
+      `rbcop_fmt.wasm.br is missing from ${path.dirname(ARTIFACT)}. It is committed to the repository and ships ` +
+        'inside the published package, so this usually means a partial checkout; build/rbcop_fmt/build.sh ' +
+        'regenerates it.',
+    )
+  }
+
+  compiled = new WebAssembly.Module(zlib.brotliDecompressSync(fs.readFileSync(ARTIFACT)))
+  return compiled
+}
+
+/** The Node artifact source: the module from disk, compiled synchronously and cached. */
+export const nodeArtifact: ArtifactSource = {
+  compile: async () => compileSync(),
+  compileSync,
+}

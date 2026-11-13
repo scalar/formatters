@@ -85,7 +85,11 @@ it unless they are collected between runs (`--expose-gc` and `gc()`). Each
 instance reserves a large region of virtual address space. A reactor build with
 one long-lived instance avoids this.
 
-## What it does not change
+## What it did not change, at the time
+
+This section is superseded - see the last entry under
+[Since the spike](#since-the-spike) - and kept because it records why the
+decision first went the other way.
 
 rbcop does not reprint. It is RuboCop, and the package README already shows
 why RuboCop alone is not enough: on 116 files that differed only in line
@@ -131,6 +135,29 @@ say so.
   aligned with the guard's condition, where RuboCop indents it 2 from the `in`.
   Prism wraps the guard in an if node, and the Layout/Multiline*Indentation
   cops took it for a keyword condition; the parser gem's `if_guard` is never
-  one. The fix is in rbcop itself, so `build.sh` builds from
-  [amritk/rbcop](https://github.com/amritk/rbcop) at a commit carrying it, until
-  it lands upstream.
+  one. The fix is in rbcop itself and landed upstream in costajohnt/rbcop#718, so
+  `build.sh` builds from upstream at that merge, whose tree is identical to the
+  fork commit it used to pin. Rebuilt from upstream, the artifact is byte for
+  byte the one the fork produced.
+- **The reprinter went.** Line-structured input - generated code, which is what
+  the package is mostly given - does not need one: formatted through both
+  pipelines from the same input with the same Layout config, 6,737 generated
+  `.rb` and `.rbi` files took 180 s with the reprinter and 14 s without, the
+  RuboCop-only output had no errors, no file `ruby -c` rejected, and a second
+  pass changed nothing. So `packages/ruby` is now this module alone: one
+  artifact, no CRuby VM, no recycling, and a boot that is synchronous under
+  Node. `Layout/LineLength` is on, since there is no longer a printer to own
+  line width. The entry also refuses unparseable input up front, which the
+  reprinter used to do, rather than letting it reach the output check and be
+  reported as a bug in the pass.
+- With the reprinter gone, raw input reaches rbcop, and a 2,184-file corpus
+  (the Ruby 3.3 standard library, rubocop, rubocop-ast, parser, syntax_tree and
+  prism's generated `.rbi` files) found one more bug, in the standard library's
+  `time.rb`: `Layout/EmptyLineAfterGuardClause` skipped a guard clause followed
+  by a statement on its line (`break if a; b = 1`) everywhere. RuboCop skips it
+  only when the two share a `begin` node, and parser gives a `begin ... end`
+  without rescue no such node, so there RuboCop flags it - and, when it is the
+  last statement before `end`, loops against `Layout/EmptyLinesAroundBeginBody`
+  until it reports an infinite loop. `rbcop-wasm.patch` makes the skip depend on
+  the same distinction. With it the corpus matches at both widths the
+  conformance test runs, with RuboCop's give-up matched by a rejection.

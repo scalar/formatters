@@ -26,7 +26,7 @@ Composer, no native binaries, no postinstall downloads.
 
 | Package | Reference | Artifact | Status | Browser |
 |:---|:---|---:|:---|:---|
-| [`@scalar/ruby-fmt`](packages/ruby) | syntax_tree + RuboCop | 7.9 MB | ✅ exact +3 fixes · RuboCop pass exact by test | ✅ |
+| [`@scalar/ruby-fmt`](packages/ruby) | RuboCop (Layout) | 2.2 MB | ✅ exact by test | ✅ |
 | [`@scalar/java-fmt`](packages/java) | google-java-format | 0.77 MB | ✅ exact | ✅ |
 | [`@scalar/kotlin-fmt`](packages/kotlin) | ktfmt | 0.82 MB | ✅ exact | ✅ |
 | [`@scalar/csharp-fmt`](packages/csharp) | CSharpier | 4.2 MB | ✅ exact | ✅ |
@@ -39,12 +39,10 @@ tool, its parser and its language runtime in one file. The JavaScript that loads
 it is small by comparison: nothing for Ruby, Swift, PHP and Rust, a 16 KB
 generated runtime for Java and Kotlin, and 0.46 MB of .NET loader scripts for C#.
 
-Ruby names two tools because it runs two: syntax_tree reprints the file, then
-RuboCop's Layout department corrects what syntax_tree leaves behind, so the
-result is clean under a consumer's own `rubocop` run. Its 7.9 MB is two
-artifacts: 5.7 MB of CRuby with syntax_tree, shipped as a VM that has *already*
-booted, and 2.2 MB of [rbcop](https://github.com/costajohnt/rbcop), the RuboCop
-pass. See [`packages/ruby`](packages/ruby#what-it-costs).
+Ruby's reference is `rubocop --autocorrect --only Layout`: the package corrects
+Layout within the line structure it is handed and does not reprint, which suits
+line-structured input such as generated code. See
+[`packages/ruby`](packages/ruby#what-it-does-and-what-it-does-not).
 
 Exactness is only meaningful against a named reference tool, so the reference is
 stated per package. "Exact" means the package *is* that tool compiled to wasm —
@@ -52,18 +50,13 @@ not a reimplementation of it. A reimplementation drifts, because a formatter's
 line-breaking heuristics are emergent from its implementation rather than
 specified anywhere, and the drift stays invisible until a consumer's CI fails.
 
-Ruby's status has two halves, because it is the one package that is partly a
-reimplementation. syntax_tree is the real gem on real CRuby, and reads
-`exact +3 fixes`: it carries three fixes for syntax_tree bugs that turn valid
-`case`/`in` code into a syntax error, each tested against the native gem so it
-cannot drift quietly and each going away when the fix lands upstream. A fourth
-patch takes a superlinear cost out of the gem; it is not in the count because
-the count is about output, and it changes none. The RuboCop pass is rbcop,
-RuboCop 1.92.2 reimplemented in Rust, so it is not exact by the definition
-above — it is **exact by test**: a conformance test holds it byte-identical to
-the real `rubocop` 1.92.2, over its samples and over any corpus it is given.
-Over 3,054 files of real Ruby that test found one rbcop bug, which the build
-patches; with the patch, every file matches — [details below](#ruby).
+Ruby is the one package that is a reimplementation: it runs
+[rbcop](https://github.com/costajohnt/rbcop), RuboCop 1.92.2 reimplemented in
+Rust, so it is not exact by the definition above. It is **exact by test**: a
+conformance test holds it byte-identical to the real `rubocop` 1.92.2, over its
+samples and over any corpus it is given, at two line widths. Corpus runs have
+found three rbcop bugs, each fixed and pinned by a sample — [details
+below](#ruby).
 
 Browser is the same claim held to the same standard: ✅ means the package has a
 `browser` export condition and `bun run test:browser` loads that build in real
@@ -205,71 +198,34 @@ does not cover.
 
 ## Ruby
 
-See [`packages/ruby`](packages/ruby). It runs the real syntax_tree gem on real
-CRuby compiled to wasm, so output is byte-identical to a native Ruby; a
-conformance test asserts that against a native `ruby` across classes, endless
-methods, `case`/`when`, blocks, heredocs, and comments reached across multi-byte
-text.
+See [`packages/ruby`](packages/ruby). It is `rubocop --autocorrect --only Layout`
+and nothing else, through [rbcop](https://github.com/costajohnt/rbcop): RuboCop
+1.92.2 reimplemented in Rust on Prism and compiled to a WASI reactor by
+[`build/rbcop_fmt/build.sh`](build/rbcop_fmt/build.sh). One 2.2 MB artifact,
+~2.5 ms a file at the median, and a boot that is synchronous under Node, so `formatSync` needs
+no `init()` there.
 
-It is also the one package that runs two tools, because neither does the whole
-job. syntax_tree reprints a file - it throws away the input's line breaking and
-decides it again - but about 30% of its output still trips stock
-`rubocop --only Layout`. RuboCop corrects those offenses but never reprints: on
-116 files whose formatting differed only in line breaking, RuboCop alone brought
-none of them to a common result, and syntax_tree brought 91. So `format` runs
-syntax_tree and then `rubocop --autocorrect --only Layout`, in that order.
+It corrects Layout - indentation, alignment, blank lines, spacing, line length -
+within the line structure it is handed, and does not reprint. That suits input
+that already has its final line structure, such as generated code; it will not
+turn `def x; a; b; end` into one statement per line. `printWidth` is
+`Layout/LineLength`'s `Max`, defaulting to RuboCop's own 120, and that cop's
+autocorrect only breaks at argument lists, collection literals and block braces,
+so a long string literal or constant assignment stays long.
 
-The second of those is not the RuboCop gem. It is
-[rbcop](https://github.com/costajohnt/rbcop), RuboCop 1.92.2 reimplemented in
-Rust on Prism and compiled to a wasm module of its own by
-[`build/rbcop_fmt/build.sh`](build/rbcop_fmt/build.sh). It does the pass in
-~4 ms a file against ~80 ms for the gem on CRuby wasm, which makes a full format
-about four times faster. That makes it the one reimplementation in this repo,
-so it is held to the exactness rule the only way a reimplementation can be: a
-conformance test runs the real `RuboCop::CLI`, pinned to the four gem versions
-rbcop's own parity gates ran against, and asserts byte-identity. Over 300 files
-of real Ruby it found nothing; over 2,754 more it found one rbcop bug, on 10
-files - `Layout/MultilineOperationIndentation` re-indenting the wrapped operand
-of `/regex/ =~ x`, which RuboCop never visits - and the build patches it. With
-the patch, all 3,054 files match.
+That makes it the one reimplementation in this repo, so it is held to the
+exactness rule the only way a reimplementation can be: a conformance test runs
+the real `RuboCop::CLI`, pinned to the four gem versions rbcop's own parity
+gates ran against, over the same raw input, and asserts byte-identity at the
+default width and at 80 - and, where RuboCop gives up on a file, that the
+package rejects it. Corpus runs have found three rbcop bugs, each fixed and
+pinned by a sample: the wrapped operand of `/regex/ =~ x`, a `case/in` guard
+continued over lines, and a guard clause sharing its line inside
+`begin … end`.
 
-`format(source, { rubocop: false })` is syntax_tree on its own for anyone who
-wants it, and never loads the rbcop module at all. See
-[`packages/ruby`](packages/ruby#two-tools-and-why-both) for the rest of what it
-costs.
-
-The syntax_tree half ships as a 5.7 MB `ruby_fmt.wasm.br` with CRuby and the gem
-baked in, built by [`build/ruby_fmt/build.sh`](build/ruby_fmt/build.sh) - stdlib
-the formatter never loads is stripped, then `wasm-opt -Os`, then
-[wizer](https://github.com/bytecodealliance/wizer), then brotli. The wizer step
-boots CRuby, requires syntax_tree, and serializes the resulting linear memory
-back into the module, so a consumer instantiates a VM that is already up. Both
-artifacts are committed, so a fresh clone needs nothing extra;
-`bun run ruby:build` and `bun run rbcop:build` rebuild them when their pins
-change.
-
-The output-changing deviations from stock syntax_tree 6.3.0 are all one family:
-pattern matching, where the gem writes back Ruby that no longer parses from
-input that parsed going in. `then` is mandatory in a clause whose pattern *ends*
-in an endless range and syntax_tree only keeps it when the whole pattern is one;
-a guarded clause such as `in (400..) if g` loses the parentheses that are its
-only legal spelling; and a hash pattern both misprints the ` then` after a bare
-`**` and adopts any earlier `n**2` in the file as a `**` that was never written.
-`format()` fixes all three, and it also parses everything it produces so a bug
-of that shape can never again return a broken file quietly. Formatting the
-rubocop, rubocop-ast, syntax_tree, parser and regexp_parser gems both ways —
-2,076 files — the three fixes change none of them.
-
-A further patch reopens syntax_tree's parser for a different reason: its comment
-classification indexes the source by character offset, which CRuby answers in
-constant time only on a one-byte-per-character string, so a single accented
-letter anywhere in a file makes the parse quadratic in the file's size. That one
-changes no output at all, which is why the status above does not count it.
-
-The Ruby VM's linear memory never shrinks, so `format()` recycles the VM past
-400 MB. That used to be a leak of ~74 MB per 23 KB of input, almost all of it
-RuboCop's; with RuboCop out of the VM, 13.8 MB of real Ruby grows it by ~50 MB,
-and a recycle fires only after a large file.
+The package used to run a reprinter on CRuby compiled to wasm before this pass.
+It went in 0.9, with the 5.7 MB artifact, the VM's ~330 MB of linear memory and
+its recycling: see the package's [upgrade notes](packages/ruby#upgrading-from-08).
 
 ## Java
 

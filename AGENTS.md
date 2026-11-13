@@ -58,7 +58,7 @@ Every package exports the same three things, from both builds:
 | | |
 |:---|:---|
 | `format(source, options?)` | async; boots on demand. The one to reach for. |
-| `formatSync(source, options?)` | synchronous; needs `await init()` first, and throws until it has. |
+| `formatSync(source, options?)` | synchronous; needs `await init()` first, and throws until it has - except Ruby under Node, whose boot is synchronous too. |
 | `init(options?)` | boots the module. Takes `{ url, bytes, encoding }` in the browser build only. |
 
 Booting is the only asynchronous step there has ever been — fetching or reading

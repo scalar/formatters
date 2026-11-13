@@ -59,15 +59,16 @@ and Bun; [`AGENTS.md`](./AGENTS.md) is the same guidance addressed to AI coding 
   formatter and linter.
 - If output can change, say how you know it did not — a conformance run, a corpus comparison,
   or "no output change" with the reason. The pull request template asks for exactly this.
-- For Ruby, `bun run ruby:bench` is that corpus comparison, over a corpus of `.rb` files you
-  point it at: `--only corpus --corpus <dir> --snapshot before.json` before the change, the
-  same after, then `--compare before.json after.json`. A snapshot run exits non-zero if any
-  file failed to format, which is worth looking at but is not itself a gate failure — the
-  comparison tolerates a file that failed in both runs and says so. Drop `--only corpus` and
-  it also measures what the package costs to boot, to recycle its VM, and to format a whole
-  tree. `--help` has the rest.
+- For Ruby, `bun run ruby:bench` is that corpus comparison, over a corpus of `.rb` and `.rbi`
+  files you point it at: `--only corpus --corpus <dir> --snapshot before.json` before the
+  change, the same after, then `--compare before.json after.json`. A snapshot run exits
+  non-zero if any file failed to format, which is worth looking at but is not itself a gate
+  failure — the comparison tolerates a file that failed in both runs and says so. Drop
+  `--only corpus` and it also measures what the package costs to boot and to format a whole
+  tree. `--help` has the rest. Ruby's conformance test does the same against real RuboCop:
+  set `RUBY_FMT_CONFORMANCE_CORPUS` to the corpus directory.
 - Rebuilding a wasm artifact needs that language's toolchain, and the build scripts download
-  what they can themselves (`bun run ruby:build`, `java:build:teavm`, `csharp:build`,
+  what they can themselves (`bun run rbcop:build`, `java:build:teavm`, `csharp:build`,
   `swift:build`, `php:build`, `rust:build`). Artifacts are committed, so the rebuilt bytes go
   in the same commit as the change that motivated them.
 - Third-party sources under `packages/*/vendor/` are copied verbatim and pinned in a

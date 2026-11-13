@@ -44,6 +44,30 @@ index 7b6e33f..58cc2e4 100644
 +    f.write_all(content)?;
 +    Ok(f)
 +}
+diff --git a/src/cops/layout/empty_line_after_guard_clause.rs b/src/cops/layout/empty_line_after_guard_clause.rs
+index 99b5ce2..b2f28d8 100644
+--- a/src/cops/layout/empty_line_after_guard_clause.rs
++++ b/src/cops/layout/empty_line_after_guard_clause.rs
+@@ -204,8 +204,17 @@ impl Cop for EmptyLineAfterGuardClause {
+         {
+             return;
+         }
+-        // multiple_statements_on_line?
+-        if src.line_of(start) == src.line_of(next.location().start_offset()) {
++        // multiple_statements_on_line? asks whether the parent is a `begin`. Parser wraps every
++        // multi-statement body in one except a kwbegin without rescue/ensure, which holds its
++        // statements directly - so there the guard is an offense even with a statement after it on
++        // its line. When it is the last statement before `end`, RuboCop then loops against
++        // EmptyLinesAroundBeginBody and reports an infinite loop.
++        let kwbegin_body = cx.ancestors.len().checked_sub(2).and_then(|i| cx.ancestors.get(i)).is_some_and(|g| {
++            g.as_begin_node().is_some_and(|b| {
++                b.begin_keyword_loc().is_some() && b.rescue_clause().is_none() && b.ensure_clause().is_none()
++            })
++        });
++        if !kwbegin_body && src.line_of(start) == src.line_of(next.location().start_offset()) {
+             return;
+         }
+         let end = node.location().end_offset();
 diff --git a/src/cops/layout/multiline_operation_indentation.rs b/src/cops/layout/multiline_operation_indentation.rs
 index c322360..98abff3 100644
 --- a/src/cops/layout/multiline_operation_indentation.rs

@@ -29,12 +29,6 @@ type BrowserCase = {
   directory: string
   /** The committed artifact, relative to the package directory. */
   artifact: string
-  /**
-   * Further artifacts the package loads, keyed by the `init` option that points
-   * at each. The uncompressed-artifact check repoints these too, so an option
-   * like Ruby's `init({ rbcop })` is proven rather than assumed.
-   */
-  extraArtifacts?: Record<string, string>
   /** Source handed to `format`. */
   source: string
   /** The output the Node build produces for that source, byte for byte. */
@@ -44,7 +38,7 @@ type BrowserCase = {
    *
    * Only needed where a package's behaviour depends on them, which is why most
    * cases leave it out. A package may appear more than once when it has a mode
-   * worth holding to this standard separately - Ruby's RuboCop pass is one.
+   * worth holding to this standard separately.
    */
   options?: Record<string, unknown>
   /** Shown in the heading, when the directory alone would not say which case this is. */
@@ -66,21 +60,11 @@ const CASES: BrowserCase[] = [
   },
   {
     directory: 'ruby',
-    artifact: 'ruby_fmt.wasm.br',
-    extraArtifacts: { rbcop: 'rbcop_fmt.wasm.br' },
+    artifact: 'rbcop_fmt.wasm.br',
     source: 'def call(user)\n  return unless user\n  user.name\nend\n',
-    // The default pipeline is syntax_tree *and* RuboCop. The blank line comes
-    // from Layout/EmptyLineAfterGuardClause, which syntax_tree cannot produce on
-    // its own - so this fails loudly if the RuboCop pass silently did nothing.
+    // The blank line comes from Layout/EmptyLineAfterGuardClause, so this fails
+    // loudly if the RuboCop pass silently did nothing.
     expected: 'def call(user)\n  return unless user\n\n  user.name\nend\n',
-  },
-  {
-    directory: 'ruby',
-    label: 'ruby (syntax_tree only)',
-    artifact: 'ruby_fmt.wasm.br',
-    source: 'class A\n  def initialize(b)\n@b=b\n  end\nend',
-    expected: 'class A\n  def initialize(b)\n    @b = b\n  end\nend\n',
-    options: { rubocop: false },
   },
   {
     directory: 'java',
@@ -174,13 +158,11 @@ const server = Bun.serve({
     // `Content-Encoding: br` or publishes an uncompressed `.wasm`. That is the
     // path `init({ encoding: 'none' })` documents, and the one that skips the
     // brotli decoder entirely, so it is worth proving rather than asserting.
-    const raw = pathname.match(/^\/__raw__\/([\w-]+)(?:\/([\w-]+))?$/)
+    const raw = pathname.match(/^\/__raw__\/([\w-]+)$/)
     if (raw?.[1]) {
-      const found = CASES.find((entry) => entry.directory === raw[1] && (!raw[2] || entry.extraArtifacts?.[raw[2]]))
+      const found = CASES.find((entry) => entry.directory === raw[1])
       if (!found) return new Response('not found', { status: 404 })
-      const artifact = raw[2] ? found.extraArtifacts?.[raw[2]] : found.artifact
-      if (!artifact) return new Response('not found', { status: 404 })
-      const compressed = readFileSync(path.join(ROOT, 'packages', found.directory, artifact))
+      const compressed = readFileSync(path.join(ROOT, 'packages', found.directory, found.artifact))
       return new Response(brotliDecompressSync(compressed), { headers: { 'content-type': 'application/wasm' } })
     }
 
@@ -206,7 +188,7 @@ const browser = await chromium.launch({
 
 const failed = new Set<string>()
 
-for (const { directory, source, expected, options = {}, label, extraArtifacts = {} } of CASES) {
+for (const { directory, source, expected, options = {}, label } of CASES) {
   const packageDirectory = path.join(ROOT, 'packages', directory)
   const entry = path.join(packageDirectory, 'dist', 'index.browser.js')
 
@@ -305,15 +287,12 @@ for (const { directory, source, expected, options = {}, label, extraArtifacts = 
     // the first one has already compiled. Same output, different route in.
     const rawPage = await openPage()
     const viaInit = await rawPage.evaluate(
-      async ([entryUrl, source, rawUrl, options, extras]) => {
+      async ([entryUrl, source, rawUrl, options]) => {
         const module = await import(/* webpackIgnore: true */ entryUrl as string)
-        const more = Object.fromEntries(
-          (extras as string[]).map((key) => [key, { url: `${rawUrl as string}/${key}`, encoding: 'none' }]),
-        )
-        await module.init({ url: rawUrl as string, encoding: 'none', ...more })
+        await module.init({ url: rawUrl as string, encoding: 'none' })
         return module.format(source, options)
       },
-      [entryUrl, source, `${origin}/__raw__/${directory}`, options, Object.keys(extraArtifacts)] as const,
+      [entryUrl, source, `${origin}/__raw__/${directory}`, options] as const,
     )
     await rawPage.close()
 
