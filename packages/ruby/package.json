@@ -1,6 +1,6 @@
 {
   "name": "@scalar/ruby-fmt",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "description": "Ruby formatter (RuboCop's Layout autocorrect via rbcop on wasm) - runs on plain Node, no Ruby install",
   "keywords": [
     "ruby",
