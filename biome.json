@@ -20,13 +20,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": [
-      "**",
-      "!packages/ruby/vendor",
-      "!packages/csharp/runtime",
-      "!packages/java/java_fmt.runtime.mjs",
-      "!packages/kotlin/kotlin_fmt.runtime.mjs"
-    ]
+    "includes": ["**", "!packages/ruby/vendor", "!packages/csharp/runtime", "!packages/java/java_fmt.runtime.mjs"]
   },
   "formatter": {
     "enabled": true,

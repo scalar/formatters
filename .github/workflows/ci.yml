@@ -106,6 +106,12 @@ jobs:
             gem install "$gem" --no-document -v "$(sed -n "s/^gem \"$gem\", \"\(.*\)\"$/\1/p" build/rbcop_fmt/Gemfile)"
           done
 
+      # packages/kotlin is ktrs, a reimplementation of ktfmt, so it is held to the real ktfmt the same
+      # way: test/ktfmt-conformance.test.ts skips without the jar. The jar is the pinned release,
+      # checked against a pinned checksum, and runs on the JDK the runner image already carries.
+      - name: Download the ktfmt that ktrs is held to
+        run: build/kotlin_fmt/ktfmt.sh
+
       - name: Run unit tests
         run: bun run test
 

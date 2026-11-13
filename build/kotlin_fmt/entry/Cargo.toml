@@ -1,0 +1,28 @@
+[package]
+name = "kotlin_fmt"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# A module with plain exports and no imports at all: wasm32-unknown-unknown,
+# not WASI, because formatting is a pure function of a string and needs no
+# host. The JavaScript side instantiates it with an empty import object.
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+# Its own workspace root, so cargo never mistakes it for a member of the ktrs
+# checkout beside it.
+[workspace]
+
+[dependencies]
+ktrs-fmt = { path = "../ktrs/crates/ktrs-fmt" }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = true
+# wasm32-unknown-unknown cannot unwind. A panic is a trap, and the host drops
+# the instance after one.
+panic = "abort"

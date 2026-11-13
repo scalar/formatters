@@ -61,34 +61,58 @@ describe('format', () => {
     expect(b).toBe('class B {}\n')
   })
 
-  // A Java exception reaches JavaScript as a Java proxy with no readable
-  // message, so failures are encoded in the result rather than thrown across
-  // the boundary. This asserts ktfmt's own diagnostic survives that encoding,
-  // line and column included.
   it('rejects invalid syntax with ktfmt’s diagnostic', async () => {
-    expect(format('fun f( {')).rejects.toThrow(/ParseError: 1:7: error: Expecting '\)'/)
+    // ktfmt's message, line and column included. The CLI prefixes the file
+    // name; there is no file here, so the message starts at the line.
+    expect(format('fun f( {')).rejects.toThrow("1:7: error: Expecting ')'")
+  })
+
+  it('accepts top-level statements, as ktfmt does on stdin', async () => {
+    // Source is parsed as a script, which is how ktfmt reads stdin.
+    expect(await format('println( "hi" )')).toBe('println("hi")\n')
+  })
+
+  it('drops a leading byte-order mark, as the ktfmt CLI does', async () => {
+    expect(await format('\uFEFFclass A{}')).toBe('class A {}\n')
+  })
+
+  it('refuses an option it does not know rather than falling back to a default', async () => {
+    expect(format('class A{}', { style: 'android' as 'meta' })).rejects.toThrow(/unknown style/)
+    expect(format('class A{}', { trailingCommas: 'always' as 'none' })).rejects.toThrow(/unknown trailingCommas/)
+    expect(format('class A{}', { maxWidth: -1 })).rejects.toThrow(/maxWidth must be a non-negative integer/)
+  })
+
+  it('recovers from source nested past what the engine’s stack can follow', async () => {
+    // ktfmt itself overflows its stack well before this depth. Here the trap
+    // costs the instance, so what matters is that it is reported and that the
+    // next call gets a fresh one.
+    const deep = `val x = ${'('.repeat(100_000)}1${')'.repeat(100_000)}`
+    expect(format(deep)).rejects.toThrow(/ran out of stack/)
+    expect(await format('class A{}')).toBe('class A {}\n')
   })
 })
 
 describe('formatSync', () => {
-  it('produces the same bytes as the async format', async () => {
-    const source = 'fun  f( ) {\nval x=1\n}'
-    const expected = await format(source)
-    expect(formatSync(source)).toBe(expected)
+  it('formats with no init under Node, where booting is synchronous', () => {
+    expect(formatSync('fun  f( ) {\nval x=1\n}')).toBe('fun f() {\n  val x = 1\n}\n')
   })
 
-  it('reports a parse failure rather than returning the source unchanged', async () => {
-    await init()
+  it('produces the same bytes as the async format', async () => {
+    const source = 'fun  f( ) {\nval x=1\n}'
+    expect(formatSync(source)).toBe(await format(source))
+  })
+
+  it('reports a parse failure rather than returning the source unchanged', () => {
     expect(() => formatSync('fun f( {')).toThrow()
   })
 
-  it('stays usable after a failed format', async () => {
-    await init()
+  it('stays usable after a failed format', () => {
     expect(() => formatSync('fun f( {')).toThrow()
     expect(formatSync('fun  f( ) {\nval x=1\n}')).toBe('fun f() {\n  val x = 1\n}\n')
   })
 
-  it('returns a string rather than a promise, which is the whole point', async () => {
+  it('accepts init as a harmless no-op', async () => {
+    await init()
     await init()
     const result = formatSync('fun  f( ) {\nval x=1\n}') as unknown
     expect(result).toBeString()

@@ -84,3 +84,11 @@ build/rust_fmt/*.wasm
 build/rbcop_fmt/rbcop
 build/rbcop_fmt/toolchain/
 build/rbcop_fmt/*.wasm
+
+# ktrs build scratch (the ktrs checkout, the uncompressed module, the ktfmt jar
+# the conformance test compares against)
+#
+# `ktrs` has no trailing slash on purpose, matching rust_fmt above.
+build/kotlin_fmt/ktrs
+build/kotlin_fmt/work/
+build/kotlin_fmt/*.wasm
