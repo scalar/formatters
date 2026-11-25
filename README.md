@@ -4,6 +4,36 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Fruby-fmt)](https://github.com/scalar/formatters/blob/main/LICENSE)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
+> [!WARNING]
+> **These packages are no longer maintained.** Use
+> [nishfmt](https://www.npmjs.com/package/@amritk/nishfmt) instead: one native
+> formatter for C++, Java, Kotlin, Ruby, Swift, Rust, Dart and C#, matching each
+> language's reference tool byte for byte and 4 to 76 times faster than it.
+>
+> ```bash
+> npm install -g @amritk/nishfmt
+> nishfmt -i src/
+> ```
+>
+> Published versions stay on npm and keep working. Nothing will be unpublished.
+>
+> nishfmt is not a drop-in replacement. Check these differences before you switch:
+>
+> | | `@scalar/*-fmt` | nishfmt |
+> |:---|:---|:---|
+> | Runtime | WebAssembly on plain Node, and in the browser (all but PHP) | Native binary, Linux and macOS (x86_64, arm64) |
+> | Interface | In-process `format(source, options)` | Command line, over files |
+> | Options | Each tool's own options | None: fixed settings per language |
+> | Swift | Apple's swift-format | SwiftFormat 0.64.7 (a different tool, different output) |
+> | Kotlin | ktfmt, every style (Meta by default) | ktfmt 0.65, `--kotlinlang-style` only |
+> | Ruby | `rubocop --autocorrect --only Layout` | `rubocop -a`, default config |
+> | Rust | rustfmt, configurable | rustfmt, `max_width = 120`, edition 2024 |
+> | C# | CSharpier, configurable | CSharpier, CRLF line endings |
+> | PHP | PHP CS Fixer | Not supported |
+>
+> If you need browser, Windows or in-process formatting, nishfmt does not cover
+> it yet. Pin the last version of the package you use.
+
 Real code formatters compiled to WebAssembly, typed for TypeScript, with one hard constraint: formatting must work with nothing installed but Node.
 
 ---
