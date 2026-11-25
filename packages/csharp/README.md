@@ -5,6 +5,10 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Fcsharp-fmt)](https://www.npmjs.com/package/@scalar/csharp-fmt)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
+> **This package is no longer maintained.** Use [nishfmt](https://www.npmjs.com/package/@amritk/nishfmt) instead. It formats C# as CSharpier 1.4.0 does, with CRLF line endings; this package carries CSharpier 1.3.0 and takes its options.
+>
+> It is a native binary for Linux and macOS that formats files from the command line, with no options, so it does not replace this package in a browser, on Windows or as an in-process `format()` call. Published versions stay on npm and keep working.
+
 C# formatter that runs on plain Node. No .NET SDK, no `dotnet` on `PATH`, no postinstall download.
 
 ---

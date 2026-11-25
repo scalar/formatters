@@ -5,6 +5,10 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Fswift-fmt)](https://www.npmjs.com/package/@scalar/swift-fmt)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
+> **This package is no longer maintained.** Use [nishfmt](https://www.npmjs.com/package/@amritk/nishfmt) instead. It formats Swift as SwiftFormat 0.64.7 does. That is a different tool from the swift-format this package carries, so the output differs.
+>
+> It is a native binary for Linux and macOS that formats files from the command line, with no options, so it does not replace this package in a browser, on Windows or as an in-process `format()` call. Published versions stay on npm and keep working.
+
 Swift formatter that runs on plain Node. No Swift toolchain, no `swift` on `PATH`, no Xcode, no postinstall download.
 
 ---

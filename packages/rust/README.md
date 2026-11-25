@@ -5,6 +5,10 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Frust-fmt)](https://www.npmjs.com/package/@scalar/rust-fmt)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
+> **This package is no longer maintained.** Use [nishfmt](https://www.npmjs.com/package/@amritk/nishfmt) instead. It formats Rust as rustfmt 1.10.0 does with `max_width = 120` and edition 2024; this package takes rustfmt's options.
+>
+> It is a native binary for Linux and macOS that formats files from the command line, with no options, so it does not replace this package in a browser, on Windows or as an in-process `format()` call. Published versions stay on npm and keep working.
+
 Rust formatter that runs on plain Node. No Rust toolchain, no `cargo` on `PATH`, no rustup, no postinstall download.
 
 ---

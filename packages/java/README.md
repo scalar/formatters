@@ -5,6 +5,10 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Fjava-fmt)](https://www.npmjs.com/package/@scalar/java-fmt)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
+> **This package is no longer maintained.** Use [nishfmt](https://www.npmjs.com/package/@amritk/nishfmt) instead. It formats Java as google-java-format 2.0.0 does; this package carries google-java-format 1.36.1, so some output differs.
+>
+> It is a native binary for Linux and macOS that formats files from the command line, with no options, so it does not replace this package in a browser, on Windows or as an in-process `format()` call. Published versions stay on npm and keep working.
+
 Java formatter that runs on plain Node. No JVM, no `java` on `PATH`, no postinstall download.
 
 ---
