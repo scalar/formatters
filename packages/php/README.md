@@ -5,6 +5,8 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Fphp-fmt)](https://www.npmjs.com/package/@scalar/php-fmt)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
+> **This package is no longer maintained.** There is no replacement for PHP: [nishfmt](https://www.npmjs.com/package/@amritk/nishfmt), which replaces the other Scalar formatters, does not format PHP. Published versions stay on npm and keep working.
+
 PHP formatter that runs on plain Node. No PHP install, no Composer, no `php` on `PATH`, no postinstall download.
 
 ---

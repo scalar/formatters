@@ -5,6 +5,10 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Fruby-fmt)](https://www.npmjs.com/package/@scalar/ruby-fmt)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
+> **This package is no longer maintained.** Use [nishfmt](https://www.npmjs.com/package/@amritk/nishfmt) instead. It formats Ruby as `rubocop -a` 1.92.3 does with the default config, not just Layout corrections, so its output differs from this package's.
+>
+> It is a native binary for Linux and macOS that formats files from the command line, with no options, so it does not replace this package in a browser, on Windows or as an in-process `format()` call. Published versions stay on npm and keep working.
+
 `rubocop --autocorrect --only Layout`, byte-identical to RuboCop 1.92.2, via [rbcop](https://github.com/costajohnt/rbcop) compiled to WebAssembly and callable from TypeScript on plain Node.
 
 ---

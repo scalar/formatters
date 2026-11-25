@@ -24,11 +24,12 @@
 > | Runtime | WebAssembly on plain Node, and in the browser (all but PHP) | Native binary, Linux and macOS (x86_64, arm64) |
 > | Interface | In-process `format(source, options)` | Command line, over files |
 > | Options | Each tool's own options | None: fixed settings per language |
+> | Java | google-java-format 1.36.1 | google-java-format 2.0.0 |
 > | Swift | Apple's swift-format | SwiftFormat 0.64.7 (a different tool, different output) |
 > | Kotlin | ktfmt, every style (Meta by default) | ktfmt 0.65, `--kotlinlang-style` only |
 > | Ruby | `rubocop --autocorrect --only Layout` | `rubocop -a`, default config |
 > | Rust | rustfmt, configurable | rustfmt, `max_width = 120`, edition 2024 |
-> | C# | CSharpier, configurable | CSharpier, CRLF line endings |
+> | C# | CSharpier 1.3.0, configurable | CSharpier 1.4.0, CRLF line endings |
 > | PHP | PHP CS Fixer | Not supported |
 >
 > If you need browser, Windows or in-process formatting, nishfmt does not cover
